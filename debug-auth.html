@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Authentication State</title>
+</head>
+<body>
+    <h1>Authentication Debug Info</h1>
+    <div id="debug-info"></div>
+    
+    <script>
+        function debugAuth() {
+            const info = {
+                localStorage: {
+                    authStore: localStorage.getItem('auth-store'),
+                    allKeys: Object.keys(localStorage)
+                },
+                sessionStorage: {
+                    accessToken: sessionStorage.getItem('finance_access_token'),
+                    refreshToken: sessionStorage.getItem('finance_refresh_token'),
+                    expiresAt: sessionStorage.getItem('finance_token_expires'),
+                    allKeys: Object.keys(sessionStorage)
+                }
+            };
+            
+            document.getElementById('debug-info').innerHTML = 
+                '<pre>' + JSON.stringify(info, null, 2) + '</pre>';
+        }
+        
+        debugAuth();
+    </script>
+</body>
+</html>

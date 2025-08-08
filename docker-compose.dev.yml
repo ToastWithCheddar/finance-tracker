@@ -1,0 +1,26 @@
+services:
+  backend:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - DEBUG=true
+      - LOG_LEVEL=debug
+    volumes:
+      - ./backend:/app:cached
+
+  frontend:
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8000/api
+    volumes:
+      - ./frontend:/app:cached
+      - /app/node_modules
+
+  postgres:
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_DB=finance_tracker
+
+  redis:
+    ports:
+      - "6379:6379"
