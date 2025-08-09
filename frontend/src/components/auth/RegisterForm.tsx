@@ -41,6 +41,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
         displayName: data.displayName
       };
       await registerUser(credentials as RegisterCredentials);
+      // Note: With Supabase email confirmation, user needs to check email before login
       onSuccess?.();
     } catch {
       // Error is handled by the store

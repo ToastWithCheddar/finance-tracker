@@ -80,6 +80,7 @@ class PlaidService:
                 'user': {'client_user_id': str(user_id)},
                 'client_name': 'Finance Tracker',
                 'products': ['transactions'],
+                'additional_consented_products': ['liabilities'],
                 'country_codes': ['US'],
                 'language': 'en',
                 'webhook': f"{settings.FRONTEND_URL}/api/webhooks/plaid" if hasattr(settings, 'FRONTEND_URL') else None
@@ -173,6 +174,63 @@ class PlaidService:
         except Exception as e:
             logger.error(f"Failed to fetch accounts: {e}")
             raise
+    
+    async def fetch_account_balances(self, access_token: str) -> Dict[str, Any]:
+        """Fetch real-time account balance information from Plaid"""
+        if not self.enabled:
+            return {
+                'error': 'Plaid integration is disabled',
+                'accounts': []
+            }
+        
+        try:
+            # Try to get real-time balance data
+            data = {'access_token': access_token}
+            balance_result = self._make_request('accounts/balance/get', data)
+            
+            return {
+                'accounts': balance_result.get('accounts', []),
+                'source': 'balance_endpoint'
+            }
+            
+        except Exception as e:
+            logger.warning(f"Balance endpoint failed, falling back to accounts endpoint: {e}")
+            
+            # Fallback to regular accounts endpoint
+            try:
+                accounts_result = self._make_request('accounts/get', data)
+                return {
+                    'accounts': accounts_result.get('accounts', []),
+                    'source': 'accounts_endpoint_fallback'
+                }
+            except Exception as fallback_error:
+                logger.error(f"Both balance and accounts endpoints failed: {fallback_error}")
+                raise
+    
+    async def fetch_liabilities(self, access_token: str) -> Dict[str, Any]:
+        """Fetch liability information for credit cards, mortgages, and loans"""
+        if not self.enabled:
+            return {
+                'error': 'Plaid integration is disabled',
+                'liabilities': None
+            }
+        
+        try:
+            data = {'access_token': access_token}
+            liabilities_result = self._make_request('liabilities/get', data)
+            
+            return {
+                'liabilities': liabilities_result.get('liabilities', {}),
+                'accounts': liabilities_result.get('accounts', [])
+            }
+            
+        except Exception as e:
+            logger.info(f"Liabilities endpoint not available: {e}")
+            return {
+                'liabilities': None,
+                'accounts': [],
+                'error': str(e)
+            }
     
     async def _create_account_from_plaid(
         self, 
@@ -288,13 +346,25 @@ class PlaidService:
             # Sync each token group
             for access_token, token_accounts in token_groups.items():
                 try:
-                    plaid_accounts = await self.fetch_accounts(access_token)
+                    # Use the enhanced balance endpoint with fallback
+                    balance_data = await self.fetch_account_balances(access_token)
+                    plaid_accounts = balance_data.get('accounts', [])
+                    data_source = balance_data.get('source', 'unknown')
+                    
+                    # Optionally get liability data for enhanced balance information
+                    liabilities_data = await self.fetch_liabilities(access_token)
+                    liability_accounts = liabilities_data.get('accounts', [])
+                    
+                    # Merge liability account data if available
+                    if liability_accounts:
+                        plaid_accounts.extend(liability_accounts)
+                        logger.info(f"Added {len(liability_accounts)} liability accounts to sync")
                     
                     for account in token_accounts:
                         try:
                             # Find matching Plaid account
                             plaid_account = next(
-                                (acc for acc in plaid_accounts.get('accounts', []) 
+                                (acc for acc in plaid_accounts
                                  if acc.get('account_id') == account.plaid_account_id),
                                 None
                             )
@@ -307,12 +377,14 @@ class PlaidService:
                                 old_balance = account.balance_cents / 100
                                 account.balance_cents = int(new_balance * 100)
                                 
-                                # Update metadata
+                                # Update metadata with enhanced information
                                 metadata = account.account_metadata or {}
                                 metadata.update({
                                     'available_balance': balances.get('available', new_balance),
                                     'last_sync': datetime.utcnow().isoformat(),
-                                    'previous_balance': old_balance
+                                    'previous_balance': old_balance,
+                                    'data_source': data_source,
+                                    'sync_method': 'enhanced_balance_sync'
                                 })
                                 account.account_metadata = metadata
                                 
@@ -323,10 +395,17 @@ class PlaidService:
                                     'name': account.name,
                                     'old_balance': old_balance,
                                     'new_balance': new_balance,
-                                    'change': new_balance - old_balance
+                                    'change': new_balance - old_balance,
+                                    'data_source': data_source
                                 })
                                 
-                                logger.info(f"Synced balance for {account.name}: ${old_balance:.2f} -> ${new_balance:.2f}")
+                                logger.info(f"Synced balance for {account.name} via {data_source}: ${old_balance:.2f} -> ${new_balance:.2f}")
+                            else:
+                                logger.warning(f"Account {account.plaid_account_id} not found in Plaid response")
+                                results['failed'].append({
+                                    'account_id': str(account.id),
+                                    'error': 'Account not found in Plaid response'
+                                })
                             
                         except Exception as e:
                             logger.error(f"Failed to sync account {account.id}: {e}")
@@ -336,11 +415,11 @@ class PlaidService:
                             })
                 
                 except Exception as e:
-                    logger.error(f"Failed to fetch accounts for token: {e}")
+                    logger.error(f"Failed to fetch balance data for token: {e}")
                     for account in token_accounts:
                         results['failed'].append({
                             'account_id': str(account.id),
-                            'error': f"Token fetch failed: {str(e)}"
+                            'error': f"Balance fetch failed: {str(e)}"
                         })
             
             db.commit()

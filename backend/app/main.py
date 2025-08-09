@@ -314,6 +314,28 @@ app.include_router(
 )
 
 # API versioning (future use)
+@app.get("/api", tags=["API Info"])
+async def api_base():
+    """Base API endpoint"""
+    return {
+        "message": "Finance Tracker API",
+        "version": "1.0.0",
+        "environment": settings.ENVIRONMENT,
+        "endpoints": {
+            "auth": "/api/auth",
+            "users": "/api/users", 
+            "categories": "/api/categories",
+            "transactions": "/api/transactions",
+            "budgets": "/api/budgets",
+            "accounts": "/api/accounts",
+            "ml": "/api/ml",
+            "health": "/health",
+            "docs": "/docs" if settings.DEBUG else None,
+        },
+        "status": "operational",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
 @app.get("/api/info", tags=["API Info"])
 async def api_info():
     """API version information"""

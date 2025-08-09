@@ -9,7 +9,8 @@ from app.auth.dependencies import get_current_user, get_current_active_user, get
 from app.schemas.auth import (
     UserRegister, UserLogin, RefreshTokenRequest,
     PasswordResetRequest, PasswordUpdate,
-    EmailVerification, ResendVerificationRequest, AuthResponse, StandardAuthResponse
+    ResendVerificationRequest, AuthResponse, StandardAuthResponse
+    # REMOVED: EmailVerification - No longer needed for Supabase-only auth
 )
 from app.schemas.user import User as UserSchema
 from app.models.user import User
@@ -66,19 +67,8 @@ async def request_password_reset(
     await auth_service.send_password_reset(reset_data.email)
     return
 
-@router.post("/verify-email", response_model=AuthResponse)
-async def verify_email(
-    verification_data: EmailVerification,
-    auth_service: AuthService = Depends(get_auth_service)
-) -> AuthResponse:
-    """Verifies a user's email address."""
-    success = await auth_service.verify_email(
-        verification_data.token,
-        verification_data.email
-    )
-    if not success:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification token.")
-    return AuthResponse(success=True, message="Email verified successfully.")
+# REMOVED: /verify-email endpoint - Using Supabase native email verification
+# Email verification is handled automatically by Supabase through their confirmation emails
 
 @router.post("/resend-verification", status_code=status.HTTP_204_NO_CONTENT)
 async def resend_verification(
@@ -89,63 +79,8 @@ async def resend_verification(
     await auth_service.resend_verification(resend_data.email)
     return
 
-@router.get("/confirm-email", response_class=RedirectResponse)
-async def confirm_email(
-    token: str = Query(...),
-    redirect: str = Query(default=None),
-    auth_service: AuthService = Depends(get_auth_service)
-) -> RedirectResponse:
-    """
-    Magic link email confirmation endpoint.
-    Verifies the token, marks email as verified, creates session tokens,
-    and redirects to the frontend with cookies set.
-    """
-    try:
-        # Verify magic token and create session
-        auth_data = await auth_service.verify_magic_link_and_login(token)
-        
-        # Default redirect to dashboard if not specified
-        from app.config import settings
-        redirect_url = redirect or f"{settings.FRONTEND_URL}/dashboard"
-        
-        # Create redirect response
-        response = RedirectResponse(url=redirect_url, status_code=302)
-        
-        # Set HttpOnly cookies for tokens
-        if auth_data.get("accessToken"):
-            response.set_cookie(
-                "access_token",
-                auth_data["accessToken"],
-                httponly=True,
-                secure=True,  # Only over HTTPS in production
-                samesite="lax",
-                max_age=15 * 60,  # 15 minutes
-                path="/"
-            )
-        
-        if auth_data.get("refreshToken"):
-            response.set_cookie(
-                "refresh_token",
-                auth_data["refreshToken"],
-                httponly=True,
-                secure=True,  # Only over HTTPS in production
-                samesite="lax",
-                max_age=7 * 24 * 60 * 60,  # 7 days
-                path="/"
-            )
-            
-        return response
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions (like 400, 404, etc.)
-        raise
-    except Exception as e:
-        logger = __import__("logging").getLogger(__name__)
-        logger.error(f"Magic link confirmation failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Email confirmation failed"
-        )
+# REMOVED: /confirm-email endpoint - Using Supabase native email confirmation
+# Supabase handles email confirmation automatically through their dashboard configuration
 
 @router.get("/health")
 async def auth_health(auth_service: AuthService = Depends(get_auth_service)):

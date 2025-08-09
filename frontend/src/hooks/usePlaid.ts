@@ -51,10 +51,13 @@ export function useExchangeToken() {
     mutationFn: (exchangeData: PlaidExchangeTokenRequest) => 
       plaidService.exchangeToken(exchangeData),
     onSuccess: () => {
-      // Invalidate connection status and transaction-related queries
+      // Invalidate all related queries after successful token exchange
+      queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Add accounts cache invalidation
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      // Also invalidate dashboard analytics which uses a different key
+      queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
     },
   });
 }
@@ -70,6 +73,7 @@ export function useSyncTransactions() {
       // Invalidate transaction-related queries
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
       // Invalidate connection status to update health indicators
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
     },
@@ -84,9 +88,11 @@ export function useSyncBalances() {
   return useMutation({
     mutationFn: (request?: SyncBalancesRequest) => plaidService.syncBalances(request),
     onSuccess: () => {
-      // Invalidate account and dashboard queries
+      // Invalidate account and dashboard queries - balances have updated
+      queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Add accounts cache invalidation
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
     },
   });
 }

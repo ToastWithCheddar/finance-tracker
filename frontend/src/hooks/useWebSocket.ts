@@ -40,9 +40,16 @@ export interface WebSocketStats {
 
 export const useWebSocket = (config: WebSocketConfig = {}) => {
     const finalConfig = {...DEFAULT_CONFIG, ...config};
-    const authStore = useAuthStore();
-    const token = (authStore as any).token || '';
-    const isAuthenticated = (authStore as any).isAuthenticated || false;
+    const { isAuthenticated } = useAuthStore();
+    // Get token from secure storage since auth store doesn't store tokens directly
+    const getToken = () => {
+        try {
+            const { secureStorage } = require('../services/secureStorage');
+            return secureStorage.getAccessToken() || '';
+        } catch {
+            return '';
+        }
+    };
     // If you have useRealtimeStore, uncomment and use it. Otherwise, comment out related usages below.
     const {dispatchMessage, updateConnectionStatus } = useRealtimeStore();
     // const dispatchMessage = () => {};
@@ -63,7 +70,7 @@ export const useWebSocket = (config: WebSocketConfig = {}) => {
         messagesSent: 0,
     });
 
-    const wsURL = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/ws/realtime?token=${token}`;
+    const wsURL = `${import.meta.env.VITE_WS_URL || 'ws://localhost:8000'}/ws/realtime`;
 
     const log = useCallback((message: string, data?: any) => {
         if (finalConfig.debug) {
@@ -191,6 +198,7 @@ export const useWebSocket = (config: WebSocketConfig = {}) => {
     }, [dispatchMessage, setStats, log]);
 
     const connect = useCallback(() => {
+        const token = getToken();
         if (!isAuthenticated || !token) {
             log('Not authenticated, skipping connection');
             return;
@@ -280,7 +288,6 @@ export const useWebSocket = (config: WebSocketConfig = {}) => {
         }
     }, [
         isAuthenticated,
-        token,
         wsURL,
         finalConfig,
         handleMessage,
@@ -353,7 +360,7 @@ export const useWebSocket = (config: WebSocketConfig = {}) => {
     
     // Main effect for connection management
     useEffect(() => {
-        if (isAuthenticated && token) {
+        if (isAuthenticated) {
             connect();
         } else {
             disconnect();
@@ -362,7 +369,7 @@ export const useWebSocket = (config: WebSocketConfig = {}) => {
         return () => {
             disconnect();
         };
-    }, [isAuthenticated, token, connect, disconnect]);
+    }, [isAuthenticated, connect, disconnect]);
     
     // Cleanup on unmount
     useEffect(() => {

@@ -72,7 +72,7 @@ class LinkTokenRequest(BaseModel):
     client_name: str = "Finance Tracker"
     language: str = "en"
     country_codes: List[str] = ["US"]
-    products: List[str] = ["transactions", "accounts"]
+    products: List[str] = ["transactions", "accounts", "liabilities"]
     account_filters: Optional[Dict[str, Any]] = None
     redirect_uri: Optional[str] = None
     android_package_name: Optional[str] = None

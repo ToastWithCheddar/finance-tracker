@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 import uuid
 import logging
+from gotrue.errors import AuthError
 
 # New import for on-the-fly user creation
 from app.schemas.user import UserCreate
@@ -13,7 +14,7 @@ from app.auth.supabase_client import supabase_client
 from app.services.user_service import UserService
 from app.models.user import User
 from app.auth.auth_service import AuthService
-from app.utils.security import verify_token
+# REMOVED: Custom JWT verification - Using Supabase-only authentication
 
 logger = logging.getLogger(__name__)
 
@@ -60,20 +61,7 @@ async def get_current_user(
             return dev_user
     
     try:
-        # First, try to verify as our custom JWT token (from magic link flow)
-        custom_payload = verify_token(token)
-        if custom_payload and custom_payload.get('user_id'):
-            # This is a custom JWT token - get user directly by ID
-            user = auth_service.user_service.get(
-                db=auth_service.db,
-                id=custom_payload['user_id']
-            )
-            if user and user.is_active:
-                return user
-            else:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive.")
-        
-        # If not a custom JWT, try Supabase token validation
+        # Single Supabase token validation path
         user_data = auth_service.supabase.client.auth.get_user(token)
         if not user_data or not user_data.user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
@@ -126,9 +114,19 @@ async def get_current_user(
                     raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
         
         return user
+        
+    except AuthError as e:
+        logger.error(f"Supabase authentication failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials."
+        )
     except Exception as e:
         logger.error(f"Authentication error: {e}")
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Could not validate credentials.")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed."
+        )
 
 async def get_current_active_user(
     current_user: User = Depends(get_current_user)

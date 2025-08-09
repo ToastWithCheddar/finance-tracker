@@ -86,6 +86,7 @@ class EnhancedPlaidService:
                 },
                 'client_name': 'Finance Tracker',
                 'products': ['transactions'],
+                'additional_consented_products': ['liabilities'],
                 'country_codes': ['US'],
                 'language': 'en'
             }
@@ -122,6 +123,8 @@ class EnhancedPlaidService:
             return self._disabled_response()
         
         try:
+            logger.info(f"Starting token exchange for user: {user_id}")
+            
             # Exchange token
             exchange_request = {
                 'public_token': public_token
@@ -134,20 +137,42 @@ class EnhancedPlaidService:
             if not access_token:
                 raise Exception("No access token received from Plaid")
             
+            logger.info(f"Successfully exchanged token, got access_token and item_id: {item_id}")
+            
             # Get accounts and institution info
             accounts_info = await self.fetch_accounts_and_institution(access_token)
+            logger.info(f"Fetched {len(accounts_info.get('accounts', []))} accounts from Plaid")
             
-            # Create accounts in database
+            # Create accounts in database with proper transaction management
             created_accounts = []
             institution_info = accounts_info.get('institution')
-            for account_data in accounts_info.get('accounts', []):
-                account = await self._create_or_update_account(
-                    account_data, access_token, item_id, user_id, db, institution_info
-                )
-                created_accounts.append(account)
             
-            # Initial sync of recent transactions
-            await self._initial_transaction_sync(created_accounts, access_token, db)
+            try:
+                # Process each account within a database transaction
+                for account_data in accounts_info.get('accounts', []):
+                    logger.info(f"Processing account: {account_data.get('account_id', 'unknown')}")
+                    account = await self._create_or_update_account(
+                        account_data, access_token, item_id, user_id, db, institution_info
+                    )
+                    created_accounts.append(account)
+                    logger.info(f"Successfully processed account: {account.name} (ID: {account.id})")
+                
+                # Commit the transaction after all accounts are created
+                db.commit()
+                logger.info(f"Successfully committed {len(created_accounts)} accounts to database")
+                
+                # Initial sync of recent transactions
+                try:
+                    await self._initial_transaction_sync(created_accounts, access_token, db)
+                    logger.info("Initial transaction sync completed")
+                except Exception as sync_error:
+                    logger.warning(f"Initial transaction sync failed, but accounts created: {sync_error}")
+                    # Don't fail the whole process if transaction sync fails
+                
+            except Exception as db_error:
+                logger.error(f"Database error during account creation: {db_error}")
+                db.rollback()
+                raise Exception(f"Failed to create accounts in database: {str(db_error)}")
             
             return {
                 'success': True,
@@ -155,15 +180,23 @@ class EnhancedPlaidService:
                 'item_id': item_id,
                 'accounts': created_accounts,
                 'institution': accounts_info.get('institution'),
-                'accounts_created': len(created_accounts)
+                'accounts_created': len(created_accounts),
+                'message': f"Successfully connected {len(created_accounts)} accounts"
             }
             
         except Exception as e:
-            logger.error(f"Failed to exchange public token: {e}")
+            logger.error(f"Failed to exchange public token for user {user_id}: {e}", exc_info=True)
+            # Ensure database rollback on any error
+            try:
+                db.rollback()
+            except Exception as rollback_error:
+                logger.error(f"Failed to rollback database transaction: {rollback_error}")
+            
             return {
                 'success': False,
                 'error': str(e),
-                'message': 'Failed to connect bank account'
+                'message': 'Failed to connect bank account. Please try again.',
+                'accounts': []
             }
     
     async def fetch_accounts_and_institution(self, access_token: str) -> Dict[str, Any]:
@@ -220,7 +253,7 @@ class EnhancedPlaidService:
         
         if existing_account:
             # Update existing account
-            return await self._update_existing_account(existing_account, plaid_account, access_token, db, institution_info)
+            return await self._update_existing_account(existing_account, plaid_account, access_token, item_id, db, institution_info)
         else:
             # Create new account
             return await self._create_new_account(plaid_account, access_token, item_id, user_id, db, institution_info)
@@ -285,39 +318,93 @@ class EnhancedPlaidService:
                 'institution_primary_color': institution_info.get('primary_color')
             })
         
+        # Validate required fields before creating account
+        account_name = plaid_account.get('official_name') or plaid_account.get('name', 'Unknown Account')
+        plaid_account_id = plaid_account.get('account_id')
+        
+        if not plaid_account_id:
+            raise Exception(f"Missing required plaid_account_id for account: {account_name}")
+        
+        if not access_token:
+            raise Exception(f"Missing access_token for account: {account_name}")
+        
+        # Application-level deduplication guard: if an account exists for this user with the
+        # same item and characteristics, update it instead of creating a new one
+        try:
+            potential_duplicate = db.query(Account).filter(
+                Account.user_id == user_uuid,
+                (
+                    (Account.plaid_account_id == plaid_account_id) |
+                    (
+                        (Account.plaid_item_id == item_id) &
+                        (Account.name == account_name) &
+                        (Account.account_type == account_type)
+                    )
+                )
+            ).first()
+        except Exception:
+            potential_duplicate = None
+        
+        if potential_duplicate:
+            logger.info(
+                f"Found potential duplicate account for user {user_uuid}: {potential_duplicate.id}. Updating instead of creating."
+            )
+            # Ensure Plaid identifiers are up to date
+            potential_duplicate.plaid_account_id = plaid_account_id
+            potential_duplicate.plaid_item_id = item_id
+            potential_duplicate.plaid_access_token = access_token
+            db.add(potential_duplicate)
+            db.commit()
+            db.refresh(potential_duplicate)
+            # Continue with regular update path to refresh balances/metadata
+            return await self._update_existing_account(
+                potential_duplicate, plaid_account, access_token, item_id, db, institution_info
+            )
+
         # Debug logging before AccountCreate
-        logger.info(f"About to create AccountCreate object with user_uuid: {user_uuid}")
+        logger.info(f"Creating AccountCreate object - User UUID: {user_uuid}, Account: {account_name}, Plaid ID: {plaid_account_id}")
         
-        account_create = AccountCreate(
-            user_id=user_uuid,
-            name=plaid_account.get('official_name') or plaid_account.get('name', 'Unknown Account'),
-            account_type=account_type,
-            balance_cents=int(current_balance * 100),
-            currency=balances.get('iso_currency_code', 'USD'),
-            is_active=True,
-            plaid_account_id=plaid_account.get('account_id'),
-            plaid_access_token=access_token,
-            plaid_item_id=item_id,
-            account_metadata=metadata,
-            sync_status='synced',
-            connection_health='healthy',
-            sync_frequency='daily',
-            last_sync_at=datetime.now(timezone.utc)
-        )
-        
-        # Debug logging after AccountCreate
-        logger.info(f"AccountCreate object created with user_id: {account_create.user_id}")
-        
-        account = self.account_service.create(db=db, obj_in=account_create)
-        logger.info(f"Created new Plaid account: {account.name} ({account.id})")
-        
-        return account
+        try:
+            account_create = AccountCreate(
+                user_id=user_uuid,
+                name=account_name,
+                account_type=account_type,
+                balance_cents=int(current_balance * 100),
+                currency=balances.get('iso_currency_code', 'USD'),
+                is_active=True,
+                plaid_account_id=plaid_account_id,
+                plaid_access_token=access_token,
+                plaid_item_id=item_id,
+                account_metadata=metadata,
+                sync_status='synced',
+                connection_health='healthy',
+                sync_frequency='daily',
+                last_sync_at=datetime.now(timezone.utc)
+            )
+            
+            logger.info(f"AccountCreate object created successfully for {account_name}")
+            
+            # Create account with enhanced error handling
+            account = self.account_service.create(db=db, obj_in=account_create)
+            
+            # Verify account was created properly
+            if not account or not account.id:
+                raise Exception(f"Account creation failed - no account ID returned for {account_name}")
+            
+            logger.info(f"✅ Successfully created Plaid account: {account.name} (ID: {account.id}, Plaid ID: {account.plaid_account_id})")
+            
+            return account
+            
+        except Exception as create_error:
+            logger.error(f"❌ Failed to create account {account_name}: {create_error}", exc_info=True)
+            raise Exception(f"Account creation failed for {account_name}: {str(create_error)}")
     
     async def _update_existing_account(
         self, 
         account: Account, 
         plaid_account: Dict[str, Any], 
         access_token: str, 
+        item_id: Optional[str], 
         db: Session,
         institution_info: Optional[Dict[str, Any]] = None
     ) -> Account:
@@ -329,6 +416,8 @@ class EnhancedPlaidService:
         # Update account
         account.balance_cents = int(new_balance * 100)
         account.plaid_access_token = access_token
+        if item_id:
+            account.plaid_item_id = item_id
         account.sync_status = 'synced'
         account.connection_health = 'healthy'
         account.last_sync_at = datetime.now(timezone.utc)
@@ -792,7 +881,10 @@ class EnhancedPlaidService:
                 }
             )
             
-            transaction = self.transaction_service.create(db=db, obj_in=transaction_create)
+            # Use the TransactionService API to create a transaction (with ML integration)
+            transaction = await self.transaction_service.create_transaction(
+                db, transaction_create, account.user_id
+            )
             return transaction
             
         except Exception as e:
@@ -878,52 +970,76 @@ class EnhancedPlaidService:
             
             if not plaid_accounts:
                 return {
-                    'success': True,
-                    'connected': False,
+                    'total_connections': 0,
+                    'active_connections': 0,
+                    'failed_connections': 0,
+                    'needs_reauth': 0,
                     'accounts': [],
                     'message': 'No Plaid accounts connected'
                 }
             
-            # Check account statuses
-            account_statuses = []
-            total_balance = 0
-            healthy_count = 0
-            error_count = 0
+            # Check account statuses and format for frontend
+            formatted_accounts = []
+            active_connections = 0
+            failed_connections = 0
+            needs_reauth = 0
             
             for account in plaid_accounts:
-                status = {
+                # Determine health status based on metadata and last sync
+                metadata = account.account_metadata or {}
+                last_sync = metadata.get('last_sync')
+                health_status = 'unknown'
+                
+                if last_sync:
+                    try:
+                        # Parse the timestamp and ensure it's timezone-aware
+                        if last_sync.endswith('Z'):
+                            last_sync_dt = datetime.fromisoformat(last_sync.replace('Z', '+00:00'))
+                        elif '+' in last_sync or last_sync.endswith('00'):
+                            last_sync_dt = datetime.fromisoformat(last_sync)
+                        else:
+                            # Assume UTC if no timezone info
+                            last_sync_dt = datetime.fromisoformat(last_sync).replace(tzinfo=timezone.utc)
+                        
+                        # Calculate hours since sync using timezone-aware datetime
+                        now_utc = datetime.now(timezone.utc)
+                        hours_since_sync = (now_utc - last_sync_dt).total_seconds() / 3600
+                        
+                        if hours_since_sync < 24:
+                            health_status = 'healthy'
+                            active_connections += 1
+                        elif hours_since_sync < 168:  # 1 week
+                            health_status = 'warning'
+                        else:
+                            health_status = 'failed'
+                            failed_connections += 1
+                    except (ValueError, AttributeError):
+                        health_status = 'unknown'
+                        failed_connections += 1
+                else:
+                    health_status = 'unknown'
+                    failed_connections += 1
+                
+                # Format account for frontend
+                account_data = {
                     'account_id': str(account.id),
                     'name': account.name,
                     'type': account.account_type,
-                    'balance': account.balance_dollars,
+                    'health_status': health_status,
+                    'last_sync': last_sync,
+                    'balance': account.balance_cents / 100.0,  # Convert cents to dollars
                     'currency': account.currency,
-                    'connection_health': account.connection_health or 'unknown',
-                    'sync_status': account.sync_status or 'unknown',
-                    'last_sync': account.last_sync_at.isoformat() if account.last_sync_at else None,
                     'plaid_account_id': account.plaid_account_id
                 }
                 
-                account_statuses.append(status)
-                total_balance += account.balance_dollars
-                
-                if account.connection_health == 'healthy':
-                    healthy_count += 1
-                elif account.connection_health == 'failed':
-                    error_count += 1
-            
-            overall_status = 'healthy' if error_count == 0 else ('partial' if healthy_count > 0 else 'failed')
+                formatted_accounts.append(account_data)
             
             return {
-                'success': True,
-                'connected': True,
-                'overall_status': overall_status,
-                'total_accounts': len(plaid_accounts),
-                'healthy_accounts': healthy_count,
-                'error_accounts': error_count,
-                'total_balance': total_balance,
-                'accounts': account_statuses,
-                'plaid_environment': self.environment,
-                'last_updated': datetime.now(timezone.utc).isoformat()
+                'total_connections': len(plaid_accounts),
+                'active_connections': active_connections,
+                'failed_connections': failed_connections,
+                'needs_reauth': needs_reauth,
+                'accounts': formatted_accounts
             }
             
         except Exception as e:

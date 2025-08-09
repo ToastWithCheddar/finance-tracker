@@ -7,7 +7,7 @@ import { CategoryPieChart } from '../components/dashboard/CategoryPieChart';
 import { SpendingTrendsChart } from '../components/dashboard/SpendingTrendsChart';
 import { MonthlyComparisonChart } from '../components/dashboard/MonthlyComparisonChart';
 import { DashboardFilters } from '../components/dashboard/DashboardFilters';
-import { AccountConnectionStatus } from '../components/plaid/AccountConnectionStatus';
+import { AccountsList } from '../components/accounts/AccountsList';
 import type { DashboardFilters as FilterType } from '../services/dashboardService';
 
 export function Dashboard() {
@@ -111,9 +111,9 @@ export function Dashboard() {
           <DashboardFilters filters={filters} onFiltersChange={setFilters} />
         </div>
 
-        {/* Bank Account Connection */}
+        {/* Accounts (includes connect + sync controls) */}
         <div className="mb-8">
-          <AccountConnectionStatus />
+          <AccountsList />
         </div>
 
         {/* Loading State */}

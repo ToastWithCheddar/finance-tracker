@@ -24,7 +24,7 @@ export function PlaidLink({ onSuccess, onError, className }: PlaidLinkProps) {
   // Get link token when component mounts
   const { data: linkTokenData, isLoading: isLoadingToken, error: tokenError } = usePlaidLinkToken(true);
   
-  const { exchangeToken, isExchanging, exchangeError, exchangeResult } = usePlaidActions();
+  const { exchangeToken, isExchanging, exchangeError, exchangeResult, syncTransactions, syncBalances } = usePlaidActions();
 
   // Handle successful Plaid Link
   const onPlaidSuccess: PlaidLinkOnSuccess = useCallback(
@@ -73,6 +73,15 @@ export function PlaidLink({ onSuccess, onError, className }: PlaidLinkProps) {
         accounts: exchangeResult.accounts,
       });
       onSuccess?.(exchangeResult.accounts);
+
+      // Trigger background syncs to populate data immediately
+      try {
+        syncTransactions(undefined);
+        syncBalances(undefined);
+      } catch (e) {
+        // Non-blocking
+        console.warn('Sync trigger failed:', e);
+      }
     }
   }, [exchangeResult, onSuccess]);
 

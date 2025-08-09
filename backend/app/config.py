@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     PLAID_CLIENT_ID: str = os.getenv("PLAID_CLIENT_ID", "")
     PLAID_SECRET: str = os.getenv("PLAID_SECRET", "")
     PLAID_ENV: str = os.getenv("PLAID_ENV", "sandbox")
-    PLAID_PRODUCTS: str = os.getenv("PLAID_PRODUCTS", "transactions,accounts")
+    PLAID_PRODUCTS: str = os.getenv("PLAID_PRODUCTS", "transactions,accounts,liabilities")
     PLAID_COUNTRY_CODES: str = os.getenv("PLAID_COUNTRY_CODES", "US")
     
     # Mock/Demo Mode

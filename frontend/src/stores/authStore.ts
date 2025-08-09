@@ -14,7 +14,7 @@ interface AuthActions {
   clearError: () => void;
   setLoading: (loading: boolean) => void;
   checkTokenExpiration: () => Promise<void>;
-  initializeFromCookies: () => boolean;
+  // REMOVED: initializeFromCookies - Using Supabase-only authentication
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -35,7 +35,7 @@ export const useAuthStore = create<AuthStore>()(
           
           const response = await apiClient.post<AuthResponse>('/auth/login', credentials);
           
-          // Validate response structure
+          // Simplified validation (no token type checking)
           if (!response || !response.accessToken || !response.refreshToken || !response.user) {
             throw new Error('Invalid authentication response structure');
           }
@@ -108,7 +108,7 @@ export const useAuthStore = create<AuthStore>()(
             refresh_token: refreshToken,
           });
 
-          // Validate response structure
+          // Simplified validation (no dual token type handling)
           if (!response || !response.accessToken || !response.refreshToken) {
             throw new Error('Invalid refresh response structure');
           }
@@ -163,45 +163,8 @@ export const useAuthStore = create<AuthStore>()(
         }
       },
 
-      initializeFromCookies: () => {
-        // Try to initialize from cookies (magic link flow)
-        if (secureStorage.initializeFromCookies()) {
-          set({
-            isAuthenticated: true,
-            isLoading: true,  // Keep loading while fetching user data
-            error: null,
-          });
-          
-          // Fetch user data
-          apiClient.get('/auth/me')
-            .then((userData: unknown) => {
-              const user = userData as User;
-              // Validate user data structure
-              if (!user || !user.id || !user.email) {
-                throw new Error('Invalid user data structure from /auth/me');
-              }
-              
-              set({
-                user: user,
-                isAuthenticated: true,
-                isLoading: false,
-                error: null,
-              });
-            })
-            .catch((error) => {
-              console.error('Failed to fetch user data after cookie initialization:', error);
-              set({
-                user: null,
-                isAuthenticated: false,
-                isLoading: false,
-                error: 'Failed to initialize user session',
-              });
-            });
-          
-          return true;
-        }
-        return false;
-      },
+      // REMOVED: initializeFromCookies() - Using Supabase-only authentication
+      // Magic link cookie initialization no longer needed
     }),
     {
       name: 'auth-store',

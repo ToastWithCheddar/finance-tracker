@@ -31,6 +31,22 @@ from app.websocket.events import WebSocketEvent, EventType
 router = APIRouter()
 account_service = AccountService()
 
+@router.get("/", response_model=List[AccountSchema])
+async def get_user_accounts(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all accounts for the current user"""
+    try:
+        accounts = account_service.get_by_user(db=db, user_id=current_user.id)
+        return accounts
+    except Exception as e:
+        logger.error(f"Failed to get accounts for user {current_user.id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve accounts"
+        )
+
 @router.post("/plaid/link-token", response_model=Dict[str, Any])
 async def create_plaid_link_token(
     current_user: User = Depends(get_current_active_user),
@@ -48,7 +64,7 @@ async def create_plaid_link_token(
 
 @router.post("/plaid/exchange-token", response_model=Dict[str, Any])
 async def exchange_plaid_token(
-    public_token: str,
+    public_token: str,  # Query parameter
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -69,36 +85,64 @@ async def exchange_plaid_token(
             public_token, str(current_user.id), db
         )
         
+        # Check if the service returned an error
+        if not result.get('success', True):
+            error_message = result.get('message', 'Failed to connect bank account')
+            logger.error(f"Plaid service error for user {current_user.id}: {result.get('error', 'Unknown error')}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=error_message
+            )
+        
+        # Ensure we have accounts in the result
+        accounts = result.get('accounts', [])
+        if not accounts:
+            logger.warning(f"No accounts created for user {current_user.id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No accounts were connected. Please try again."
+            )
+        
         # Send real-time notification
-        event = WebSocketEvent(
-            event_type=EventType.ACCOUNT_CONNECTED,
-            data={
-                "message": f"Successfully connected {len(result['accounts'])} accounts",
-                "accounts": [
-                    {
-                        "id": str(acc.id),
-                        "name": acc.name,
-                        "type": acc.account_type,
-                        "balance": acc.balance_cents / 100
-                    } for acc in result['accounts']
-                ],
-                "institution": result.get('institution', {}).get('name', 'Bank')
-            }
-        )
-        await websocket_manager.send_to_user(str(current_user.id), event.to_dict())
+        try:
+            event = WebSocketEvent(
+                event_type=EventType.ACCOUNT_CONNECTED,
+                data={
+                    "message": f"Successfully connected {len(accounts)} accounts",
+                    "accounts": [
+                        {
+                            "id": str(acc.id),
+                            "name": acc.name,
+                            "type": acc.account_type,
+                            "balance": acc.balance_cents / 100
+                        } for acc in accounts
+                    ],
+                    "institution": result.get('institution', {}).get('name', 'Bank')
+                }
+            )
+            await websocket_manager.send_to_user(str(current_user.id), event.to_dict())
+            logger.info(f"Sent WebSocket notification for {len(accounts)} accounts")
+        except Exception as ws_error:
+            logger.warning(f"Failed to send WebSocket notification: {ws_error}")
+            # Don't fail the whole process if WebSocket fails
         
         # Schedule initial sync
-        background_tasks.add_task(
-            _schedule_account_sync, 
-            [str(acc.id) for acc in result['accounts']], 
-            db
-        )
+        try:
+            background_tasks.add_task(
+                _schedule_account_sync, 
+                [str(acc.id) for acc in accounts], 
+                db
+            )
+            logger.info(f"Scheduled background sync for {len(accounts)} accounts")
+        except Exception as sync_error:
+            logger.warning(f"Failed to schedule background sync: {sync_error}")
+            # Don't fail the whole process if background task scheduling fails
         
         return {
             "success": True,
-            "message": f"Successfully connected {len(result['accounts'])} accounts",
+            "message": f"Successfully connected {len(accounts)} accounts",
             "data": {
-                "accounts_created": len(result['accounts']),
+                "accounts_created": len(accounts),
                 "institution": result.get('institution', {}).get('name'),
                 "accounts": [
                     {
@@ -107,7 +151,7 @@ async def exchange_plaid_token(
                         "type": acc.account_type,
                         "balance": acc.balance_cents / 100,
                         "currency": acc.currency
-                    } for acc in result['accounts']
+                    } for acc in accounts
                 ]
             }
         }

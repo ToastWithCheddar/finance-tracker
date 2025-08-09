@@ -262,12 +262,13 @@ export function AccountConnectionStatus() {
 
       {/* Plaid Link Modal */}
       {showPlaidLink && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+        <div key={`plaid-modal-${Date.now()}`} className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">
               Connect Bank Account
             </h3>
             <PlaidLink
+              key="plaid-link-component"
               onSuccess={handlePlaidSuccess}
               onError={(error) => console.error('Plaid error:', error)}
             />

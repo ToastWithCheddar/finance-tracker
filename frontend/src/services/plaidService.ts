@@ -148,25 +148,67 @@ export class PlaidService extends BaseService {
     exchangeData: PlaidExchangeTokenRequest,
     options?: { context?: ErrorContext }
   ): Promise<{ accounts: PlaidAccount[]; message: string }> {
-    // Extract public_token for query parameter, keep metadata for body
-    const { public_token, ...bodyData } = exchangeData;
-    
-    // Build URL with public_token as query parameter
-    const baseUrl = this.buildEndpoint('/plaid/exchange-token');
-    const urlWithParams = `${baseUrl}?public_token=${encodeURIComponent(public_token)}`;
-    
-    return this.post<{ accounts: PlaidAccount[]; message: string }>(
-      urlWithParams,
-      bodyData,
-      { context: options?.context }
-    );
+    try {
+      // Extract public_token for query parameter, keep metadata for body
+      const { public_token, ...bodyData } = exchangeData;
+      
+      // Build URL with public_token as query parameter
+      const baseUrl = this.buildEndpoint('/plaid/exchange-token');
+      const urlWithParams = `${baseUrl}?public_token=${encodeURIComponent(public_token)}`;
+      
+      console.log('🔗 Exchanging Plaid token...', { url: urlWithParams, hasToken: !!public_token });
+      
+      const response = await this.post<{ 
+        success: boolean; 
+        message: string; 
+        data: { accounts: PlaidAccount[]; accounts_created: number; institution: string } 
+      }>(
+        urlWithParams,
+        bodyData,
+        { context: options?.context }
+      );
+      
+      console.log('✅ Token exchange response:', response);
+      
+      // Handle both wrapped and direct response formats
+      if (response && response.success && response.data) {
+        return {
+          accounts: response.data.accounts || [],
+          message: response.message || `Successfully connected ${response.data.accounts_created} accounts`
+        };
+      }
+      
+      // Handle direct format (backwards compatibility)
+      if (response && Array.isArray((response as any).accounts)) {
+        return {
+          accounts: (response as any).accounts,
+          message: (response as any).message || 'Accounts connected successfully'
+        };
+      }
+      
+      throw new Error('Invalid response format from token exchange endpoint');
+      
+    } catch (error: unknown) {
+      console.error('❌ Token exchange failed:', error);
+      
+      if ((error as { code?: string })?.code === 'UNAUTHORIZED' || (error as { code?: string })?.code === 'FORBIDDEN') {
+        throw new Error('Authentication required for Plaid integration. Please log in again.');
+      }
+      
+      // Extract error message from API response
+      const errorMessage = (error as any)?.detail || 
+                          (error as any)?.message || 
+                          'Failed to connect bank account. Please try again.';
+      
+      throw new Error(errorMessage);
+    }
   }
 
   async getConnectionStatus(
     options?: { useCache?: boolean; context?: ErrorContext }
   ): Promise<PlaidConnectionStatus> {
     try {
-      const response = await this.get<{ success: boolean; data: PlaidConnectionStatus } | PlaidConnectionStatus>(
+      const response = await this.get<{ success: boolean; data: any } | any>(
         this.buildEndpoint('/connection-status'),
         undefined,
         {
@@ -176,19 +218,39 @@ export class PlaidService extends BaseService {
         }
       );
       
-      // Handle both wrapped and direct response formats
-      if (response && typeof response === 'object') {
-        // Check for wrapped format
-        if ('data' in response && response.data) {
-          return response.data as PlaidConnectionStatus;
-        }
-        // Check for direct format  
-        if ('connected' in response && typeof response.connected === 'boolean') {
-          return response as PlaidConnectionStatus;
-        }
+      // Normalize payload shape
+      const payload = (response && typeof response === 'object' && 'data' in response)
+        ? (response as { data: any }).data
+        : response;
+
+      if (!payload || typeof payload !== 'object') {
+        throw new Error('Invalid response structure from connection status endpoint');
       }
-      
-      throw new Error('Invalid response structure from connection status endpoint');
+
+      const totalConnections = (payload.total_connections ?? payload.totalConnections ?? 0) as number;
+      const rawAccounts = (payload.accounts ?? []) as Array<any>;
+
+      const normalizedAccounts: PlaidAccount[] = rawAccounts.map((acc: any) => ({
+        id: String(acc.id ?? acc.account_id ?? acc.plaid_account_id ?? Math.random()),
+        name: acc.name ?? null,
+        account_type: acc.account_type ?? acc.type ?? null,
+        balance_cents: typeof acc.balance_cents === 'number' ? acc.balance_cents : Math.round((acc.balance ?? 0) * 100),
+        currency: acc.currency ?? 'USD',
+        plaid_account_id: acc.plaid_account_id ?? acc.account_id ?? null,
+        plaid_item_id: acc.plaid_item_id ?? null,
+        sync_status: acc.sync_status ?? null,
+        connection_health: acc.connection_health ?? acc.health_status ?? null,
+        created_at: acc.created_at ?? new Date().toISOString(),
+        updated_at: acc.updated_at ?? new Date().toISOString(),
+        account_metadata: acc.account_metadata ?? undefined,
+      }));
+
+      return {
+        success: true,
+        connected: totalConnections > 0 || normalizedAccounts.length > 0,
+        accounts: normalizedAccounts,
+        message: totalConnections > 0 ? 'Connected' : 'Not connected'
+      } as PlaidConnectionStatus;
     } catch (error: unknown) {
       const errorObj = error as { code?: string };
       if (errorObj?.code === 'UNAUTHORIZED' || errorObj?.code === 'FORBIDDEN') {

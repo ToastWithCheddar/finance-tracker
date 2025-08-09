@@ -36,7 +36,7 @@ export interface AuthResponse {
   accessToken: string;
   refreshToken: string;
   expiresIn?: number;
-  tokenType?: string;
+  // REMOVED: tokenType - Using Supabase-only authentication
 }
 
 export interface PasswordResetRequest {
