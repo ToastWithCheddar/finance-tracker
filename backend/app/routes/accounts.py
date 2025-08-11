@@ -165,6 +165,7 @@ async def exchange_plaid_token(
 @router.post("/sync-balances", response_model=Dict[str, Any])
 async def sync_account_balances(
     account_ids: Optional[List[str]] = Body(None, embed=True),
+    force_sync: bool = Body(False, embed=True),
     background_tasks: BackgroundTasks = BackgroundTasks(),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -179,7 +180,12 @@ async def sync_account_balances(
             ).all()
             account_ids = [str(acc.id) for acc in user_accounts]
         
-        result = await enhanced_plaid_service.sync_account_balances(db, account_ids)
+        result = await enhanced_plaid_service.sync_account_balances(
+            db, 
+            account_ids=account_ids, 
+            user_id=str(current_user.id) if not account_ids else None,
+            force_sync=force_sync
+        )
         
         # Send real-time notifications for each synced account
         for synced_account in result.get('synced', []):
@@ -710,7 +716,7 @@ async def get_account_sync_status(
 @router.post("/sync-transactions", response_model=Dict[str, Any])
 async def sync_transactions(
     account_ids: Optional[List[str]] = Body(None),
-    days: int = Body(7),
+    days: int = Body(90),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):

@@ -247,18 +247,30 @@ export function Transactions() {
                 Previous
               </Button>
               
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                const page = i + 1;
-                return (
-                  <Button
-                    key={page}
-                    variant={currentPage === page ? "primary" : "outline"}
-                    onClick={() => setCurrentPage(page)}
-                  >
-                    {page}
-                  </Button>
-                );
-              })}
+              {(() => {
+                // Calculate the range of pages to show (sliding window)
+                const maxPagesToShow = 5;
+                let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
+                let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+                
+                // Adjust if we're near the end
+                if (endPage - startPage + 1 < maxPagesToShow) {
+                  startPage = Math.max(1, endPage - maxPagesToShow + 1);
+                }
+                
+                return Array.from({ length: endPage - startPage + 1 }, (_, i) => {
+                  const page = startPage + i;
+                  return (
+                    <Button
+                      key={page}
+                      variant={currentPage === page ? "primary" : "outline"}
+                      onClick={() => setCurrentPage(page)}
+                    >
+                      {page}
+                    </Button>
+                  );
+                });
+              })()}
               
               <Button
                 variant="outline"

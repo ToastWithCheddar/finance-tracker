@@ -1,8 +1,10 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from datetime import date
 from uuid import UUID
+import logging
 
 from ..database import get_db
 from ..services.budget_service import BudgetService
@@ -15,6 +17,7 @@ from ..models.user import User
 from ..models.category import Category
 
 router = APIRouter(tags=["budgets"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("", response_model=BudgetResponse)
@@ -31,18 +34,23 @@ def create_budget(
             Category.user_id == current_user.id
         ).first()
         if not category:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
     
-    created_budget = BudgetService.create_budget(db, budget, current_user.id)
+    try:
+        created_budget = BudgetService.create_budget(db, budget, current_user.id)
+    except SQLAlchemyError as e:
+        logger.error(f"Database error creating budget: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create budget due to database error")
+    except Exception as e:
+        logger.error(f"Unexpected error creating budget: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create budget")
     
     # Calculate usage for response
     usage = BudgetService.calculate_budget_usage(db, created_budget)
     
-    # Get category name if applicable
-    category_name = None
-    if created_budget.category_id:
-        category = db.query(Category).filter(Category.id == created_budget.category_id).first()
-        category_name = category.name if category else None
+    # Refresh to get eager-loaded relationships
+    db.refresh(created_budget)
+    category_name = created_budget.category.name if created_budget.category else None
     
     return BudgetResponse(
         id=str(created_budget.id),
@@ -85,7 +93,7 @@ def get_budgets(
     summary = BudgetService.get_budget_summary(db, current_user.id)
     alerts = BudgetService.get_budget_alerts(db, current_user.id)
     
-    # Build response with usage data
+    # Build response with usage data using eager-loaded relationships
     budget_responses = []
     for budget in budgets:
         usage = BudgetService.calculate_budget_usage(db, budget)
@@ -94,11 +102,8 @@ def get_budgets(
         if over_budget is not None and usage.is_over_budget != over_budget:
             continue
         
-        # Get category name if applicable
-        category_name = None
-        if budget.category_id:
-            category = db.query(Category).filter(Category.id == budget.category_id).first()
-            category_name = category.name if category else None
+        # Category name is now available due to eager loading
+        category_name = budget.category.name if budget.category else None
         
         budget_responses.append(BudgetResponse(
             id=budget.id,
@@ -138,11 +143,8 @@ def get_budget(
     # Calculate usage
     usage = BudgetService.calculate_budget_usage(db, budget)
     
-    # Get category name if applicable
-    category_name = None
-    if budget.category_id:
-        category = db.query(Category).filter(Category.id == budget.category_id).first()
-        category_name = category.name if category else None
+    # Category name is available due to eager loading from get_budget
+    category_name = budget.category.name if budget.category else None
     
     return BudgetResponse(
         id=budget.id,
@@ -188,11 +190,9 @@ def update_budget(
     # Calculate usage for response
     usage = BudgetService.calculate_budget_usage(db, updated_budget)
     
-    # Get category name if applicable
-    category_name = None
-    if updated_budget.category_id:
-        category = db.query(Category).filter(Category.id == updated_budget.category_id).first()
-        category_name = category.name if category else None
+    # Refresh to get updated eager-loaded relationships
+    db.refresh(updated_budget)
+    category_name = updated_budget.category.name if updated_budget.category else None
     
     return BudgetResponse(
         id=updated_budget.id,

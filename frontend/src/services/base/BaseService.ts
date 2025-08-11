@@ -63,7 +63,7 @@ export abstract class BaseService {
   protected getCachedData<T>(key: string): T | undefined {
     const cached = this.cache.get(key);
     if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data;
+      return cached.data as T;
     }
     this.cache.delete(key);
     return undefined;
@@ -85,9 +85,9 @@ export abstract class BaseService {
    */
   protected clearCache(key?: string): void {
     if (key) {
-      this.cache.delete(key);
+      this.cache.delete(key); // Clear specific item
     } else {
-      this.cache.clear();
+      this.cache.clear(); // Clear all (not specified)
     }
   }
 
@@ -101,6 +101,7 @@ export abstract class BaseService {
       useCache?: boolean; 
       cacheTtl?: number;
       context?: ErrorContext;
+      wrapResponse?: boolean;
     }
   ): Promise<T> {
     const cacheKey = `GET:${endpoint}:${JSON.stringify(params || {})}`;
@@ -109,11 +110,13 @@ export abstract class BaseService {
     if (options?.useCache) {
       const cached = this.getCachedData<T>(cacheKey);
       if (cached) {
+        // If already in cache
         return this.validateResponse(cached, endpoint);
       }
     }
 
     try {
+      // API call, if not in cache
       const result = await apiClient.get<T>(endpoint, params);
       
       // Validate response before caching or returning
@@ -128,9 +131,13 @@ export abstract class BaseService {
     } catch (error) {
       const enhancedError = this.handleServiceError(error as ApiError, {
         ...options?.context,
-        operation: 'GET',
-        endpoint,
-        params: params ? Object.keys(params) : undefined
+        feature: options?.context?.feature || this.constructor.name,
+        action: 'GET',
+        metadata: {
+          ...options?.context?.metadata,
+          endpoint,
+          params: params ? Object.keys(params) : undefined
+        }
       });
       throw enhancedError;
     }
@@ -147,7 +154,7 @@ export abstract class BaseService {
     try {
       const result = await apiClient.post<T>(endpoint, data);
       
-      // Clear related cache entries on successful POST
+      // Clear related cache entries on successful POST, data has changed
       this.invalidateRelatedCache(endpoint);
       
       return result;
@@ -167,7 +174,7 @@ export abstract class BaseService {
     try {
       const result = await apiClient.put<T>(endpoint, data);
       
-      // Clear related cache entries on successful PUT
+      // Clear related cache entries on successful PUT, data has changed
       this.invalidateRelatedCache(endpoint);
       
       return result;
@@ -186,7 +193,7 @@ export abstract class BaseService {
     try {
       const result = await apiClient.delete<T>(endpoint);
       
-      // Clear related cache entries on successful DELETE
+      // Clear related cache entries on successful DELETE, data has changed
       this.invalidateRelatedCache(endpoint);
       
       return result;
@@ -196,7 +203,7 @@ export abstract class BaseService {
   }
 
   /**
-   * Paginated GET request
+   * Paginated GET request for large datasets that are split into pages
    */
   protected async getPaginated<T>(
     endpoint: string,
@@ -358,4 +365,178 @@ export abstract class BaseService {
   protected centsToDollars(cents: number): number {
     return cents / 100;
   }
+
+  /**
+   * Utility method to build query parameters
+   */
+  protected buildParams(filters: Record<string, any>): Record<string, string> {
+    const params: Record<string, string> = {};
+    
+    for (const [key, value] of Object.entries(filters)) {
+      if (value !== undefined && value !== null && value !== '') {
+        if (typeof value === 'boolean') {
+          params[key] = value.toString();
+        } else if (typeof value === 'number') {
+          params[key] = value.toString();
+        } else if (typeof value === 'string') {
+          params[key] = value;
+        } else if (Array.isArray(value)) {
+          params[key] = value.join(',');
+        } else {
+          params[key] = String(value);
+        }
+      }
+    }
+    
+    return params;
+  }
+
+  /**
+   * POST request with FormData for file uploads
+   */
+  protected async postFormData<T>(
+    endpoint: string,
+    formData: FormData,
+    options?: { context?: ErrorContext }
+  ): Promise<T> {
+    try {
+      const result = await apiClient.postFormData<T>(endpoint, formData);
+      
+      // Clear related cache entries on successful POST
+      this.invalidateRelatedCache(endpoint);
+      
+      return result;
+    } catch (error) {
+      throw this.handleServiceError(error as ApiError, options?.context);
+    }
+  }
+
+  /**
+   * GET request that returns a Blob (for file downloads)
+   */
+  protected async getBlob(
+    endpoint: string,
+    params?: Record<string, any>,
+    options?: { context?: ErrorContext }
+  ): Promise<ServiceResponse<Blob>> {
+    try {
+      const result = await apiClient.getBlob(endpoint, params);
+      
+      return {
+        success: true,
+        data: result,
+        metadata: {
+          timestamp: new Date().toISOString()
+        }
+      };
+    } catch (error) {
+      throw this.handleServiceError(error as ApiError, options?.context);
+    }
+  }
+  /**
+   * Wrapped GET request that returns ServiceResponse<T>
+   */
+  protected async getWithWrapper<T>(
+    endpoint: string, 
+    params?: Record<string, any>,
+    options?: { 
+      useCache?: boolean; 
+      cacheTtl?: number;
+      context?: ErrorContext;
+    }
+  ): Promise<ServiceResponse<T>> {
+    try {
+      const data = await this.get<T>(endpoint, params, options);
+      return {
+        success: true,
+        data,
+        metadata: {
+          timestamp: new Date().toISOString()
+        }
+      };
+    } catch (error) {
+      throw error; // Let the error propagate up
+    }
+  }
+
+  /**
+   * Wrapped POST request that returns ServiceResponse<T>
+   */
+  protected async postWithWrapper<T>(
+    endpoint: string, 
+    data?: Record<string, unknown>,
+    options?: { context?: ErrorContext }
+  ): Promise<ServiceResponse<T>> {
+    try {
+      const result = await this.post<T>(endpoint, data, options);
+      return {
+        success: true,
+        data: result,
+        metadata: {
+          timestamp: new Date().toISOString()
+        }
+      };
+    } catch (error) {
+      throw error; // Let the error propagate up
+    }
+  }
+
+  /**
+   * Wrapped PUT request that returns ServiceResponse<T>
+   */
+  protected async putWithWrapper<T>(
+    endpoint: string, 
+    data?: Record<string, unknown>,
+    options?: { context?: ErrorContext }
+  ): Promise<ServiceResponse<T>> {
+    try {
+      const result = await this.put<T>(endpoint, data, options);
+      return {
+        success: true,
+        data: result,
+        metadata: {
+          timestamp: new Date().toISOString()
+        }
+      };
+    } catch (error) {
+      throw error; // Let the error propagate up
+    }
+  }
+
+  /**
+   * Wrapped DELETE request that returns ServiceResponse<T>
+   */
+  protected async deleteWithWrapper<T>(
+    endpoint: string,
+    options?: { context?: ErrorContext }
+  ): Promise<ServiceResponse<T>> {
+    try {
+      const result = await this.delete<T>(endpoint, options);
+      return {
+        success: true,
+        data: result,
+        metadata: {
+          timestamp: new Date().toISOString()
+        }
+      };
+    } catch (error) {
+      throw error; // Let the error propagate up
+    }
+  }
 }
+
+/**
+ * Base filters interface for common query parameters
+ */
+export interface BaseFilters {
+  page?: number;
+  per_page?: number;
+  sort_by?: string;
+  sort_order?: 'asc' | 'desc';
+  search?: string;
+}
+
+/**
+ * Re-export PaginatedResponse for convenience
+ */
+export type { PaginatedResponse } from '../../types/api';

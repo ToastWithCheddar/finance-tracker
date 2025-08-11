@@ -1,8 +1,9 @@
 from email.policy import default
 from typing import List, Optional
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query, status
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 import csv
 from io import StringIO
 from datetime import datetime, date
@@ -11,12 +12,19 @@ import logging
 
 from ..database import get_db
 from ..services.transaction_service import TransactionService
+from ..core.exceptions import (
+    ResourceNotFoundException,
+    ValidationException,
+    BusinessLogicException,
+    ExternalServiceException
+)
 from ..schemas.transaction import (
     TransactionCreate,
     TransactionUpdate,
     TransactionResponse,
     TransactionFilter,
-    TransactionPagination
+    TransactionPagination,
+    TransactionListResponse
 )
 from app.auth.dependencies import get_current_user
 from ..models.user import User
@@ -40,7 +48,18 @@ async def create_transaction(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    new_transaction = await TransactionService.create_transaction(db, transaction, current_user.id)
+    try:
+        new_transaction = await TransactionService.create_transaction(db, transaction, current_user.id)
+    except ValidationException as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except ResourceNotFoundException as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except SQLAlchemyError as e:
+        logger.error(f"Database error creating transaction: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create transaction due to database error")
+    except Exception as e:
+        logger.error(f"Unexpected error creating transaction: {str(e)}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create transaction")
 
     if notify and manager.is_user_connected(str(current_user.id)):
         try:
@@ -116,32 +135,41 @@ def get_transactions(
         db, current_user.id, filters, pagination
     )
     
-    # Serialize transactions manually to match the frontend expectations
-    serialized_transactions = []
+    # Build response using proper serialization with eager-loaded relationships
+    transaction_responses = []
     for transaction in transactions:
-        serialized_transactions.append({
-            "id": str(transaction.id),
-            "account_id": str(transaction.account_id),
-            "category_id": str(transaction.category_id) if transaction.category_id else None,
-            "amount_cents": transaction.amount_cents,
-            "amount": transaction.amount_cents / 100.0,  # For frontend compatibility
-            "currency": transaction.currency,
-            "description": transaction.description,
-            "merchant": transaction.merchant,
-            "transaction_date": transaction.transaction_date.isoformat(),
-            "status": transaction.status,
-            "is_recurring": transaction.is_recurring,
-            "is_transfer": transaction.is_transfer,
-            "notes": transaction.notes,
-            "tags": transaction.tags or [],
-            "created_at": transaction.created_at.isoformat(),
-            "updated_at": transaction.updated_at.isoformat(),
-            "transaction_type": "income" if transaction.amount_cents > 0 else "expense",
-            "category": "Food & Dining"  # TODO: Fetch actual category name from relationship
-        })
+        # Account information is now available due to eager loading
+        account_name = transaction.account.name if transaction.account else "Unknown Account"
+        
+        # Category information is now available due to eager loading
+        category_name = transaction.category.name if transaction.category else None
+        
+        transaction_responses.append(TransactionResponse(
+            id=transaction.id,
+            user_id=transaction.user_id,
+            account_id=transaction.account_id,
+            amount_cents=transaction.amount_cents,
+            currency=transaction.currency,
+            description=transaction.description,
+            merchant=transaction.merchant,
+            transaction_date=transaction.transaction_date,
+            category_id=transaction.category_id,
+            status=transaction.status,
+            is_recurring=transaction.is_recurring,
+            is_transfer=transaction.is_transfer,
+            notes=transaction.notes,
+            tags=transaction.tags or [],
+            created_at=transaction.created_at,
+            updated_at=transaction.updated_at,
+            confidence_score=transaction.confidence_score,
+            ml_suggested_category_id=transaction.ml_suggested_category_id,
+            plaid_transaction_id=transaction.plaid_transaction_id,
+            category_name=category_name,
+            account_name=account_name
+        ))
     
     return {
-        "items": serialized_transactions,
+        "items": transaction_responses,
         "total": total_count,
         "page": pagination.page,
         "per_page": pagination.per_page,

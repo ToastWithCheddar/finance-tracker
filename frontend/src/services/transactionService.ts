@@ -70,7 +70,10 @@ export class TransactionService extends BaseService {
     if (filters?.amountMaxCents !== undefined) params.max_amount = filters.amountMaxCents;
     if (filters?.search) params.search_query = filters.search;
 
-    return this.get<TransactionListResponse>(
+    console.log('🎯 TransactionService fetching from endpoint:', this.buildEndpoint('/'));
+    console.log('📦 With params:', params);
+    
+    const response = await this.get<TransactionListResponse>(
       this.buildEndpoint('/'),
       params,
       {
@@ -79,6 +82,9 @@ export class TransactionService extends BaseService {
         context: options?.context
       }
     );
+    
+    console.log('📤 TransactionService response:', response);
+    return response;
   }
 
   async getTransaction(

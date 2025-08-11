@@ -4,6 +4,7 @@ import type { ErrorContext } from '../types/errors';
 import { useAuthUser } from '../stores/authStore';
 
 // Query keys
+// Hierarchical caching caching systems
 const ACCOUNT_KEYS = {
   all: ['accounts'] as const,
   lists: () => [...ACCOUNT_KEYS.all, 'list'] as const,
@@ -99,6 +100,8 @@ export function useDeleteAccount() {
 }
 
 // Combined accounts actions hook
+// Instead of using three separate hooks in a component, you
+// can use just one and get everything you need.
 export function useAccountActions() {
   const createMutation = useCreateAccount();
   const updateMutation = useUpdateAccount();

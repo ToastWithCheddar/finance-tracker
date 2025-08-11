@@ -2,11 +2,11 @@ import { useState } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import type { TransactionFilter } from '../../types/transactions';
+import type { TransactionFilters } from '../../types/transaction';
 
 interface TransactionFiltersProps {
-  filters: TransactionFilter;
-  onFiltersChange: (filters: TransactionFilter) => void;
+  filters: TransactionFilters;
+  onFiltersChange: (filters: TransactionFilters) => void;
   onClearFilters: () => void;
   categories?: string[];
 }
@@ -19,7 +19,7 @@ export function TransactionFilters({
 }: TransactionFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
-  const handleFilterChange = (key: keyof TransactionFilter, value: string | number | boolean | null) => {
+  const handleFilterChange = (key: keyof TransactionFilters, value: string | number | boolean | null) => {
     onFiltersChange({
       ...filters,
       [key]: value || undefined, // Convert empty strings to undefined
@@ -47,8 +47,8 @@ export function TransactionFilters({
               <Input
                 type="text"
                 placeholder="Search transactions..."
-                value={filters.search_query || ''}
-                onChange={(e) => handleFilterChange('search_query', e.target.value)}
+                value={filters.search || ''}
+                onChange={(e) => handleFilterChange('search', e.target.value)}
                 className="pl-10"
               />
             </div>
@@ -92,8 +92,8 @@ export function TransactionFilters({
                 </label>
                 <Input
                   type="date"
-                  value={filters.start_date || ''}
-                  onChange={(e) => handleFilterChange('start_date', e.target.value)}
+                  value={filters.dateFrom || ''}
+                  onChange={(e) => handleFilterChange('dateFrom', e.target.value)}
                 />
               </div>
               
@@ -103,8 +103,8 @@ export function TransactionFilters({
                 </label>
                 <Input
                   type="date"
-                  value={filters.end_date || ''}
-                  onChange={(e) => handleFilterChange('end_date', e.target.value)}
+                  value={filters.dateTo || ''}
+                  onChange={(e) => handleFilterChange('dateTo', e.target.value)}
                 />
               </div>
 
@@ -153,8 +153,11 @@ export function TransactionFilters({
                   step="0.01"
                   min="0"
                   placeholder="0.00"
-                  value={filters.min_amount || ''}
-                  onChange={(e) => handleFilterChange('min_amount', parseFloat(e.target.value) || undefined)}
+                  value={filters.amountMinCents ? (filters.amountMinCents / 100).toString() : ''}
+                  onChange={(e) => {
+                    const dollars = parseFloat(e.target.value);
+                    handleFilterChange('amountMinCents', dollars ? Math.round(dollars * 100) : undefined);
+                  }}
                 />
               </div>
 
@@ -167,8 +170,11 @@ export function TransactionFilters({
                   step="0.01"
                   min="0"
                   placeholder="0.00"
-                  value={filters.max_amount || ''}
-                  onChange={(e) => handleFilterChange('max_amount', parseFloat(e.target.value) || undefined)}
+                  value={filters.amountMaxCents ? (filters.amountMaxCents / 100).toString() : ''}
+                  onChange={(e) => {
+                    const dollars = parseFloat(e.target.value);
+                    handleFilterChange('amountMaxCents', dollars ? Math.round(dollars * 100) : undefined);
+                  }}
                 />
               </div>
             </div>
@@ -183,8 +189,8 @@ export function TransactionFilters({
                 onClick={() => {
                   const today = new Date();
                   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-                  handleFilterChange('start_date', startOfMonth.toISOString().split('T')[0]);
-                  handleFilterChange('end_date', today.toISOString().split('T')[0]);
+                  handleFilterChange('dateFrom', startOfMonth.toISOString().split('T')[0]);
+                  handleFilterChange('dateTo', today.toISOString().split('T')[0]);
                 }}
               >
                 This Month
@@ -197,8 +203,8 @@ export function TransactionFilters({
                   const today = new Date();
                   const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
                   const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-                  handleFilterChange('start_date', lastMonth.toISOString().split('T')[0]);
-                  handleFilterChange('end_date', endOfLastMonth.toISOString().split('T')[0]);
+                  handleFilterChange('dateFrom', lastMonth.toISOString().split('T')[0]);
+                  handleFilterChange('dateTo', endOfLastMonth.toISOString().split('T')[0]);
                 }}
               >
                 Last Month
@@ -211,8 +217,8 @@ export function TransactionFilters({
                   const today = new Date();
                   const sevenDaysAgo = new Date(today);
                   sevenDaysAgo.setDate(today.getDate() - 7);
-                  handleFilterChange('start_date', sevenDaysAgo.toISOString().split('T')[0]);
-                  handleFilterChange('end_date', today.toISOString().split('T')[0]);
+                  handleFilterChange('dateFrom', sevenDaysAgo.toISOString().split('T')[0]);
+                  handleFilterChange('dateTo', today.toISOString().split('T')[0]);
                 }}
               >
                 Last 7 Days
@@ -225,8 +231,8 @@ export function TransactionFilters({
                   const today = new Date();
                   const thirtyDaysAgo = new Date(today);
                   thirtyDaysAgo.setDate(today.getDate() - 30);
-                  handleFilterChange('start_date', thirtyDaysAgo.toISOString().split('T')[0]);
-                  handleFilterChange('end_date', today.toISOString().split('T')[0]);
+                  handleFilterChange('dateFrom', thirtyDaysAgo.toISOString().split('T')[0]);
+                  handleFilterChange('dateTo', today.toISOString().split('T')[0]);
                 }}
               >
                 Last 30 Days
@@ -257,11 +263,11 @@ export function TransactionFilters({
             <div className="flex items-center space-x-2 flex-wrap">
               <span className="text-sm font-medium text-gray-700">Active filters:</span>
               
-              {filters.search_query && (
+              {filters.search && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  Search: "{filters.search_query}"
+                  Search: "{filters.search}"
                   <button
-                    onClick={() => handleFilterChange('search_query', '')}
+                    onClick={() => handleFilterChange('search', '')}
                     className="ml-1 text-blue-600 hover:text-blue-800"
                   >
                     ×
@@ -293,13 +299,13 @@ export function TransactionFilters({
                 </span>
               )}
               
-              {(filters.start_date || filters.end_date) && (
+              {(filters.dateFrom || filters.dateTo) && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  Date: {filters.start_date || '...'} to {filters.end_date || '...'}
+                  Date: {filters.dateFrom || '...'} to {filters.dateTo || '...'}
                   <button
                     onClick={() => {
-                      handleFilterChange('start_date', '');
-                      handleFilterChange('end_date', '');
+                      handleFilterChange('dateFrom', '');
+                      handleFilterChange('dateTo', '');
                     }}
                     className="ml-1 text-blue-600 hover:text-blue-800"
                   >
@@ -308,13 +314,13 @@ export function TransactionFilters({
                 </span>
               )}
               
-              {(filters.min_amount !== undefined || filters.max_amount !== undefined) && (
+              {(filters.amountMinCents !== undefined || filters.amountMaxCents !== undefined) && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  Amount: ${filters.min_amount || 0} - ${filters.max_amount || '∞'}
+                  Amount: ${filters.amountMinCents ? (filters.amountMinCents / 100) : 0} - ${filters.amountMaxCents ? (filters.amountMaxCents / 100) : '∞'}
                   <button
                     onClick={() => {
-                      handleFilterChange('min_amount', undefined);
-                      handleFilterChange('max_amount', undefined);
+                      handleFilterChange('amountMinCents', undefined);
+                      handleFilterChange('amountMaxCents', undefined);
                     }}
                     className="ml-1 text-blue-600 hover:text-blue-800"
                   >

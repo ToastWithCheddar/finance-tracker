@@ -25,9 +25,21 @@ const TRANSACTION_KEYS = {
 export function useTransactions(filters?: Partial<TransactionFilters>) {
   return useQuery({
     queryKey: TRANSACTION_KEYS.list(filters),
-    queryFn: () => transactionService.getTransactions(filters),
+    queryFn: () => {
+      console.log('🔍 Fetching transactions with filters:', filters);
+      return transactionService.getTransactions(filters);
+    },
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
+    meta: {
+      onSuccess: (data: any) => {
+        console.log('✅ Transactions fetched successfully:', data);
+        console.log(`📊 Found ${data?.transactions?.length || data?.length || 0} transactions`);
+      },
+      onError: (error: any) => {
+        console.error('❌ Failed to fetch transactions:', error);
+      },
+    },
   });
 }
 

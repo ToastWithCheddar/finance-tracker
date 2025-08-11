@@ -1,4 +1,4 @@
-import React from 'react';
+// Remove unused React import - JSX transform is active
 import { Card } from '../ui/Card';
 import { useGoalStats } from '../../hooks/useGoals';
 import { formatCurrency } from '../../utils';

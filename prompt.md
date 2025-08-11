@@ -2039,3 +2039,5 @@ After completing this checklist, create a `plan_updates.md` file with:
     - Long-term architectural improvements
     - Testing and validation requirements
     - Documentation and knowledge transfer needs
+
+  ! Write the documentation extremely, precise and detailed 

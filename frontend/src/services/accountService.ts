@@ -37,6 +37,10 @@ export interface AccountCreate {
   currency?: string;
 }
 
+/* 
+This is a good structure because I don't have to create
+interface for every single update configuration. Much simpler
+*/
 export interface AccountUpdate {
   name?: string;
   account_type?: string;

@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from typing import List, Optional
 import uuid
+import logging
 
 from app.database import get_db
 from app.auth.dependencies import get_current_user, get_current_active_user
@@ -14,6 +16,7 @@ from app.models.user import User
 router = APIRouter()
 user_service = UserService()
 preferences_service = UserPreferencesService()
+logger = logging.getLogger(__name__)
 
 @router.get("/me", response_model=UserResponse)
 async def get_current_user_profile(
@@ -29,12 +32,25 @@ async def update_current_user_profile(
     db: Session = Depends(get_db)
 ):
     """Update current user's profile"""
-    updated_user = user_service.update(
-        db=db,
-        db_obj=current_user,
-        obj_in=user_update
-    )
-    return updated_user
+    try:
+        updated_user = user_service.update(
+            db=db,
+            db_obj=current_user,
+            obj_in=user_update
+        )
+        return updated_user
+    except SQLAlchemyError as e:
+        logger.error(f"Database error updating user profile: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user profile due to database error"
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error updating user profile: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update user profile"
+        )
 
 @router.delete("/me")
 async def delete_current_user_account(
@@ -113,19 +129,10 @@ async def reset_user_preferences(
 async def get_detailed_profile(
     current_user: User = Depends(get_current_user)
 ):
-    """Get current user's detailed profile information with all fields"""
+    """Get current user's public profile information (safe for sharing)"""
+    # Return only public-safe fields as defined in UserProfile schema
     return UserProfile(
         id=current_user.id,
-        email=current_user.email,
-        first_name=current_user.first_name,
-        last_name=current_user.last_name,
         display_name=current_user.display_name,
-        avatar_url=current_user.avatar_url,
-        locale=current_user.locale,
-        timezone=current_user.timezone,
-        currency=current_user.currency,
-        is_verified=current_user.is_verified,
-        theme=current_user.theme,
-        created_at=current_user.created_at,
-        updated_at=current_user.updated_at
+        avatar_url=current_user.avatar_url
     )

@@ -68,14 +68,49 @@ export function useSyncTransactions() {
   const user = useAuthUser();
 
   return useMutation({
-    mutationFn: (request?: SyncTransactionsRequest) => plaidService.syncTransactions(request),
-    onSuccess: () => {
+    mutationFn: (request?: SyncTransactionsRequest) => {
+      console.log('🚀 useSyncTransactions mutation started with request:', request);
+      return plaidService.syncTransactions(request);
+    },
+    onSuccess: (data) => {
+      console.log('✅ Transaction sync successful:', JSON.stringify(data, null, 2));
+      
+      // Show detailed success message
+      const results = data.data?.results || data.data;
+      if (Array.isArray(results)) {
+        console.log('📊 Processing array of results:', results.length, 'accounts');
+        results.forEach((result: any, index) => {
+          console.log(`   Account ${index + 1}: ${result.account_name || result.name || 'Unknown'}`);
+          // Handle both possible response structures
+          const txData = result.result || result;
+          console.log(`     - New: ${txData.new_transactions || 0}, Updated: ${txData.updated_transactions || 0}, Skipped: ${txData.duplicates_skipped || 0}`);
+          if (result.success === false && result.error) {
+            console.log(`     - Error: ${result.error}`);
+          }
+        });
+        
+        const totalNew = results.reduce((sum: number, r: any) => sum + ((r.result?.new_transactions || r.new_transactions) || 0), 0);
+        const totalUpdated = results.reduce((sum: number, r: any) => sum + ((r.result?.updated_transactions || r.updated_transactions) || 0), 0);
+        console.log(`✨ TOTAL: ${totalNew} new, ${totalUpdated} updated transactions`);
+      } else if (results) {
+        console.log('📊 Processing single result:', results);
+        console.log(`✨ Successfully synced: ${results.new_transactions || 0} new, ${results.updated_transactions || 0} updated transactions`);
+      } else {
+        console.log('⚠️ No results data found in response');
+      }
+      
       // Invalidate transaction-related queries
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
       // Invalidate connection status to update health indicators
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
+    },
+    onError: (error) => {
+      console.error('❌ Transaction sync failed:', error);
+    },
+    onMutate: (variables) => {
+      console.log('🔄 Transaction sync starting with variables:', variables);
     },
   });
 }
@@ -86,13 +121,24 @@ export function useSyncBalances() {
   const user = useAuthUser();
 
   return useMutation({
-    mutationFn: (request?: SyncBalancesRequest) => plaidService.syncBalances(request),
-    onSuccess: () => {
+    mutationFn: (request?: SyncBalancesRequest) => {
+      console.log('🚀 useSyncBalances mutation started with request:', request);
+      return plaidService.syncBalances(request);
+    },
+    onSuccess: (data) => {
+      console.log('✅ Balance sync successful:', data);
+      
       // Invalidate account and dashboard queries - balances have updated
       queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Add accounts cache invalidation
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+    },
+    onError: (error) => {
+      console.error('❌ Balance sync failed:', error);
+    },
+    onMutate: (variables) => {
+      console.log('🔄 Mutation starting with variables:', variables);
     },
   });
 }

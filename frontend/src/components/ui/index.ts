@@ -17,3 +17,5 @@ export type { Toast, ToastType } from './Toast';
 export { ThemeToggle } from './ThemeToggle';
 
 export { DevModeIndicator } from './DevModeIndicator';
+
+export { Alert, AlertTitle, AlertDescription } from './Alert';

@@ -3,13 +3,13 @@
   import { Input } from '../ui/Input';
   import { Modal } from '../ui';
   import { CategorySelector } from '../categories/CategorySelector';
-  import type { Transaction, TransactionCreate, TransactionUpdate } from '../../types/transactions';
+  import type { Transaction, CreateTransactionRequest, UpdateTransactionRequest } from '../../types/transaction';
   import type { Category } from '../../types/category';
 
   interface TransactionFormProps {
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (data: TransactionCreate | TransactionUpdate) => Promise<void>;
+    onSubmit: (data: CreateTransactionRequest | UpdateTransactionRequest) => Promise<void>;
     transaction?: Transaction;
     title?: string;
   }
@@ -21,12 +21,11 @@
     transaction,
     title = 'Add Transaction'
   }: TransactionFormProps) {
-    const [formData, setFormData] = useState<TransactionCreate>({
-      amount: transaction?.amount || 0,
-      category_id: transaction?.category_id || undefined,
+    const [formData, setFormData] = useState<CreateTransactionRequest>({
+      accountId: transaction?.accountId || '',
+      amountCents: transaction?.amountCents || 0,
       description: transaction?.description || '',
-      transaction_date: transaction?.transaction_date?.split('T')[0] || new Date().toISOString().split('T')[0],
-      transaction_type: transaction?.transaction_type || 'expense',
+      transactionDate: transaction?.transactionDate?.split('T')[0] || new Date().toISOString().split('T')[0],
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -37,7 +36,7 @@
    const validateForm = (): boolean => {
      const newErrors: Record<string, string> = {};
 
-      if (!formData.amount || formData.amount <= 0) {
+      if (!formData.amountCents || formData.amountCents === 0) {
         newErrors.amount = 'Amount must be greater than 0';
       }
 

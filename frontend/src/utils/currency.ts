@@ -234,3 +234,8 @@ export class CurrencyUtils {
     ];
   }
 }
+
+// Export a simple formatCurrency function for backwards compatibility
+export function formatCurrency(amountCents: number): string {
+  return CurrencyUtils.formatCents(amountCents);
+}

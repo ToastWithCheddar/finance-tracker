@@ -11,6 +11,8 @@ export interface Transaction {
   id: string;
   userId: string;
   accountId: string;
+  accountName: string;
+  accountType: string;
   categoryId?: string;
   amountCents: number;
   currency: string;
@@ -70,8 +72,31 @@ export interface TransactionSummary {
   totalIncome: number;
   totalExpenses: number;
   netAmount: number;
-  transactionCount: number;
-  categoryBreakdown: CategorySum[];
+}
+
+// Alias for backward compatibility
+export type TransactionCreate = CreateTransactionRequest;
+export type TransactionUpdate = UpdateTransactionRequest;
+
+export interface TransactionListResponse {
+  items: Transaction[];
+  total: number;
+  page: number;
+  per_page: number;
+  has_next: boolean;
+  has_previous: boolean;
+}
+
+export interface TransactionStats {
+  total_count: number;
+  total_income: number;
+  total_expenses: number;
+  net_amount: number;
+  average_transaction: number;
+  transaction_count_by_type: {
+    income: number;
+    expense: number;
+  };
 }
 
 export interface CategorySum {

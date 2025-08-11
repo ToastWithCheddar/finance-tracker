@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui';
-import type { Transaction, TransactionStats } from '../../types/transactions';
+import type { Transaction, TransactionStats } from '../../types/transaction';
 
 interface TransactionListProps {
   transactions: Transaction[];

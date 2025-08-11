@@ -1,7 +1,8 @@
 /**
  * Standardized Budget Service using BaseService patterns
  */
-import { BaseService, ServiceResponse, BaseFilters } from '../base/BaseService';
+import { BaseService } from '../base/BaseService';
+import type { ServiceResponse, BaseFilters } from '../base/BaseService';
 import type { 
   Budget, 
   BudgetListResponse, 
@@ -67,42 +68,42 @@ export class StandardizedBudgetService extends BaseService {
    */
   async getBudgets(filters?: BudgetFilters): Promise<ServiceResponse<BudgetListResponse>> {
     const params = this.buildParams(filters || {});
-    return this.get<BudgetListResponse>(this.baseEndpoint, params);
+    return this.getWithWrapper<BudgetListResponse>(this.baseEndpoint, params);
   }
   
   /**
    * Get a single budget by ID
    */
   async getBudget(id: string): Promise<ServiceResponse<Budget>> {
-    return this.get<Budget>(this.buildEndpoint(id));
+    return this.getWithWrapper<Budget>(this.buildEndpoint(id));
   }
   
   /**
    * Create a new budget
    */
   async createBudget(budget: CreateBudgetRequest): Promise<ServiceResponse<Budget>> {
-    return this.post<Budget>(this.baseEndpoint, budget);
+    return this.postWithWrapper<Budget>(this.baseEndpoint, budget);
   }
   
   /**
    * Update an existing budget
    */
   async updateBudget(id: string, budget: UpdateBudgetRequest): Promise<ServiceResponse<Budget>> {
-    return this.put<Budget>(this.buildEndpoint(id), budget);
+    return this.putWithWrapper<Budget>(this.buildEndpoint(id), budget);
   }
   
   /**
    * Delete a budget
    */
   async deleteBudget(id: string): Promise<ServiceResponse<{ message: string }>> {
-    return this.delete<{ message: string }>(this.buildEndpoint(id));
+    return this.deleteWithWrapper<{ message: string }>(this.buildEndpoint(id));
   }
   
   /**
    * Get budget progress/usage details
    */
   async getBudgetProgress(id: string): Promise<ServiceResponse<BudgetProgress>> {
-    return this.get<BudgetProgress>(this.buildEndpoint(`${id}/progress`));
+    return this.getWithWrapper<BudgetProgress>(this.buildEndpoint(`${id}/progress`));
   }
   
   /**
@@ -110,14 +111,14 @@ export class StandardizedBudgetService extends BaseService {
    */
   async getBudgetSummary(filters?: BudgetFilters): Promise<ServiceResponse<BudgetSummary>> {
     const params = this.buildParams(filters || {});
-    return this.get<BudgetSummary>(this.buildEndpoint('summary'), params);
+    return this.getWithWrapper<BudgetSummary>(this.buildEndpoint('summary'), params);
   }
   
   /**
    * Get budget alerts
    */
   async getBudgetAlerts(): Promise<ServiceResponse<BudgetAlert[]>> {
-    return this.get<BudgetAlert[]>(this.buildEndpoint('alerts'));
+    return this.getWithWrapper<BudgetAlert[]>(this.buildEndpoint('alerts'));
   }
   
   /**
@@ -125,7 +126,7 @@ export class StandardizedBudgetService extends BaseService {
    */
   async getBudgetAnalytics(period?: BudgetPeriod): Promise<ServiceResponse<BudgetAnalytics>> {
     const params = period ? { period } : {};
-    return this.get<BudgetAnalytics>(this.buildEndpoint('analytics'), params);
+    return this.getWithWrapper<BudgetAnalytics>(this.buildEndpoint('analytics'), params);
   }
   
   /**
@@ -143,7 +144,7 @@ export class StandardizedBudgetService extends BaseService {
       previous_start: previousPeriodStart,
       previous_end: previousPeriodEnd
     };
-    return this.get<BudgetComparison>(this.buildEndpoint('comparison'), params);
+    return this.getWithWrapper<BudgetComparison>(this.buildEndpoint('comparison'), params);
   }
   
   /**

@@ -1,6 +1,6 @@
 from datetime import datetime, date, timedelta
 from typing import List, Optional, Dict, Any, Tuple
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func, text
 from decimal import Decimal
 import uuid
@@ -33,7 +33,9 @@ class BudgetService:
     @staticmethod
     def get_budget(db: Session, budget_id: uuid.UUID, user_id: uuid.UUID) -> Optional[Budget]:
         """Get a budget by ID"""
-        return db.query(Budget).filter(
+        return db.query(Budget).options(
+            joinedload(Budget.category)
+        ).filter(
             Budget.id == budget_id,
             Budget.user_id == user_id
         ).first()
@@ -47,7 +49,10 @@ class BudgetService:
         limit: int = 100
     ) -> List[Budget]:
         """Get budgets with optional filters"""
-        query = db.query(Budget).filter(Budget.user_id == user_id)
+        # Use eager loading to prevent N+1 queries when accessing category
+        query = db.query(Budget).options(
+            joinedload(Budget.category)
+        ).filter(Budget.user_id == user_id)
         
         if filters:
             if filters.category_id:
@@ -136,7 +141,9 @@ class BudgetService:
     def get_budget_alerts(db: Session, user_id: uuid.UUID) -> List[BudgetAlert]:
         """Get active budget alerts for a user"""
         alerts = []
-        budgets = db.query(Budget).filter(
+        budgets = db.query(Budget).options(
+            joinedload(Budget.category)
+        ).filter(
             Budget.user_id == user_id,
             Budget.is_active == True
         ).all()

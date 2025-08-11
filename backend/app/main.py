@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.database import engine, check_database_health, create_database
 from app.models import Base
-from app.routes import auth, user, health, categories, transaction, budget, mlcategory, mock, accounts
+from app.routes import auth, user, health, categories, transaction, budget, mlcategory, mock, accounts, analytics
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -295,6 +295,17 @@ app.include_router(
 )
 
 app.include_router(
+    analytics.router,
+    prefix="/api/analytics",
+    tags=["Analytics & Dashboard"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
     mlcategory.router,
     prefix="/api/ml",
     tags=["Machine Learning"],
@@ -328,6 +339,7 @@ async def api_base():
             "transactions": "/api/transactions",
             "budgets": "/api/budgets",
             "accounts": "/api/accounts",
+            "analytics": "/api/analytics",
             "ml": "/api/ml",
             "health": "/health",
             "docs": "/docs" if settings.DEBUG else None,

@@ -1,14 +1,15 @@
 /**
  * Standardized Transaction Service using BaseService patterns
  */
-import { BaseService, ServiceResponse, BaseFilters } from '../base/BaseService';
+import { BaseService } from '../base/BaseService';
+import type { ServiceResponse, BaseFilters } from '../base/BaseService';
 import type { 
   Transaction, 
   TransactionCreate, 
   TransactionUpdate, 
   TransactionListResponse,
   TransactionStats
-} from '../../types/transactions';
+} from '../../types/transaction';
 import type { SpendingTrend } from '../dashboardService';
 
 // Transaction-specific filters
@@ -71,35 +72,35 @@ export class StandardizedTransactionService extends BaseService {
    */
   async getTransactions(filters?: TransactionFilters): Promise<ServiceResponse<TransactionListResponse>> {
     const params = this.buildParams(filters || {});
-    return this.get<TransactionListResponse>(this.baseEndpoint, params);
+    return this.getWithWrapper<TransactionListResponse>(this.baseEndpoint, params);
   }
   
   /**
    * Get a single transaction by ID
    */
   async getTransaction(id: string): Promise<ServiceResponse<Transaction>> {
-    return this.get<Transaction>(this.buildEndpoint(id));
+    return this.getWithWrapper<Transaction>(this.buildEndpoint(id));
   }
   
   /**
    * Create a new transaction
    */
   async createTransaction(transaction: TransactionCreate): Promise<ServiceResponse<Transaction>> {
-    return this.post<Transaction>(this.baseEndpoint, transaction);
+    return this.postWithWrapper<Transaction>(this.baseEndpoint, transaction);
   }
   
   /**
    * Update an existing transaction
    */
   async updateTransaction(id: string, transaction: TransactionUpdate): Promise<ServiceResponse<Transaction>> {
-    return this.put<Transaction>(this.buildEndpoint(id), transaction);
+    return this.putWithWrapper<Transaction>(this.buildEndpoint(id), transaction);
   }
   
   /**
    * Delete a transaction
    */
   async deleteTransaction(id: string): Promise<ServiceResponse<{ message: string }>> {
-    return this.delete<{ message: string }>(this.buildEndpoint(id));
+    return this.deleteWithWrapper<{ message: string }>(this.buildEndpoint(id));
   }
   
   /**
@@ -107,7 +108,7 @@ export class StandardizedTransactionService extends BaseService {
    */
   async getTransactionStats(filters?: TransactionFilters): Promise<ServiceResponse<TransactionStats>> {
     const params = this.buildParams(filters || {});
-    return this.get<TransactionStats>(this.buildEndpoint('stats'), params);
+    return this.getWithWrapper<TransactionStats>(this.buildEndpoint('stats'), params);
   }
   
   /**
@@ -115,14 +116,14 @@ export class StandardizedTransactionService extends BaseService {
    */
   async searchTransactions(request: TransactionSearchRequest): Promise<ServiceResponse<TransactionListResponse>> {
     const params = this.buildParams(request);
-    return this.get<TransactionListResponse>(this.buildEndpoint('search'), params);
+    return this.getWithWrapper<TransactionListResponse>(this.buildEndpoint('search'), params);
   }
   
   /**
    * Get transaction categories (for filtering)
    */
   async getTransactionCategories(): Promise<ServiceResponse<string[]>> {
-    return this.get<string[]>(this.buildEndpoint('categories'));
+    return this.getWithWrapper<string[]>(this.buildEndpoint('categories'));
   }
   
   /**
@@ -136,6 +137,7 @@ export class StandardizedTransactionService extends BaseService {
       formData.append('account_id', accountId);
     }
     
+    // postFormData already returns ServiceResponse<T> from our BaseService getBlob method
     return this.postFormData<CSVImportResponse>(this.buildEndpoint('import'), formData);
   }
   
@@ -144,6 +146,7 @@ export class StandardizedTransactionService extends BaseService {
    */
   async exportTransactions(filters: ExportFilters): Promise<ServiceResponse<Blob>> {
     const params = this.buildParams(filters);
+    // getBlob already returns ServiceResponse<Blob> from our BaseService implementation
     return this.getBlob(this.buildEndpoint('export'), params);
   }
   
@@ -151,7 +154,7 @@ export class StandardizedTransactionService extends BaseService {
    * Bulk delete transactions
    */
   async bulkDeleteTransactions(request: BulkDeleteRequest): Promise<ServiceResponse<BulkDeleteResponse>> {
-    return this.post<BulkDeleteResponse>(this.buildEndpoint('bulk-delete'), request);
+    return this.postWithWrapper<BulkDeleteResponse>(this.buildEndpoint('bulk-delete'), request);
   }
   
   /**
@@ -159,7 +162,7 @@ export class StandardizedTransactionService extends BaseService {
    */
   async getRecentTransactions(limit: number = 10): Promise<ServiceResponse<Transaction[]>> {
     const params = { limit: limit.toString(), sort_by: 'created_at', sort_order: 'desc' };
-    const response = await this.get<TransactionListResponse>(this.baseEndpoint, params);
+    const response = await this.getWithWrapper<TransactionListResponse>(this.baseEndpoint, params);
     
     if (response.success && response.data) {
       return {
@@ -176,7 +179,7 @@ export class StandardizedTransactionService extends BaseService {
    */
   async getTransactionsByCategory(categoryId: string, filters?: Omit<TransactionFilters, 'category_id'>): Promise<ServiceResponse<TransactionListResponse>> {
     const params = this.buildParams({ ...filters, category_id: categoryId });
-    return this.get<TransactionListResponse>(this.baseEndpoint, params);
+    return this.getWithWrapper<TransactionListResponse>(this.baseEndpoint, params);
   }
   
   /**
@@ -184,7 +187,7 @@ export class StandardizedTransactionService extends BaseService {
    */
   async getTransactionsByAccount(accountId: string, filters?: Omit<TransactionFilters, 'account_id'>): Promise<ServiceResponse<TransactionListResponse>> {
     const params = this.buildParams({ ...filters, account_id: accountId });
-    return this.get<TransactionListResponse>(this.baseEndpoint, params);
+    return this.getWithWrapper<TransactionListResponse>(this.baseEndpoint, params);
   }
   
   /**
@@ -200,7 +203,7 @@ export class StandardizedTransactionService extends BaseService {
       start_date: startDate, 
       end_date: endDate 
     });
-    return this.get<TransactionListResponse>(this.baseEndpoint, params);
+    return this.getWithWrapper<TransactionListResponse>(this.baseEndpoint, params);
   }
   
   /**
@@ -208,7 +211,7 @@ export class StandardizedTransactionService extends BaseService {
    */
   async getSpendingTrends(period: 'week' | 'month' | 'year' = 'month'): Promise<ServiceResponse<SpendingTrend[]>> {
     const params = { period };
-    return this.get<SpendingTrend[]>(this.buildEndpoint('trends'), params);
+    return this.getWithWrapper<SpendingTrend[]>(this.buildEndpoint('trends'), params);
   }
   
   /**
@@ -216,7 +219,7 @@ export class StandardizedTransactionService extends BaseService {
    */
   async getCategoryBreakdown(filters?: TransactionFilters): Promise<ServiceResponse<any[]>> {
     const params = this.buildParams(filters || {});
-    return this.get<any[]>(this.buildEndpoint('category-breakdown'), params);
+    return this.getWithWrapper<any[]>(this.buildEndpoint('category-breakdown'), params);
   }
 }
 

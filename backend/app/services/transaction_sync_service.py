@@ -76,12 +76,19 @@ class TransactionSyncService:
             start_date = datetime.now(timezone.utc) - timedelta(days=sync_days)
             end_date = datetime.now(timezone.utc)
             
+            logger.info(f"🔍 DEBUG: Account {account.name} sync details:")
+            logger.info(f"   - Account ID: {account_id}")
+            logger.info(f"   - Sync days: {sync_days}")
+            logger.info(f"   - Date range: {start_date.date()} to {end_date.date()}")
+            logger.info(f"   - Plaid account ID: {account.plaid_account_id}")
+            
             # Update account sync status
             account.sync_status = 'syncing'
             db.add(account)
             db.commit()
             
             # Fetch transactions from Plaid
+            logger.info(f"📡 DEBUG: Fetching transactions from Plaid API...")
             transactions_data = await self.plaid_service.fetch_transactions(
                 account.plaid_access_token,
                 start_date,
@@ -89,9 +96,18 @@ class TransactionSyncService:
                 [account.plaid_account_id]
             )
             
+            # Debug: Log what Plaid returned
+            plaid_transactions = transactions_data.get('transactions', [])
+            logger.info(f"📦 DEBUG: Plaid API returned {len(plaid_transactions)} transactions")
+            if len(plaid_transactions) > 0:
+                logger.info(f"   - First transaction: {plaid_transactions[0].get('transaction_id', 'N/A')} - {plaid_transactions[0].get('amount', 'N/A')}")
+                logger.info(f"   - Last transaction: {plaid_transactions[-1].get('transaction_id', 'N/A')} - {plaid_transactions[-1].get('amount', 'N/A')}")
+            else:
+                logger.warning(f"⚠️  DEBUG: No transactions returned from Plaid API!")
+            
             # Process transactions
             result = await self._process_account_transactions(
-                account, transactions_data.get('transactions', []), db
+                account, plaid_transactions, db
             )
             
             # Update account sync status
@@ -231,6 +247,8 @@ class TransactionSyncService:
     ) -> SyncResult:
         """Process Plaid transactions for an account"""
         
+        logger.info(f"🔄 DEBUG: Processing {len(plaid_transactions)} transactions for account {account.name}")
+        
         result = SyncResult(
             account_id=str(account.id),
             new_transactions=0,
@@ -243,47 +261,74 @@ class TransactionSyncService:
         
         # Get existing Plaid transaction IDs to avoid duplicates
         existing_plaid_ids = set(
-            db.query(Transaction.plaid_transaction_id)
+            row[0] for row in db.query(Transaction.plaid_transaction_id)
             .filter(
                 Transaction.account_id == account.id,
                 Transaction.plaid_transaction_id.isnot(None)
             )
-            .scalars()
             .all()
         )
         
+        logger.info(f"🔍 DEBUG: Found {len(existing_plaid_ids)} existing Plaid transaction IDs in database")
+        if len(existing_plaid_ids) > 0:
+            logger.info(f"   - Sample existing IDs: {list(existing_plaid_ids)[:3]}")
+        else:
+            logger.info(f"   - No existing Plaid transactions found - this should be a fresh sync")
+        
         # Process transactions in batches
+        logger.info(f"📝 DEBUG: Processing {len(plaid_transactions)} transactions in batches of {self.batch_size}")
+        
         for i in range(0, len(plaid_transactions), self.batch_size):
             batch = plaid_transactions[i:i + self.batch_size]
+            logger.info(f"   - Processing batch {i//self.batch_size + 1} with {len(batch)} transactions")
             
-            for plaid_txn in batch:
+            for j, plaid_txn in enumerate(batch):
                 try:
                     plaid_id = plaid_txn.get('transaction_id')
+                    amount = plaid_txn.get('amount', 0)
+                    description = plaid_txn.get('name', 'Unknown')
+                    
+                    logger.info(f"     Transaction {j+1}: {plaid_id} - ${amount} - {description}")
                     
                     if plaid_id in existing_plaid_ids:
+                        logger.info(f"       ⏭️  SKIPPED - Already exists in database")
                         result.duplicates_skipped += 1
                         continue
                     
                     # Create new transaction
+                    logger.info(f"       💾 CREATING - New transaction")
                     transaction = await self._create_transaction_from_plaid(
                         plaid_txn, account, db
                     )
                     
                     if transaction:
+                        logger.info(f"       ✅ SUCCESS - Transaction created with ID: {transaction.id}")
                         result.new_transactions += 1
                         existing_plaid_ids.add(plaid_id)
+                    else:
+                        logger.warning(f"       ⚠️  FAILED - Transaction creation returned None")
                 
                 except Exception as e:
                     error_msg = f"Failed to process transaction {plaid_txn.get('transaction_id', 'unknown')}: {str(e)}"
                     result.errors.append(error_msg)
-                    logger.error(error_msg)
+                    logger.error(f"       ❌ ERROR - {error_msg}")
         
         # Commit batch
+        logger.info(f"💾 DEBUG: Committing transactions to database...")
         try:
             db.commit()
+            logger.info(f"✅ DEBUG: Database commit successful")
         except Exception as e:
+            logger.error(f"❌ DEBUG: Database commit failed: {str(e)}")
             db.rollback()
             raise Exception(f"Failed to commit transactions: {str(e)}")
+        
+        # Final summary
+        logger.info(f"🏁 DEBUG: Transaction sync complete for {account.name}:")
+        logger.info(f"   - New transactions: {result.new_transactions}")
+        logger.info(f"   - Updated transactions: {result.updated_transactions}")
+        logger.info(f"   - Duplicates skipped: {result.duplicates_skipped}")
+        logger.info(f"   - Errors: {len(result.errors)}")
         
         return result
     
@@ -296,9 +341,16 @@ class TransactionSyncService:
         """Create a transaction from Plaid data with enhanced processing"""
         
         try:
-            # Parse amount (Plaid uses positive for debits, negative for credits)
-            amount = float(plaid_txn.get('amount', 0))
-            amount_cents = int(-amount * 100)  # Invert sign for our system
+            # Parse amount - Plaid's sign convention varies by account type
+            raw_amount = float(plaid_txn.get('amount', 0))
+            
+            # Convert amount based on account type and Plaid's conventions
+            amount_cents = self._convert_plaid_amount(raw_amount, account.account_type)
+            
+            # Enhanced debug logging
+            transaction_type = "INCOME" if amount_cents > 0 else "EXPENSE"
+            logger.info(f"       💰 AMOUNT DEBUG: Account type: {account.account_type}")
+            logger.info(f"       💰 AMOUNT DEBUG: Raw Plaid amount: {raw_amount} → Converted: {amount_cents/100} (cents: {amount_cents}) → Type: {transaction_type}")
             
             # Parse dates
             transaction_date = self._parse_date(plaid_txn.get('date'))
@@ -358,7 +410,7 @@ class TransactionSyncService:
                 metadata_json=metadata
             )
             
-            transaction = self.transaction_service.create(db=db, obj_in=transaction_create)
+            transaction = await self.transaction_service.create_transaction(db=db, transaction=transaction_create, user_id=account.user_id)
             
             return transaction
             
@@ -500,6 +552,45 @@ class TransactionSyncService:
             'users_affected': len(user_accounts),
             'message': f'Scheduled sync for {scheduled_count} accounts'
         }
+    
+    def _convert_plaid_amount(self, raw_amount: float, account_type: str) -> int:
+        """
+        Convert Plaid transaction amount to our system's amount_cents format.
+        
+        Plaid's amount conventions:
+        - Depository accounts (checking, savings): positive = outflow, negative = inflow
+        - Credit accounts: positive = charges, negative = payments
+        - Investment accounts: positive = outflow, negative = inflow
+        
+        Our system: positive = income, negative = expenses
+        """
+        
+        # Normalize account type for comparison
+        account_type_lower = account_type.lower()
+        
+        # Convert to cents first
+        amount_cents = int(raw_amount * 100)
+        
+        if account_type_lower in ['checking', 'savings', 'depository', 'money_market']:
+            # Depository accounts: Plaid positive = outflow (expense), negative = inflow (income)
+            # So we need to invert: Plaid positive becomes our negative
+            return -amount_cents
+            
+        elif account_type_lower in ['credit', 'credit_card', 'credit_line']:
+            # Credit accounts: Plaid positive = charges (expense), negative = payments (income to user)  
+            # So we need to invert: Plaid positive becomes our negative
+            return -amount_cents
+            
+        elif account_type_lower in ['investment', 'brokerage']:
+            # Investment accounts: similar to depository
+            # Plaid positive = money out (expense), negative = money in (income)
+            return -amount_cents
+            
+        else:
+            # Default behavior for unknown account types: invert sign
+            # Log this case for investigation
+            logger.warning(f"Unknown account type '{account_type}' - using default amount conversion")
+            return -amount_cents
 
 # Create global service instance
 transaction_sync_service = TransactionSyncService()

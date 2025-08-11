@@ -81,6 +81,7 @@ export interface SyncTransactionsResponse {
 
 export interface SyncBalancesRequest {
   account_ids?: string[];
+  force_sync?: boolean;
   [key: string]: unknown;
 }
 
@@ -269,11 +270,16 @@ export class PlaidService extends BaseService {
     request?: SyncTransactionsRequest,
     options?: { context?: ErrorContext }
   ): Promise<SyncTransactionsResponse> {
+    console.log('🔧 PlaidService.syncTransactions called with:', request);
+    
     // Prepare request body with proper structure for the backend
     const requestBody: SyncTransactionsRequest = {
       account_ids: request?.account_ids,
-      days: request?.days ?? 7
+      days: request?.days ?? 90  // Default to 90 days for sandbox testing
     };
+    
+    console.log('📦 Sending transaction sync request body:', requestBody);
+    console.log('🎯 Transaction sync endpoint:', this.buildEndpoint('/sync-transactions'));
 
     return this.post<SyncTransactionsResponse>(
       this.buildEndpoint('/sync-transactions'),
@@ -286,10 +292,16 @@ export class PlaidService extends BaseService {
     request?: SyncBalancesRequest,
     options?: { context?: ErrorContext }
   ): Promise<SyncBalancesResponse> {
+    console.log('🔧 PlaidService.syncBalances called with:', request);
+    
     // Prepare request body with proper structure for the backend
     const requestBody: SyncBalancesRequest = {
-      account_ids: request?.account_ids
+      account_ids: request?.account_ids,
+      force_sync: request?.force_sync
     };
+    
+    console.log('📦 Sending request body:', requestBody);
+    console.log('🎯 Endpoint:', this.buildEndpoint('/sync-balances'));
 
     return this.post<SyncBalancesResponse>(
       this.buildEndpoint('/sync-balances'),

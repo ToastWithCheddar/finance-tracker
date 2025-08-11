@@ -9,7 +9,7 @@ from uuid import UUID
 # Third-party imports
 from fastapi import HTTPException, status
 from sqlalchemy import or_, and_, func, extract, case
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 # Local imports
 from ..config import settings
@@ -23,6 +23,7 @@ from ..core.exceptions import (
     create_validation_error
 )
 from ..models.transaction import Transaction
+from ..models.account import Account
 from ..schemas.ml import MLCategorizationResponse
 from ..schemas.transaction import TransactionCreate, TransactionUpdate, TransactionFilter, TransactionPagination
 from .ml_client import get_ml_client, MLServiceError
@@ -58,43 +59,31 @@ class TransactionService:
                             "ml_reasoning": categorization.reasoning
                         }
                     else:
-                        # Low confidence, ask the user to clarify
-                        details = [
-                            ErrorDetail(
-                                field="category_id",
-                                message="ML prediction confidence too low for automatic categorization",
-                                code="LOW_CONFIDENCE"
-                            )
-                        ]
-                        
-                        raise BusinessLogicException(
-                            message="Could not automatically determine the category. Please choose one manually.",
-                            error_code=ErrorCode.VALIDATION_ERROR,
-                            details=details
-                        )
+                        # Low confidence - for sync operations, continue without categorization
+                        logger.info(f"ML prediction confidence too low ({categorization.confidence}) for automatic categorization")
+                        logger.info("Transaction will be created without ML categorization")
+                        # Continue without ML categorization
                 else:
-                    # ML service failed
+                    # ML service failed - log but don't fail transaction creation
                     error_msg = "Category prediction service unavailable"
                     if ml_response.error:
                         error_msg = ml_response.error.message
                     
-                    raise ExternalServiceException(
-                        service_name="ML Categorization Service",
-                        message=error_msg,
-                        error_code=ErrorCode.ML_SERVICE_UNAVAILABLE
-                    )
+                    logger.warning(f"ML categorization failed: {error_msg}")
+                    logger.info("Transaction will be created without ML categorization")
+                    # Continue without ML categorization
                     
-            except (BusinessLogicException, ExternalServiceException):
-                # Re-raise our standardized exceptions
-                raise
+            except (BusinessLogicException, ExternalServiceException) as e:
+                # For automatic transaction sync, don't fail if ML service is unavailable
+                # Only re-raise if this is an interactive user operation (not a sync)
+                logger.warning(f"ML categorization failed during transaction creation: {str(e)}")
+                logger.info("Transaction will be created without ML categorization")
+                # Continue without ML categorization
             except Exception as e:
-                # Catch-all for other errors
-                logger.error(f"Unexpected error during ML categorization: {str(e)}", exc_info=True)
-                raise ExternalServiceException(
-                    service_name="ML Categorization Service",
-                    message="Unexpected error during category prediction",
-                    error_code=ErrorCode.ML_SERVICE_UNAVAILABLE
-                )
+                # Catch-all for other errors - also don't fail for sync operations
+                logger.warning(f"Unexpected error during ML categorization: {str(e)}")
+                logger.info("Transaction will be created without ML categorization")
+                # Continue without ML categorization
 
         # Get transaction data for database
         transaction_data = transaction.model_dump()
@@ -202,7 +191,11 @@ class TransactionService:
         filters: TransactionFilter,
         pagination: TransactionPagination
     ) -> Tuple[List[Transaction], int]:
-        query = db.query(Transaction).filter(Transaction.user_id == user_id)
+        # Use eager loading to prevent N+1 queries
+        query = db.query(Transaction).options(
+            joinedload(Transaction.account),
+            joinedload(Transaction.category)
+        ).join(Transaction.account).filter(Transaction.user_id == user_id)
 
         # Apply filters
         if filters.start_date:

@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
 class TransactionStatus(str, Enum):
@@ -31,21 +31,56 @@ class TransactionBase(BaseModel):
         return v.upper()
 
 class TransactionCreate(TransactionBase):
-    pass
+    # Optional fields that can be provided instead of the base fields
+    amount: Optional[float] = Field(None, description="Transaction amount in dollars (will be converted to cents)")
+    transaction_type: Optional[str] = Field(None, description="Transaction type: 'income' or 'expense'")
+    
+    @model_validator(mode='before')
+    @classmethod
+    def convert_amount_to_cents(cls, data):
+        # If this is not a dict, return as-is
+        if not isinstance(data, dict):
+            return data
+        
+        # If amount_cents is already provided, use it directly
+        if 'amount_cents' in data and data['amount_cents'] is not None:
+            return data
+        
+        # If 'amount' is provided, convert to cents
+        if 'amount' in data and data['amount'] is not None:
+            amount_dollars = float(data['amount'])
+            amount_cents = int(amount_dollars * 100)
+            
+            # Apply transaction_type logic
+            transaction_type = data.get('transaction_type', 'expense')
+            if transaction_type == 'expense':
+                # Expenses should be negative
+                data['amount_cents'] = -abs(amount_cents)
+            else:
+                # Income should be positive  
+                data['amount_cents'] = abs(amount_cents)
+        
+        return data
+
+    class Config:
+        populate_by_name = True  # Allow both camelCase and snake_case
 
 class TransactionUpdate(BaseModel):
-    account_id: Optional[UUID] = None
-    amount_cents: Optional[int] = None
+    account_id: Optional[UUID] = Field(None, alias="accountId")
+    amount_cents: Optional[int] = Field(None, alias="amountCents")
     currency: Optional[str] = None
     description: Optional[str] = Field(None, max_length=500)
     merchant: Optional[str] = Field(None, max_length=200)
-    transaction_date: Optional[date] = None
-    category_id: Optional[UUID] = None
+    transaction_date: Optional[date] = Field(None, alias="transactionDate")
+    category_id: Optional[UUID] = Field(None, alias="categoryId")
     status: Optional[TransactionStatus] = None
-    is_recurring: Optional[bool] = None
-    is_transfer: Optional[bool] = None
+    is_recurring: Optional[bool] = Field(None, alias="isRecurring")
+    is_transfer: Optional[bool] = Field(None, alias="isTransfer")
     notes: Optional[str] = None
     tags: Optional[List[str]] = None
+    
+    class Config:
+        populate_by_name = True  # Allow both camelCase and snake_case
 
 class TransactionInDB(TransactionBase):
     id: UUID

@@ -33,7 +33,14 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
   const { data: allAccounts, isLoading, error, refetch } = useAccounts();
   const { data: plaidAccounts } = usePlaidConnectedAccounts();
   const { data: manualAccounts } = useManualAccounts();
-  const { syncBalances, isSyncingBalances, syncTransactions, isSyncingTransactions } = usePlaidActions();
+  const { 
+    syncBalances, 
+    isSyncingBalances, 
+    syncTransactions, 
+    isSyncingTransactions,
+    syncBalancesError,
+    syncTransactionsError 
+  } = usePlaidActions();
 
   // Get accounts based on selected tab
   const getDisplayAccounts = () => {
@@ -48,7 +55,11 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
 
   // Handle balance sync
   const handleSyncBalances = () => {
-    syncBalances(undefined);
+    console.log('🔄 Starting balance sync...');
+    console.log('🔍 Button clicked, calling syncBalances with force_sync');
+    // Force sync to bypass "recently synced" protection
+    syncBalances({ force_sync: true });
+    console.log('📤 syncBalances function called');
   };
 
   const handleSyncTransactions = () => {
@@ -364,6 +375,26 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
               </Button>
             </div>
           </div>
+
+          {/* Error Display */}
+          {syncBalancesError && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">
+                <strong>Sync Balance Error:</strong> {syncBalancesError.message}
+              </p>
+              <p className="text-xs text-red-500 mt-1">
+                Check console for details
+              </p>
+            </div>
+          )}
+          
+          {syncTransactionsError && (
+            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">
+                <strong>Sync Transactions Error:</strong> {syncTransactionsError.message}
+              </p>
+            </div>
+          )}
 
           <div className="mt-4">
             <Button onClick={() => setShowPlaidLink(true)} variant="outline" size="sm">
