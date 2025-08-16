@@ -7,7 +7,7 @@ from typing import Dict, Any
 from uuid import UUID
 
 from ..database import get_db
-from ..auth.dependencies import get_current_user
+from ..auth.dependencies import get_current_user, get_db_with_user_context
 from ..models.user import User
 from ..services.transaction_service import TransactionService
 from ..services.ml_client import get_ml_client
@@ -16,7 +16,11 @@ from ..schemas.ml import (
     MLCategorizationResponse,
     MLFeedbackRequest,
     MLHealthResponse,
-    MLServiceResponse
+    MLServiceResponse,
+    MCategoryExampleRequest,
+    MLModelPerformanceResponse,
+    MLModelExportResponse,
+    MLBatchCategorizationRequest
 )
 
 router = APIRouter(prefix="/ml", tags=["ml"])
@@ -24,7 +28,7 @@ router = APIRouter(prefix="/ml", tags=["ml"])
 @router.post("/categorize", response_model=Dict[str, Any])
 async def categorize_transaction(
     request: MLCategorizationRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -66,7 +70,7 @@ async def categorize_transaction(
 async def submit_feedback(
     transaction_id: UUID,
     correct_category_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -125,7 +129,7 @@ async def ml_service_health():
 
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_ml_stats(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -171,4 +175,154 @@ async def get_ml_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get ML stats: {str(e)}"
+        )
+
+@router.post("/batch-categorize", response_model=Dict[str, Any])
+async def batch_categorize_transactions(
+    request: MLBatchCategorizationRequest,
+    db: Session = Depends(get_db_with_user_context),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Categorize multiple transactions in batch
+    """
+    ml_client = get_ml_client()
+    
+    try:
+        response = await ml_client.batch_categorize(
+            transactions=request.transactions,
+            user_id=str(current_user.id)
+        )
+        
+        if response.success:
+            return {
+                "success": True,
+                "data": response.data.model_dump(),
+                "duration_ms": response.request_duration_ms
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": response.error.error,
+                    "message": response.error.message,
+                    "details": response.error.details
+                }
+            )
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Batch categorization failed: {str(e)}"
+        )
+
+@router.post("/add-example", status_code=status.HTTP_201_CREATED)
+async def add_ml_example(
+    request: MCategoryExampleRequest,
+    db: Session = Depends(get_db_with_user_context),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Add a new example to a category for improved classification
+    """
+    ml_client = get_ml_client()
+    
+    try:
+        response = await ml_client.add_training_example(
+            category=request.category,
+            example=request.example,
+            user_id=str(current_user.id)
+        )
+        
+        if response.success:
+            return {
+                "success": True,
+                "message": "Example added successfully",
+                "data": response.data,
+                "duration_ms": response.request_duration_ms
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": response.error.error,
+                    "message": response.error.message,
+                    "details": response.error.details
+                }
+            )
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to add example: {str(e)}"
+        )
+
+@router.post("/export-model", response_model=Dict[str, Any])
+async def export_model(
+    db: Session = Depends(get_db_with_user_context),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Export the current model to ONNX format with quantization
+    """
+    ml_client = get_ml_client()
+    
+    try:
+        response = await ml_client.export_model()
+        
+        if response.success:
+            return {
+                "success": True,
+                "data": response.data.model_dump(),
+                "duration_ms": response.request_duration_ms
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": response.error.error,
+                    "message": response.error.message,
+                    "details": response.error.details
+                }
+            )
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to export model: {str(e)}"
+        )
+
+@router.get("/performance", response_model=Dict[str, Any])
+async def get_ml_performance(
+    db: Session = Depends(get_db_with_user_context),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get current model performance metrics
+    """
+    ml_client = get_ml_client()
+    
+    try:
+        response = await ml_client.get_model_performance()
+        
+        if response.success:
+            return {
+                "success": True,
+                "data": response.data.model_dump(),
+                "duration_ms": response.request_duration_ms
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": response.error.error,
+                    "message": response.error.message,
+                    "details": response.error.details
+                }
+            )
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to get performance metrics: {str(e)}"
         )

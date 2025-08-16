@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     # Supabase Configuration - Must be set via environment variables
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+    SUPABASE_JWT_SECRET: str = os.getenv("SUPABASE_JWT_SECRET", "")
+    SUPABASE_WEBHOOK_SECRET: str = os.getenv("SUPABASE_WEBHOOK_SECRET", "")
 
     # Application Configuration
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
@@ -79,7 +81,7 @@ class Settings(BaseSettings):
     def validate_required_settings(self):
         """Validate that all required settings are provided"""
         if self.is_production:
-            required_fields = ["SECRET_KEY", "JWT_SECRET_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY"]
+            required_fields = ["SECRET_KEY", "JWT_SECRET_KEY", "SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_JWT_SECRET", "SUPABASE_WEBHOOK_SECRET"]
             missing_fields = []
             
             for field in required_fields:

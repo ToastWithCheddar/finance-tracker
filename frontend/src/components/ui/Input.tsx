@@ -20,8 +20,8 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
         <input
           className={cn(
-            'input-field',
-            error && 'border-red-300 focus:ring-red-500',
+            'w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))] bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] transition-colors',
+            error && 'border-red-300 focus:ring-red-500 dark:border-red-600 dark:focus:ring-red-400',
             className
           )}
           ref={ref}

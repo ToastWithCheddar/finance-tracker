@@ -18,7 +18,7 @@ from app.services.enhanced_plaid_service import enhanced_plaid_service
 from app.services.transaction_sync_service import transaction_sync_service
 from app.services.account_sync_monitor import account_sync_monitor
 from app.services.enhanced_reconciliation_service import enhanced_reconciliation_service
-from app.websocket.manager import websocket_manager
+from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
 
 logger = logging.getLogger(__name__)

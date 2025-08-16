@@ -86,7 +86,7 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
             <span className="text-xl">{typeInfo.icon}</span>
-            <h3 className="font-semibold text-lg truncate">{goal.name}</h3>
+            <h3 className="font-semibold text-lg truncate text-[hsl(var(--text))]">{goal.name}</h3>
           </div>
           <span className={`px-2 py-1 rounded-full text-xs border ${getPriorityBadgeColor()}`}>
             {priorityInfo.label}
@@ -94,19 +94,19 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
         </div>
         
         <div className="space-y-2">
-          <div className="flex justify-between text-sm text-gray-600">
+          <div className="flex justify-between text-sm text-[hsl(var(--text))] opacity-80">
             <span>{formatCurrency(goal.current_amount_cents)}</span>
             <span>{formatCurrency(goal.target_amount_cents)}</span>
           </div>
           
-          <div className="w-full bg-gray-200 rounded-full h-2">
+          <div className="w-full rounded-full h-2 bg-[hsl(var(--border))]">
             <div
               className={`${getProgressBarColor()} h-2 rounded-full transition-all duration-500 ease-out`}
               style={{ width: `${Math.min(currentProgress, 100)}%` }}
             />
           </div>
           
-          <div className="flex justify-between text-xs text-gray-500">
+          <div className="flex justify-between text-xs text-[hsl(var(--text))] opacity-70">
             <span>{currentProgress.toFixed(1)}% complete</span>
             {daysRemaining && <span>{daysRemaining} days left</span>}
           </div>
@@ -122,9 +122,9 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
           <div className="flex items-center space-x-3">
             <div className="text-3xl">{typeInfo.icon}</div>
             <div>
-              <h3 className="text-xl font-bold text-gray-900">{goal.name}</h3>
+              <h3 className="text-xl font-bold text-[hsl(var(--text))]">{goal.name}</h3>
               {goal.description && (
-                <p className="text-gray-600 text-sm mt-1">{goal.description}</p>
+                <p className="text-[hsl(var(--text))] opacity-80 text-sm mt-1">{goal.description}</p>
               )}
             </div>
           </div>
@@ -142,16 +142,16 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
         {/* Progress Section */}
         <div className="mb-6">
           <div className="flex justify-between items-center mb-2">
-            <span className="text-2xl font-bold text-gray-900">
+            <span className="text-2xl font-bold text-[hsl(var(--text))]">
               {formatCurrency(goal.current_amount_cents)}
             </span>
-            <span className="text-lg text-gray-600">
+            <span className="text-lg text-[hsl(var(--text))] opacity-70">
               of {formatCurrency(goal.target_amount_cents)}
             </span>
           </div>
           
           <div className="relative">
-            <div className="w-full bg-gray-200 rounded-full h-4 mb-2">
+            <div className="w-full rounded-full h-4 mb-2 bg-[hsl(var(--border))]">
               <div
                 className={`${getProgressBarColor()} h-4 rounded-full transition-all duration-1000 ease-out relative overflow-hidden`}
                 style={{ width: `${Math.min(currentProgress, 100)}%` }}
@@ -162,11 +162,11 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
             </div>
             
             <div className="flex justify-between text-sm">
-              <span className="font-semibold text-gray-700">
+              <span className="font-semibold text-[hsl(var(--text))]">
                 {currentProgress.toFixed(1)}% Complete
               </span>
               {!isCompleted && (
-                <span className="text-gray-600">
+                <span className="text-[hsl(var(--text))] opacity-70">
                   {formatCurrency(remainingAmount)} remaining
                 </span>
               )}
@@ -193,13 +193,13 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
         {/* Goal Details */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-sm">
           {goal.target_date && (
-            <div className="bg-gray-50 p-3 rounded-lg">
-              <span className="text-gray-500 block">Target Date</span>
+            <div className="p-3 rounded-lg bg-[hsl(var(--surface))] border border-[hsl(var(--border))]">
+              <span className="block text-[hsl(var(--text))] opacity-60">Target Date</span>
               <span className="font-semibold">
                 {new Date(goal.target_date).toLocaleDateString()}
               </span>
               {daysRemaining !== null && (
-                <div className="text-xs text-gray-600 mt-1">
+                <div className="text-xs text-[hsl(var(--text))] opacity-70 mt-1">
                   {daysRemaining > 0 ? `${daysRemaining} days left` : 'Overdue'}
                 </div>
               )}
@@ -207,18 +207,18 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
           )}
           
           {monthlyRequired && (
-            <div className="bg-gray-50 p-3 rounded-lg">
-              <span className="text-gray-500 block">Monthly Target</span>
+            <div className="p-3 rounded-lg bg-[hsl(var(--surface))] border border-[hsl(var(--border))]">
+              <span className="block text-[hsl(var(--text))] opacity-60">Monthly Target</span>
               <span className="font-semibold">
                 {formatCurrency(monthlyRequired)}
               </span>
-              <div className="text-xs text-gray-600 mt-1">to reach goal</div>
+              <div className="text-xs text-[hsl(var(--text))] opacity-70 mt-1">to reach goal</div>
             </div>
           )}
           
           {goal.last_contribution_date && (
-            <div className="bg-gray-50 p-3 rounded-lg">
-              <span className="text-gray-500 block">Last Contribution</span>
+            <div className="p-3 rounded-lg bg-[hsl(var(--surface))] border border-[hsl(var(--border))]">
+              <span className="block text-[hsl(var(--text))] opacity-60">Last Contribution</span>
               <span className="font-semibold">
                 {formatRelativeTime(goal.last_contribution_date)}
               </span>

@@ -46,22 +46,22 @@ function CelebrationModal({ alert, isOpen, onClose }: CelebrationModalProps) {
           </div>
         )}
 
-        <Card className="p-8 text-center relative bg-gradient-to-br from-yellow-50 to-orange-50 border-2 border-yellow-200">
+        <Card className="p-8 text-center relative border-2 border-[hsl(var(--border))]">
           <div className="text-6xl mb-4 animate-pulse">🎊</div>
           
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+          <h2 className="text-2xl font-bold text-[hsl(var(--text))] mb-2">
             Milestone Achieved!
           </h2>
           
-          <p className="text-lg text-gray-700 mb-4">
+          <p className="text-lg text-[hsl(var(--text))] opacity-80 mb-4">
             {alert.celebration_message}
           </p>
           
-          <div className="bg-white bg-opacity-60 rounded-lg p-4 mb-6">
+          <div className="rounded-lg p-4 mb-6 bg-[hsl(var(--surface))] border border-[hsl(var(--border))]">
             <div className="text-3xl font-bold text-green-600 mb-1">
               {alert.milestone_percentage}%
             </div>
-            <div className="text-sm text-gray-600">
+            <div className="text-sm text-[hsl(var(--text))] opacity-70">
               {formatCurrency(alert.amount_reached_cents)} reached
             </div>
           </div>
@@ -123,25 +123,25 @@ function GoalCompletionModal({ goalName, finalAmount, isOpen, onClose }: GoalCom
           </div>
         )}
 
-        <Card className="p-10 text-center relative bg-gradient-to-br from-green-50 via-blue-50 to-purple-50 border-4 border-green-300">
+        <Card className="p-10 text-center relative border-4 border-[hsl(var(--border))]">
           <div className="text-8xl mb-6 animate-bounce">🏆</div>
           
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">
+          <h1 className="text-3xl font-bold text-[hsl(var(--text))] mb-4">
             Goal Completed!
           </h1>
           
-          <p className="text-xl text-gray-700 mb-2">
+          <p className="text-xl text-[hsl(var(--text))] opacity-80 mb-2">
             Congratulations on achieving
           </p>
           <p className="text-2xl font-bold text-blue-600 mb-4">
             "{goalName}"
           </p>
           
-          <div className="bg-white bg-opacity-80 rounded-xl p-6 mb-8">
+          <div className="rounded-xl p-6 mb-8 bg-[hsl(var(--surface))] border border-[hsl(var(--border))]">
             <div className="text-4xl font-bold text-green-600 mb-2">
               {formatCurrency(finalAmount)}
             </div>
-            <div className="text-lg text-gray-600">
+            <div className="text-lg text-[hsl(var(--text))] opacity-70">
               Final Amount Achieved
             </div>
           </div>

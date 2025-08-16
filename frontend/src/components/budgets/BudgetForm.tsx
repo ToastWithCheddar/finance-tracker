@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { X } from 'lucide-react';
-import { Button, Input, Modal, Card, CardContent, CardHeader, CardTitle } from '../ui';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { Modal } from '../ui/Modal';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../services/api';
 import { budgetService } from '../../services/budgetService';

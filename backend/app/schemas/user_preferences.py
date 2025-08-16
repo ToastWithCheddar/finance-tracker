@@ -25,7 +25,7 @@ class UserPreferencesBase(BaseModel):
     # Financial preferences
     default_account_type: str = Field(default="checking", max_length=50, description="Default account type")
     budget_warning_threshold: float = Field(default=0.8, ge=0.1, le=1.0, description="Budget warning threshold (0.1-1.0)")
-    low_balance_threshold: float = Field(default=100.0, ge=0, description="Low balance alert threshold")
+    low_balance_threshold_cents: int = Field(default=10000, ge=0, description="Low balance alert threshold in cents")
     
     # Backup preferences
     auto_backup: bool = Field(default=True, description="Enable automatic backups")
@@ -78,7 +78,7 @@ class UserPreferencesUpdate(BaseModel):
     
     default_account_type: Optional[str] = Field(None, max_length=50)
     budget_warning_threshold: Optional[float] = Field(None, ge=0.1, le=1.0)
-    low_balance_threshold: Optional[float] = Field(None, ge=0)
+    low_balance_threshold_cents: Optional[int] = Field(None, ge=0)
     
     auto_backup: Optional[bool] = None
     backup_frequency: Optional[str] = Field(None, pattern="^(daily|weekly|monthly)$")

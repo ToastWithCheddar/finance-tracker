@@ -13,88 +13,232 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
 }
 
+/* Design tokens */
+:root {
+  --bg: 0 0% 100%;
+  --surface: 0 0% 100%;
+  --text: 222 47% 11%;
+  --border: 220 13% 91%;
+  --brand: 156 72% 41%;
+  --accent: 160 84% 39%;
+}
+
+/* Emerald Noir theme variables */
+.theme-emerald {
+  --bg: 160 10% 6%;
+  --surface: 160 10% 10%;
+  --text: 0 0% 95%;
+  --border: 160 6% 22%;
+  --brand: 156 72% 41%;
+  --accent: 160 84% 39%;
+}
+
 /* Custom component styles with dark mode support */
 @layer components {
   .card {
-    @apply bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700;
+    @apply rounded-xl shadow-sm border;
+    background-color: hsl(var(--surface));
+    border-color: hsl(var(--border));
+    color: hsl(var(--text));
   }
   
   .card-hover {
-    @apply hover:shadow-md transition-shadow duration-200;
+    @apply hover:shadow-lg hover:scale-[1.02] transition-all duration-300;
+  }
+  
+  .card-gradient {
+    @apply bg-gradient-to-br from-white via-gray-50 to-white dark:from-gray-800 dark:via-gray-750 dark:to-gray-800;
   }
   
   .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg 
-           bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100
-           placeholder-gray-500 dark:placeholder-gray-400
-           focus:ring-2 focus:ring-primary-500 focus:border-primary-500 
-           disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply w-full px-3 py-2 rounded-lg focus:ring-2 disabled:opacity-50 disabled:cursor-not-allowed;
+    background-color: hsl(var(--surface));
+    color: hsl(var(--text));
+    border: 1px solid hsl(var(--border));
+  }
+
+  .glass-surface {
+    @apply rounded-xl border backdrop-blur-md shadow-lg;
+    background-color: hsl(var(--surface) / 0.8);
+    border-color: hsl(var(--border) / 0.5);
+  }
+  
+  /* Financial context cards */
+  .card-income {
+    @apply bg-income-gradient border-income-300 dark:border-income-600 text-income-900 dark:text-income-100;
+  }
+  
+  .card-expense {
+    @apply bg-expense-gradient border-expense-300 dark:border-expense-600 text-expense-900 dark:text-expense-100;
+  }
+  
+  .card-savings {
+    @apply bg-savings-gradient border-savings-300 dark:border-savings-600 text-savings-900 dark:text-savings-100;
+  }
+  
+  .card-investment {
+    @apply bg-investment-gradient border-investment-300 dark:border-investment-600 text-investment-900 dark:text-investment-100;
+  }
+  
+  .card-budget {
+    @apply bg-budget-gradient border-budget-300 dark:border-budget-600 text-budget-900 dark:text-budget-100;
+  }
+  
+  /* Category badges */
+  .badge-food {
+    @apply bg-food-100 text-food-800 border border-food-200 dark:bg-food-800 dark:text-food-100 dark:border-food-700;
+  }
+  
+  .badge-transport {
+    @apply bg-transport-100 text-transport-800 border border-transport-200 dark:bg-transport-800 dark:text-transport-100 dark:border-transport-700;
+  }
+  
+  .badge-entertainment {
+    @apply bg-entertainment-100 text-entertainment-800 border border-entertainment-200 dark:bg-entertainment-800 dark:text-entertainment-100 dark:border-entertainment-700;
+  }
+  
+  .badge-shopping {
+    @apply bg-shopping-100 text-shopping-800 border border-shopping-200 dark:bg-shopping-800 dark:text-shopping-100 dark:border-shopping-700;
+  }
+  
+  .badge-health {
+    @apply bg-health-100 text-health-800 border border-health-200 dark:bg-health-800 dark:text-health-100 dark:border-health-700;
+  }
+  
+  .badge-education {
+    @apply bg-education-100 text-education-800 border border-education-200 dark:bg-education-800 dark:text-education-100 dark:border-education-700;
+  }
+  
+  /* Progress bars with gradients */
+  .progress-bar-income {
+    @apply bg-gradient-to-r from-income-400 to-income-600 rounded-full;
+  }
+  
+  .progress-bar-expense {
+    @apply bg-gradient-to-r from-expense-400 to-expense-600 rounded-full;
+  }
+  
+  .progress-bar-budget {
+    @apply bg-gradient-to-r from-budget-400 to-budget-600 rounded-full;
+  }
+  
+  .progress-bar-success {
+    @apply bg-gradient-to-r from-success-400 to-success-600 rounded-full;
+  }
+  
+  .progress-bar-warning {
+    @apply bg-gradient-to-r from-yellow-400 to-orange-500 rounded-full;
+  }
+  
+  .progress-bar-danger {
+    @apply bg-gradient-to-r from-red-400 to-red-600 rounded-full;
+  }
+  
+  /* Shimmer effect for loading states */
+  .shimmer {
+    @apply relative overflow-hidden;
+  }
+  
+  .shimmer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.2),
+      transparent
+    );
+    animation: shimmer 1.5s infinite;
+  }
+  
+  /* Glow effects for special elements */
+  .glow-income {
+    @apply shadow-lg shadow-income-200 dark:shadow-income-800;
+  }
+  
+  .glow-expense {
+    @apply shadow-lg shadow-expense-200 dark:shadow-expense-800;
+  }
+  
+  .glow-savings {
+    @apply shadow-lg shadow-savings-200 dark:shadow-savings-800;
+  }
+  
+  .glow-investment {
+    @apply shadow-lg shadow-investment-200 dark:shadow-investment-800;
   }
 }
 
 /* Base styles */
 body {
-  @apply bg-gray-50 dark:bg-gray-900;
+  background-color: hsl(var(--bg));
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: #f9fafb;
-  color: #111827;
+  color: hsl(var(--text));
   line-height: 1.5;
+  min-height: 100vh;
 }
 
 /* Basic button styles */
 .btn-primary {
-  background-color: #16a34a;
+  background-color: hsl(var(--brand));
   color: white;
   font-weight: 500;
   padding: 8px 16px;
   border-radius: 8px;
   border: none;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: filter 0.2s;
 }
 
 .btn-primary:hover {
-  background-color: #15803d;
+  filter: brightness(1.1);
 }
 
 .btn-secondary {
-  background-color: #e5e7eb;
-  color: #111827;
+  background-color: hsl(var(--surface));
+  color: hsl(var(--text));
   font-weight: 500;
   padding: 8px 16px;
   border-radius: 8px;
-  border: none;
+  border: 1px solid hsl(var(--border));
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: filter 0.2s;
 }
 
 .btn-secondary:hover {
-  background-color: #d1d5db;
+  filter: brightness(1.05);
 }
 
 /* Basic input styles */
 .input-field {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid hsl(var(--border));
+  background-color: hsl(var(--surface));
+  color: hsl(var(--text));
   border-radius: 8px;
   outline: none;
   transition: border-color 0.2s;
 }
 
 .input-field:focus {
-  border-color: #16a34a;
-  box-shadow: 0 0 0 3px rgba(22, 163, 74, 0.1);
+  border-color: hsl(var(--brand));
+  box-shadow: 0 0 0 3px hsl(var(--brand) / 0.15);
 }
 
 /* Basic card styles */
 .card {
-  background-color: white;
+  background-color: hsl(var(--surface));
+  color: hsl(var(--text));
   border-radius: 12px;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-  border: 1px solid #e5e7eb;
+  border: 1px solid hsl(var(--border));
   padding: 24px;
 }
 

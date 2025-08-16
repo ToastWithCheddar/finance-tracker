@@ -12,7 +12,7 @@ from ..schemas.budget import (
     BudgetCreate, BudgetUpdate, BudgetResponse, BudgetFilter,
     BudgetListResponse, BudgetProgress, BudgetPeriod
 )
-from ..auth.dependencies import get_current_user
+from ..auth.dependencies import get_current_user, get_db_with_user_context
 from ..models.user import User
 from ..models.category import Category
 
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 @router.post("", response_model=BudgetResponse)
 def create_budget(
     budget: BudgetCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Create a new budget"""
@@ -78,7 +78,7 @@ def get_budgets(
     over_budget: Optional[bool] = Query(None, description="Filter over-budget items"),
     skip: int = Query(0, ge=0, description="Number of budgets to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Number of budgets to return"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get budgets with optional filters"""
@@ -132,7 +132,7 @@ def get_budgets(
 @router.get("/{budget_id}", response_model=BudgetResponse)
 def get_budget(
     budget_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get a budget by ID"""
@@ -168,7 +168,7 @@ def get_budget(
 def update_budget(
     budget_id: UUID,
     budget_update: BudgetUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Update a budget"""
@@ -215,7 +215,7 @@ def update_budget(
 @router.delete("/{budget_id}")
 def delete_budget(
     budget_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Delete a budget"""
@@ -230,7 +230,7 @@ def delete_budget(
 @router.get("/{budget_id}/progress", response_model=BudgetProgress)
 def get_budget_progress(
     budget_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get detailed budget progress over time"""
@@ -243,7 +243,7 @@ def get_budget_progress(
 
 @router.get("/analytics/summary")
 def get_budget_summary(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get budget summary statistics"""
@@ -252,7 +252,7 @@ def get_budget_summary(
 
 @router.get("/analytics/alerts")
 def get_budget_alerts(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get current budget alerts"""

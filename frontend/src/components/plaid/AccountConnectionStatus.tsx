@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { LoadingSpinner } from '../ui';
+import { Modal } from '../ui/Modal';
+import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { PlaidLink } from './PlaidLink';
 import { usePlaidConnectionStatus, usePlaidActions } from '../../hooks/usePlaid';
+import { plaidService } from '../../services/plaidService';
 import { 
   Building2, 
   RefreshCw, 
@@ -15,6 +17,7 @@ import {
 
 export function AccountConnectionStatus() {
   const [showPlaidLink, setShowPlaidLink] = useState(false);
+  const [isQuickLinking, setIsQuickLinking] = useState(false);
   
   const { data: connectionStatus, isLoading, error, refetch } = usePlaidConnectionStatus();
   const { 
@@ -27,15 +30,10 @@ export function AccountConnectionStatus() {
   } = usePlaidActions();
 
   const handlePlaidSuccess = (accounts: unknown[]) => {
-    const recAccounts = accounts as Record<string, unknown>[];
     console.log('✅ Successfully connected accounts:', accounts);
     setShowPlaidLink(false);
     // Refetch connection status
     refetch();
-  };
-
-  const handlePlaidError = (error: Error) => {
-    console.error('❌ Plaid error:', error);
   };
 
   const handleSyncTransactions = () => {
@@ -44,6 +42,18 @@ export function AccountConnectionStatus() {
 
   const handleSyncBalances = () => {
     syncBalances(undefined);
+  };
+
+  const handleQuickSandboxLink = async () => {
+    try {
+      setIsQuickLinking(true);
+      await plaidService.quickSandboxLink();
+      await refetch();
+    } catch (e) {
+      console.error('Quick sandbox link failed:', e);
+    } finally {
+      setIsQuickLinking(false);
+    }
   };
 
   const formatCurrency = (cents: number) => {
@@ -146,6 +156,29 @@ export function AccountConnectionStatus() {
                 <Building2 className="h-4 w-4 mr-2" />
                 Connect First Account
               </Button>
+
+              {import.meta.env.DEV && (
+                <div className="mt-3">
+                  <Button
+                    onClick={handleQuickSandboxLink}
+                    variant="outline"
+                    size="sm"
+                    disabled={isQuickLinking}
+                  >
+                    {isQuickLinking ? (
+                      <>
+                        <LoadingSpinner size="xs" className="mr-2" />
+                        Linking Sandbox...
+                      </>
+                    ) : (
+                      <>
+                        <Building2 className="h-4 w-4 mr-2" />
+                        Quick Sandbox Link
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="space-y-4">
@@ -260,29 +293,21 @@ export function AccountConnectionStatus() {
         </div>
       </Card>
 
-      {/* Plaid Link Modal */}
-      {showPlaidLink && (
-        <div key={`plaid-modal-${Date.now()}`} className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Connect Bank Account
-            </h3>
-            <PlaidLink
-              key="plaid-link-component"
-              onSuccess={handlePlaidSuccess}
-              onError={(error) => console.error('Plaid error:', error)}
-            />
-            <Button
-              onClick={() => setShowPlaidLink(false)}
-              variant="ghost"
-              size="sm"
-              className="mt-4 w-full"
-            >
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
+      <Modal isOpen={showPlaidLink} onClose={() => setShowPlaidLink(false)} title="Connect Bank Account" size="sm">
+        <PlaidLink
+          key="plaid-link-component"
+          onSuccess={handlePlaidSuccess}
+          onError={() => setShowPlaidLink(false)}
+        />
+        <Button
+          onClick={() => setShowPlaidLink(false)}
+          variant="ghost"
+          size="sm"
+          className="mt-4 w-full"
+        >
+          Cancel
+        </Button>
+      </Modal>
     </div>
   );
 }

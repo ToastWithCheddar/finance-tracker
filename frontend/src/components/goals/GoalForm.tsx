@@ -145,11 +145,11 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Basic Information */}
         <Card className="p-4">
-          <h3 className="text-lg font-semibold mb-4">Basic Information</h3>
+          <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--text))]">Basic Information</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                 Goal Name *
               </label>
               <Input
@@ -162,13 +162,13 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                 Goal Type *
               </label>
               <select
                 value={formData.goal_type}
                 onChange={(e) => handleInputChange('goal_type', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))] bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))]"
                 required
               >
                 {options?.goal_types.map((type) => (
@@ -180,13 +180,13 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                 Priority
               </label>
               <select
                 value={formData.priority}
                 onChange={(e) => handleInputChange('priority', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))] bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))]"
               >
                 {options?.priorities.map((priority) => (
                   <option key={priority.value} value={priority.value}>
@@ -197,7 +197,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                 Target Amount *
               </label>
               <Input
@@ -213,7 +213,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                 Target Date
               </label>
               <Input
@@ -226,7 +226,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
             </div>
             
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                 Description
               </label>
               <textarea
@@ -242,11 +242,11 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
 
         {/* Progress Tracking */}
         <Card className="p-4">
-          <h3 className="text-lg font-semibold mb-4">Progress Tracking</h3>
+          <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--text))]">Progress Tracking</h3>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                 Monthly Target
               </label>
               <div className="flex space-x-2">
@@ -268,13 +268,13 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
                   Calculate
                 </Button>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs mt-1 text-[hsl(var(--text))] opacity-70">
                 Amount to save each month to reach your goal
               </p>
             </div>
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                 Milestone Percentage
               </label>
               <select
@@ -295,7 +295,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
 
         {/* Automatic Contributions */}
         <Card className="p-4">
-          <h3 className="text-lg font-semibold mb-4">Automatic Contributions</h3>
+          <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--text))]">Automatic Contributions</h3>
           
           <div className="space-y-4">
             <div className="flex items-center space-x-2">
@@ -304,9 +304,9 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
                 id="auto_contribute"
                 checked={formData.auto_contribute}
                 onChange={(e) => handleInputChange('auto_contribute', e.target.checked)}
-                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="rounded border-[hsl(var(--border))] text-[hsl(var(--brand))] focus:ring-[hsl(var(--brand))]"
               />
-              <label htmlFor="auto_contribute" className="text-sm font-medium text-gray-700">
+              <label htmlFor="auto_contribute" className="text-sm font-medium text-[hsl(var(--text))]">
                 Enable automatic contributions
               </label>
             </div>
@@ -314,7 +314,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
             {formData.auto_contribute && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 ml-6">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                     Amount
                   </label>
                   <Input
@@ -329,13 +329,13 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                     Frequency
                   </label>
                   <select
                     value={formData.contribution_frequency}
                     onChange={(e) => handleInputChange('contribution_frequency', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))] bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))]"
                   >
                     <option value="">Select frequency</option>
                     {options?.frequencies.map((freq) => (
@@ -347,7 +347,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                  <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                     Source Account
                   </label>
                   <Input
@@ -363,7 +363,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
         </Card>
 
         {/* Form Actions */}
-        <div className="flex justify-end space-x-3 pt-4 border-t">
+        <div className="flex justify-end space-x-3 pt-4 border-t border-[hsl(var(--border))]">
           <Button
             type="button"
             onClick={onClose}

@@ -117,3 +117,30 @@ export function isEmpty(value: unknown): boolean {
     (typeof value === 'object' && Object.keys(value).length === 0)
   );
 }
+
+/**
+ * Format date for transaction grouping (Today, Yesterday, or full date)
+ */
+export function formatGroupDate(dateString: string): string {
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  
+  const date = new Date(dateString);
+  
+  // Adjust for timezone offset to compare dates correctly
+  date.setMinutes(date.getMinutes() + date.getTimezoneOffset());
+
+  if (date.toDateString() === today.toDateString()) return 'Today';
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday';
+  
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+// Export category colors utility
+export * from './categoryColors';

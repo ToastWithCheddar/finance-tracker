@@ -13,6 +13,7 @@ from .user_service import UserService
 # Import other services that depend on user service
 from .category_service import CategoryService
 from .transaction_service import TransactionService
+from .recurring_detection_service import RecurringDetectionService
 from .budget_service import BudgetService
 from .goal_service import GoalService
 from .user_preferences_service import UserPreferencesService
@@ -24,6 +25,7 @@ __all__ = [
     'UserService',
     'CategoryService', 
     'TransactionService',
+    'RecurringDetectionService',
     'BudgetService',
     'GoalService',
     'UserPreferencesService',

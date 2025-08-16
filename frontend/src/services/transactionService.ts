@@ -5,7 +5,8 @@ import type {
   CreateTransactionRequest, 
   UpdateTransactionRequest, 
   TransactionFilters,
-  TransactionSummary
+  TransactionSummary,
+  TransactionStats
 } from '../types/transaction';
 
 // Re-export types for use in other files
@@ -51,6 +52,44 @@ export interface ExportFilters {
 export class TransactionService extends BaseService {
   protected baseEndpoint = '/transactions';
 
+  // Helper method to normalize transaction objects from backend to frontend format
+  private normalizeTransaction(transaction: any): Transaction {
+    return {
+      ...transaction,
+      // Normalize field names - use frontend format with backend as fallback
+      id: transaction.id,
+      userId: transaction.user_id || transaction.userId,
+      accountId: transaction.account_id || transaction.accountId,
+      accountName: transaction.account_name || transaction.accountName || 'Unknown Account',
+      accountType: transaction.account_type || transaction.accountType,
+      categoryId: transaction.category_id || transaction.categoryId,
+      categoryName: transaction.category_name || transaction.categoryName,
+      amountCents: transaction.amount_cents || transaction.amountCents || 0,
+      currency: transaction.currency || 'USD',
+      description: transaction.description || '',
+      merchant: transaction.merchant,
+      // Handle transaction date - convert Date objects to ISO string format
+      transactionDate: (() => {
+        const date = transaction.transaction_date || transaction.transactionDate;
+        if (!date) return '';
+        if (typeof date === 'string') return date;
+        if (date instanceof Date) return date.toISOString();
+        // Handle case where backend returns date as object
+        return date.toString();
+      })(),
+      isRecurring: transaction.is_recurring || transaction.isRecurring || false,
+      notes: transaction.notes,
+      tags: transaction.tags || [],
+      plaidTransactionId: transaction.plaid_transaction_id || transaction.plaidTransactionId,
+      confidenceScore: transaction.confidence_score || transaction.confidenceScore,
+      createdAt: transaction.created_at || transaction.createdAt,
+      updatedAt: transaction.updated_at || transaction.updatedAt,
+      status: transaction.status,
+      isTransfer: transaction.is_transfer || transaction.isTransfer || false,
+      mlSuggestedCategoryId: transaction.ml_suggested_category_id || transaction.mlSuggestedCategoryId,
+    } as Transaction;
+  }
+
   async getTransactions(
     filters?: Partial<TransactionFilters>,
     options?: { useCache?: boolean; context?: ErrorContext }
@@ -70,11 +109,11 @@ export class TransactionService extends BaseService {
     if (filters?.amountMaxCents !== undefined) params.max_amount = filters.amountMaxCents;
     if (filters?.search) params.search_query = filters.search;
 
-    console.log('🎯 TransactionService fetching from endpoint:', this.buildEndpoint('/'));
+    console.log('🎯 TransactionService fetching from endpoint:', this.baseEndpoint);
     console.log('📦 With params:', params);
     
-    const response = await this.get<TransactionListResponse>(
-      this.buildEndpoint('/'),
+    const response = await this.get<any>(
+      '/',
       params,
       {
         useCache: options?.useCache ?? true,
@@ -83,8 +122,19 @@ export class TransactionService extends BaseService {
       }
     );
     
-    console.log('📤 TransactionService response:', response);
-    return response;
+    console.log('📤 TransactionService raw response:', response);
+
+    // Normalize the response structure and transaction field names
+    const normalizedResponse: TransactionListResponse = {
+      items: (response.items || []).map((transaction: any) => this.normalizeTransaction(transaction)),
+      total: response.total || 0,
+      page: response.page || 1,
+      per_page: response.per_page || 25,
+      pages: response.pages || 1
+    };
+    
+    console.log('✨ TransactionService normalized response:', normalizedResponse);
+    return normalizedResponse;
   }
 
   async getTransaction(
@@ -92,7 +142,7 @@ export class TransactionService extends BaseService {
     options?: { useCache?: boolean; context?: ErrorContext }
   ): Promise<Transaction> {
     return this.get<Transaction>(
-      this.buildEndpoint(`/${transactionId}`),
+      `/${transactionId}`,
       undefined,
       {
         useCache: options?.useCache ?? true,
@@ -106,7 +156,7 @@ export class TransactionService extends BaseService {
     options?: { context?: ErrorContext }
   ): Promise<Transaction> {
     return this.post<Transaction>(
-      this.buildEndpoint('/'),
+      '/',
       transaction,
       { context: options?.context }
     );
@@ -118,7 +168,7 @@ export class TransactionService extends BaseService {
     options?: { context?: ErrorContext }
   ): Promise<Transaction> {
     return this.put<Transaction>(
-      this.buildEndpoint(`/${transactionId}`),
+      `/${transactionId}`,
       transaction,
       { context: options?.context }
     );
@@ -129,7 +179,7 @@ export class TransactionService extends BaseService {
     options?: { context?: ErrorContext }
   ): Promise<{ message: string }> {
     return this.delete<{ message: string }>(
-      this.buildEndpoint(`/${transactionId}`),
+      `/${transactionId}`,
       { context: options?.context }
     );
   }
@@ -139,16 +189,52 @@ export class TransactionService extends BaseService {
     options?: { context?: ErrorContext }
   ): Promise<{ message: string; deleted_count: number }> {
     return this.post<{ message: string; deleted_count: number }>(
-      this.buildEndpoint('/bulk-delete'),
+      '/bulk-delete',
       { transaction_ids: transactionIds },
       { context: options?.context }
     );
   }
 
+  // Helper method to normalize stats response from backend to frontend format
+  private normalizeTransactionStats(backendStats: any): TransactionStats {
+    // Handle case where backend returns TransactionSummary format (camelCase)
+    if (backendStats.totalIncome !== undefined) {
+      return {
+        total_income: backendStats.totalIncome || 0,
+        total_expenses: backendStats.totalExpenses || 0,
+        net_amount: backendStats.netAmount || 0,
+        transaction_count: backendStats.transactionCount || 0,
+        total_count: backendStats.transactionCount || 0, // alias for backward compatibility
+        // Calculate missing fields
+        average_transaction: backendStats.transactionCount > 0 
+          ? Math.abs(backendStats.netAmount) / backendStats.transactionCount 
+          : 0,
+        transaction_count_by_type: {
+          income: Math.round((backendStats.totalIncome / (backendStats.totalIncome + backendStats.totalExpenses || 1)) * (backendStats.transactionCount || 0)),
+          expense: Math.round((backendStats.totalExpenses / (backendStats.totalIncome + backendStats.totalExpenses || 1)) * (backendStats.transactionCount || 0))
+        }
+      };
+    }
+    
+    // Handle case where backend already returns snake_case format
+    return {
+      total_income: backendStats.total_income || 0,
+      total_expenses: backendStats.total_expenses || 0,
+      net_amount: backendStats.net_amount || 0,
+      transaction_count: backendStats.transaction_count || backendStats.total_count || 0,
+      total_count: backendStats.total_count || backendStats.transaction_count || 0,
+      average_transaction: backendStats.average_transaction || 0,
+      transaction_count_by_type: backendStats.transaction_count_by_type || {
+        income: 0,
+        expense: 0
+      }
+    };
+  }
+
   async getTransactionStats(
     filters?: TransactionFilters,
     options?: { useCache?: boolean; context?: ErrorContext }
-  ): Promise<TransactionSummary> {
+  ): Promise<TransactionStats> {
     const params: Record<string, string | number | boolean> = {};
     
     if (filters?.dateFrom) params.start_date = filters.dateFrom;
@@ -156,8 +242,11 @@ export class TransactionService extends BaseService {
     if (filters?.categoryId) params.category_id = filters.categoryId;
     if (filters?.search) params.search_query = filters.search;
 
-    return this.get<TransactionSummary>(
-      this.buildEndpoint('/analytics/stats'),
+    console.log('🎯 TransactionService fetching stats from endpoint:', '/analytics/stats');
+    console.log('📦 With params:', params);
+
+    const response = await this.get<any>(
+      '/analytics/stats',
       params,
       {
         useCache: options?.useCache ?? true,
@@ -165,6 +254,14 @@ export class TransactionService extends BaseService {
         context: options?.context
       }
     );
+    
+    console.log('📤 TransactionService raw stats response:', response);
+
+    // Normalize the response to match frontend expectations
+    const normalizedStats = this.normalizeTransactionStats(response);
+    
+    console.log('✨ TransactionService normalized stats:', normalizedStats);
+    return normalizedStats;
   }
 
   async importCSV(
@@ -176,10 +273,8 @@ export class TransactionService extends BaseService {
 
     try {
       // Use apiClient directly for FormData uploads
-      const result = await apiClient.postFormData<CSVImportResponse>(
-        this.buildEndpoint('/import/csv'),
-        formData
-      );
+      const endpoint = this.buildEndpoint('/import');
+      const result = await apiClient.postFormData<CSVImportResponse>(endpoint, formData);
       
       // Clear transaction cache after import
       this.clearCache();
@@ -198,14 +293,20 @@ export class TransactionService extends BaseService {
       format: filters.format,
     };
     
+    // Map frontend filter field names to backend API parameter names
     if (filters.start_date) params.start_date = filters.start_date;
     if (filters.end_date) params.end_date = filters.end_date;
-    if (filters.category_id) params.category_id = filters.category_id;
+    if (filters.category_id) params.category = filters.category_id; // Backend expects 'category' not 'category_id'
     if (filters.transaction_type) params.transaction_type = filters.transaction_type;
 
+    console.log('🎯 Exporting transactions with params:', params);
+
     try {
-      return await apiClient.getBlob('/transactions/export', params);
+      const blob = await apiClient.getBlob('/transactions/export', params);
+      console.log('✅ Export blob received:', blob.size, 'bytes');
+      return blob;
     } catch (error) {
+      console.error('❌ Export failed:', error);
       throw this.handleServiceError(error as any, options?.context);
     }
   }
@@ -247,11 +348,14 @@ export class TransactionService extends BaseService {
             
             // Map CSV headers to our transaction structure
             const amount = parseFloat(transaction.amount || transaction.Amount || '0');
+            const transactionType = (transaction.transaction_type || 'expense').toLowerCase() as 'income' | 'expense';
+            
             const mappedTransaction: CreateTransactionRequest = {
               accountId: transaction.account_id || transaction.accountId || '', // Will need to be set by caller
               amountCents: Math.round(amount * 100), // Convert dollars to cents
               description: transaction.description || transaction.Description || '',
               transactionDate: transaction.date || transaction.Date || transaction.transaction_date || new Date().toISOString().split('T')[0],
+              transaction_type: transactionType,
               categoryId: transaction.category_id || transaction.category || transaction.Category,
             };
             
@@ -271,14 +375,158 @@ export class TransactionService extends BaseService {
   }
 
   downloadExportFile(blob: Blob, filename: string): void {
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    try {
+      console.log('📥 Starting download:', filename, 'Size:', blob.size, 'Type:', blob.type);
+      
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.style.display = 'none';
+      
+      document.body.appendChild(a);
+      a.click();
+      
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+        console.log('✅ Download completed and cleaned up');
+      }, 100);
+    } catch (error) {
+      console.error('❌ Download failed:', error);
+      throw new Error('Failed to download file');
+    }
+  }
+
+  // Enhanced methods from standardized service
+  async searchTransactions(request: {
+    query: string;
+    start_date?: string;
+    end_date?: string;
+    category?: string;
+    transaction_type?: string;
+    page?: number;
+    per_page?: number;
+  }): Promise<TransactionListResponse> {
+    const params: Record<string, string | number | boolean> = {};
+    
+    Object.entries(request).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        params[key] = value;
+      }
+    });
+
+    const response = await this.get<TransactionListResponse>(
+      '/search_transactions',
+      params
+    );
+    
+    return response;
+  }
+
+  async getTransactionsByCategory(categoryId: string, filters?: Omit<TransactionFilters, 'categoryId'>): Promise<TransactionListResponse> {
+    return this.getTransactions({ ...filters, categoryId });
+  }
+
+  async getTransactionsByAccount(accountId: string, filters?: Omit<TransactionFilters, 'accountId'>): Promise<TransactionListResponse> {
+    return this.getTransactions({ ...filters, accountId });
+  }
+
+  async getTransactionsByDateRange(
+    startDate: string, 
+    endDate: string, 
+    filters?: Omit<TransactionFilters, 'dateFrom' | 'dateTo'>
+  ): Promise<TransactionListResponse> {
+    return this.getTransactions({ 
+      ...filters, 
+      dateFrom: startDate, 
+      dateTo: endDate 
+    });
+  }
+
+  async getSpendingTrends(period: 'week' | 'month' | 'year' = 'month'): Promise<any[]> {
+    const params = { period };
+    return this.get<any[]>(
+      '/analytics/trends',
+      params
+    );
+  }
+
+  async getCategoryBreakdown(filters?: TransactionFilters): Promise<any[]> {
+    const params: Record<string, string | number | boolean> = {};
+    
+    if (filters?.dateFrom) params.start_date = filters.dateFrom;
+    if (filters?.dateTo) params.end_date = filters.dateTo;
+    if (filters?.categoryId) params.category_id = filters.categoryId;
+    if (filters?.search) params.search_query = filters.search;
+
+    return this.get<any[]>(
+      '/category-breakdown',
+      params
+    );
+  }
+
+  async getRecentTransactions(limit: number = 10): Promise<Transaction[]> {
+    const response = await this.getTransactions({ 
+      per_page: limit 
+    });
+    return response.items || [];
+  }
+
+  async getTransactionCategories(): Promise<string[]> {
+    return this.get<string[]>(
+      '/categories'
+    );
+  }
+
+  // ServiceResponse wrapper variants for compatibility with new patterns
+  async getTransactionsWithWrapper(
+    filters?: Partial<TransactionFilters>,
+    options?: { useCache?: boolean; context?: ErrorContext }
+  ): Promise<{ success: boolean; data: TransactionListResponse }> {
+    try {
+      const data = await this.getTransactions(filters, options);
+      return {
+        success: true,
+        data
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: { items: [], total: 0, page: 1, per_page: 20, pages: 1 }
+      };
+    }
+  }
+
+  async getSpendingTrendsWithWrapper(period: 'week' | 'month' | 'year' = 'month'): Promise<{ success: boolean; data: any[] }> {
+    try {
+      const data = await this.getSpendingTrends(period);
+      return {
+        success: true,
+        data
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: []
+      };
+    }
+  }
+
+  async getCategoryBreakdownWithWrapper(filters?: TransactionFilters): Promise<{ success: boolean; data: any[] }> {
+    try {
+      const data = await this.getCategoryBreakdown(filters);
+      return {
+        success: true,
+        data
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: []
+      };
+    }
   }
 }
 

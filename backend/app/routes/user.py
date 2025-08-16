@@ -6,9 +6,10 @@ import uuid
 import logging
 
 from app.database import get_db
-from app.auth.dependencies import get_current_user, get_current_active_user
+from app.auth.dependencies import get_current_user, get_current_active_user, get_db_with_user_context
 from app.schemas.user import UserResponse, UserUpdate, UserProfile
 from app.schemas.user_preferences import UserPreferencesResponse, UserPreferencesUpdate
+from app.schemas.user_session import UserSessionPublic, SessionStatsResponse
 from app.services.user_service import UserService
 from app.services.user_preferences_service import UserPreferencesService
 from app.models.user import User
@@ -29,7 +30,7 @@ async def get_current_user_profile(
 async def update_current_user_profile(
     user_update: UserUpdate,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Update current user's profile"""
     try:
@@ -55,7 +56,7 @@ async def update_current_user_profile(
 @router.delete("/me")
 async def delete_current_user_account(
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Delete current user's account"""
     user_service.deactivate_user(db=db, user_id=current_user.id)
@@ -67,7 +68,7 @@ async def search_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Search users (for admin or specific features)"""
     users = user_service.search_users(
@@ -82,7 +83,7 @@ async def search_users(
 async def get_user_by_id(
     user_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Get user by ID (public profile)"""
     user = user_service.get(db=db, id=user_id)
@@ -97,7 +98,7 @@ async def get_user_by_id(
 @router.get("/me/preferences", response_model=UserPreferencesResponse)
 async def get_user_preferences(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Get current user's preferences"""
     preferences = preferences_service.get_or_create_preferences(db, current_user.id)
@@ -107,7 +108,7 @@ async def get_user_preferences(
 async def update_user_preferences(
     preferences_update: UserPreferencesUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Update current user's preferences"""
     updated_preferences = preferences_service.update_user_preferences(
@@ -118,7 +119,7 @@ async def update_user_preferences(
 @router.post("/me/preferences/reset", response_model=UserPreferencesResponse)
 async def reset_user_preferences(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Reset user preferences to default values"""
     default_preferences = preferences_service.reset_to_defaults(db, current_user.id)
@@ -136,3 +137,89 @@ async def get_detailed_profile(
         display_name=current_user.display_name,
         avatar_url=current_user.avatar_url
     )
+
+# Session Management Endpoints
+@router.get("/me/sessions", response_model=List[UserSessionPublic])
+async def get_user_sessions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_with_user_context)
+):
+    """Get all active sessions for the current user"""
+    try:
+        sessions = user_service.get_user_sessions(db, current_user.id)
+        
+        # Convert sessions to public format and identify current session
+        session_list = []
+        for session in sessions:
+            session_data = UserSessionPublic.from_orm(session)
+            # You'd need to determine current session based on the JWT token
+            # For now, we'll mark the most recent as current (this is simplified)
+            session_data.is_current = session == sessions[0] if sessions else False
+            session_list.append(session_data)
+        
+        return session_list
+    except Exception as e:
+        logger.error(f"Failed to get user sessions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve user sessions"
+        )
+
+@router.get("/me/sessions/stats", response_model=SessionStatsResponse)
+async def get_session_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_with_user_context)
+):
+    """Get session statistics for the current user"""
+    try:
+        stats = user_service.get_session_stats(db, current_user.id)
+        return stats
+    except Exception as e:
+        logger.error(f"Failed to get session stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to retrieve session statistics"
+        )
+
+@router.delete("/me/sessions/{session_id}")
+async def revoke_user_session(
+    session_id: uuid.UUID,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db_with_user_context)
+):
+    """Revoke a specific user session"""
+    try:
+        success = user_service.revoke_session(db, current_user.id, session_id)
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Session not found or already inactive"
+            )
+        return {"message": "Session revoked successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to revoke session {session_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to revoke session"
+        )
+
+@router.post("/me/sessions/revoke-all")
+async def revoke_all_sessions(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db_with_user_context)
+):
+    """Revoke all other sessions except the current one"""
+    try:
+        revoked_count = user_service.revoke_all_other_sessions(db, current_user.id)
+        return {
+            "message": f"Successfully revoked {revoked_count} session(s)",
+            "revoked_sessions": revoked_count
+        }
+    except Exception as e:
+        logger.error(f"Failed to revoke all sessions: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to revoke sessions"
+        )

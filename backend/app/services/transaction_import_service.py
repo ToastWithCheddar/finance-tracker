@@ -12,9 +12,9 @@ from app.models.transaction import Transaction
 from app.models.category import Category
 from app.schemas.transaction import TransactionCreate
 from app.services.transaction_service import TransactionService
-from app.services.plaid_service import plaid_service
+from app.services.enhanced_plaid_service import enhanced_plaid_service
 from app.websocket.events import WebSocketEvent, EventType
-from app.websocket.manager import websocket_manager
+from app.websocket.manager import redis_websocket_manager as websocket_manager
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,7 @@ class TransactionImportService:
                 start_date = max(last_import_date - timedelta(days=1), start_date)
             
             # Fetch transactions from Plaid
-            plaid_transactions = await plaid_service.fetch_transactions(
+            plaid_transactions = await enhanced_plaid_service.fetch_transactions(
                 account.plaid_access_token,
                 start_date,
                 end_date,

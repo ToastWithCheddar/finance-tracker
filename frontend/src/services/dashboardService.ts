@@ -11,6 +11,15 @@ export interface DashboardAnalytics {
     date: string;
   }>;
   spendingByCategory: Record<string, number>;
+  // Additional properties expected by RealtimeDashboard
+  summary?: {
+    total_income: number;
+    total_expenses: number;
+    net_amount: number;
+    transaction_count: number;
+  };
+  category_breakdown?: CategoryBreakdown[];
+  period?: string;
 }
 
 export interface CategoryBreakdown {
@@ -23,16 +32,51 @@ export interface CategoryBreakdown {
 export interface SpendingTrend {
   period: string;
   amountCents: number;
+  income: number;
+  expenses: number;
   transactionCount: number;
   date: string;
 }
 
 export interface DashboardFilters {
   period?: 'week' | 'month' | 'quarter' | 'year';
-  startDate?: string;
-  endDate?: string;
-  categoryId?: string;
-  accountId?: string;
+  start_date?: string;
+  end_date?: string;
+  category_id?: string;
+  account_id?: string;
+}
+
+export interface MoneyFlowNode {
+  id: string;
+  label?: string;
+  color?: string;
+}
+
+export interface MoneyFlowLink {
+  source: string;
+  target: string;
+  value: number;
+}
+
+export interface MoneyFlowData {
+  nodes: MoneyFlowNode[];
+  links: MoneyFlowLink[];
+  metadata: {
+    total_income: number;
+    total_expenses: number;
+    net_savings: number;
+    date_range: {
+      start_date: string;
+      end_date: string;
+    };
+    income_sources_count: number;
+    expense_categories_count: number;
+  };
+}
+
+export interface SpendingHeatmapData {
+  day: string;
+  value: number;
 }
 
 export class DashboardService extends BaseService {
@@ -40,7 +84,7 @@ export class DashboardService extends BaseService {
 
   async getDashboardSummary(options?: { context?: ErrorContext }): Promise<DashboardAnalytics> {
     const response = await this.get<{ success: boolean; data: DashboardAnalytics }>(
-      this.buildEndpoint('/dashboard'),
+      '/dashboard',
       undefined,
       { context: options?.context, useCache: true, cacheTtl: 5 * 60 * 1000 } // Cache for 5 mins
     );
@@ -50,6 +94,57 @@ export class DashboardService extends BaseService {
     }
     throw new Error('Failed to fetch dashboard summary or data is invalid.');
   }
+
+  async getDashboardAnalytics(filters?: DashboardFilters, options?: { context?: ErrorContext }): Promise<DashboardAnalytics> {
+    // For now, delegate to getDashboardSummary until proper filtered analytics are implemented
+    return this.getDashboardSummary(options);
+  }
+
+  async getSpendingTrends(period: 'weekly' | 'monthly' = 'monthly', options?: { context?: ErrorContext }): Promise<SpendingTrend[]> {
+    // Placeholder implementation - would need actual API endpoint
+    return [];
+  }
+
+  getDateRangePresets() {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+    return {
+      'Last 7 days': { startDate: weekAgo, endDate: today },
+      'Last 30 days': { startDate: monthAgo, endDate: today },
+      'Last year': { startDate: yearAgo, endDate: today },
+    };
+  }
+
+  async getMoneyFlow(params: { start_date: string; end_date: string }, options?: { context?: ErrorContext }): Promise<MoneyFlowData> {
+    const response = await this.get<{ success: boolean; data: MoneyFlowData; message?: string }>(
+      '/money-flow',
+      { start_date: params.start_date, end_date: params.end_date },
+      { context: options?.context, useCache: true, cacheTtl: 10 * 60 * 1000 } // Cache for 10 mins
+    );
+
+    if (response && response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response?.message || 'Failed to fetch money flow data or data is invalid.');
+  }
+
+  async getSpendingHeatmap(params: { start_date: string; end_date: string }, options?: { context?: ErrorContext }): Promise<SpendingHeatmapData[]> {
+    const response = await this.get<{ success: boolean; data: SpendingHeatmapData[] }>(
+      '/spending-heatmap',
+      { start_date: params.start_date, end_date: params.end_date },
+      { context: options?.context, useCache: true, cacheTtl: 10 * 60 * 1000 } // Cache for 10 mins
+    );
+
+    if (response && response.success && response.data) {
+      return response.data;
+    }
+    throw new Error('Failed to fetch spending heatmap data or data is invalid.');
+  }
 }
 
 export const dashboardService = new DashboardService();
+export default dashboardService;

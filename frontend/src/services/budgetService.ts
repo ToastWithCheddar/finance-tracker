@@ -1,4 +1,6 @@
 import { apiClient } from './api';
+import { BaseService } from './base/BaseService';
+import type { ServiceResponse } from './base/BaseService';
 import { BudgetPeriod } from '../types/budgets';
 import type { 
   Budget, 
@@ -12,8 +14,45 @@ import type {
   CreateBudgetRequest
 } from '../types/budgets';
 
+// Enhanced types from standardized service
+export interface BudgetAnalytics {
+  total_budgets: number;
+  active_budgets: number;
+  over_budget_count: number;
+  total_budgeted_amount_cents: number;
+  total_spent_amount_cents: number;
+  average_utilization: number;
+  trends: Array<{
+    period: string;
+    budgeted_cents: number;
+    spent_cents: number;
+    utilization: number;
+  }>;
+}
 
-class BudgetService {
+export interface BudgetComparison {
+  current_period: {
+    budgeted_cents: number;
+    spent_cents: number;
+    utilization: number;
+  };
+  previous_period: {
+    budgeted_cents: number;
+    spent_cents: number;
+    utilization: number;
+  };
+  change: {
+    budgeted_cents: number;
+    spent_cents: number;
+    utilization: number;
+  };
+}
+
+
+class BudgetService extends BaseService {
+  protected readonly baseEndpoint = '/budgets';
+
+  // Legacy methods (maintain backward compatibility)
   async getBudgets(filters?: BudgetFilters): Promise<BudgetListResponse> {
     const params: Record<string, string | number | boolean> = {};
     
@@ -25,6 +64,35 @@ class BudgetService {
     if (filters?.limit) params.limit = filters.limit;
 
     return apiClient.get<BudgetListResponse>('/budgets', params);
+  }
+
+  // ServiceResponse wrapper variant
+  async getBudgetsWithWrapper(filters?: BudgetFilters): Promise<ServiceResponse<BudgetListResponse>> {
+    try {
+      const data = await this.getBudgets(filters);
+      return {
+        success: true,
+        data,
+        metadata: { timestamp: new Date().toISOString() }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: { 
+          budgets: [], 
+          summary: {
+            total_budgets: 0,
+            active_budgets: 0,
+            total_budgeted_cents: 0,
+            total_spent_cents: 0,
+            total_remaining_cents: 0,
+            over_budget_count: 0,
+            alert_count: 0
+          },
+          alerts: []
+        }
+      } as ServiceResponse<BudgetListResponse>;
+    }
   }
 
   async getBudget(budgetId: string): Promise<Budget> {
@@ -110,6 +178,191 @@ class BudgetService {
     if (usage.days_remaining === 1) return '1 day left';
     return `${usage.days_remaining} days left`;
   }
+
+  // Enhanced methods from standardized service
+  async getBudgetAnalytics(period?: BudgetPeriod): Promise<BudgetAnalytics> {
+    const params = period ? { period } : {};
+    return apiClient.get<BudgetAnalytics>(`${this.baseEndpoint}/analytics`, params);
+  }
+
+  async getBudgetAnalyticsWithWrapper(period?: BudgetPeriod): Promise<ServiceResponse<BudgetAnalytics>> {
+    try {
+      const data = await this.getBudgetAnalytics(period);
+      return {
+        success: true,
+        data,
+        metadata: { timestamp: new Date().toISOString() }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: {
+          total_budgets: 0,
+          active_budgets: 0,
+          over_budget_count: 0,
+          total_budgeted_amount_cents: 0,
+          total_spent_amount_cents: 0,
+          average_utilization: 0,
+          trends: []
+        }
+      } as ServiceResponse<BudgetAnalytics>;
+    }
+  }
+
+  async getBudgetComparison(
+    currentPeriodStart: string,
+    currentPeriodEnd: string,
+    previousPeriodStart: string,
+    previousPeriodEnd: string
+  ): Promise<BudgetComparison> {
+    const params = {
+      current_start: currentPeriodStart,
+      current_end: currentPeriodEnd,
+      previous_start: previousPeriodStart,
+      previous_end: previousPeriodEnd
+    };
+    return apiClient.get<BudgetComparison>(`${this.baseEndpoint}/comparison`, params);
+  }
+
+  async getBudgetComparisonWithWrapper(
+    currentPeriodStart: string,
+    currentPeriodEnd: string,
+    previousPeriodStart: string,
+    previousPeriodEnd: string
+  ): Promise<ServiceResponse<BudgetComparison>> {
+    try {
+      const data = await this.getBudgetComparison(
+        currentPeriodStart, currentPeriodEnd, 
+        previousPeriodStart, previousPeriodEnd
+      );
+      return {
+        success: true,
+        data,
+        metadata: { timestamp: new Date().toISOString() }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: {
+          current_period: { budgeted_cents: 0, spent_cents: 0, utilization: 0 },
+          previous_period: { budgeted_cents: 0, spent_cents: 0, utilization: 0 },
+          change: { budgeted_cents: 0, spent_cents: 0, utilization: 0 }
+        }
+      } as ServiceResponse<BudgetComparison>;
+    }
+  }
+
+  async getActiveBudgets(): Promise<Budget[]> {
+    const response = await this.getBudgets({ is_active: true });
+    return response.budgets;
+  }
+
+  async getActiveBudgetsWithWrapper(): Promise<ServiceResponse<Budget[]>> {
+    try {
+      const data = await this.getActiveBudgets();
+      return {
+        success: true,
+        data,
+        metadata: { timestamp: new Date().toISOString() }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: []
+      } as ServiceResponse<Budget[]>;
+    }
+  }
+
+  async getOverBudgetItems(): Promise<Budget[]> {
+    const response = await this.getBudgets({ over_budget: true });
+    return response.budgets;
+  }
+
+  async getOverBudgetItemsWithWrapper(): Promise<ServiceResponse<Budget[]>> {
+    try {
+      const data = await this.getOverBudgetItems();
+      return {
+        success: true,
+        data,
+        metadata: { timestamp: new Date().toISOString() }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: []
+      } as ServiceResponse<Budget[]>;
+    }
+  }
+
+  async getBudgetsByCategory(categoryId: string): Promise<Budget[]> {
+    const response = await this.getBudgets({ category_id: categoryId });
+    return response.budgets;
+  }
+
+  async getBudgetsByCategoryWithWrapper(categoryId: string): Promise<ServiceResponse<Budget[]>> {
+    try {
+      const data = await this.getBudgetsByCategory(categoryId);
+      return {
+        success: true,
+        data,
+        metadata: { timestamp: new Date().toISOString() }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: []
+      } as ServiceResponse<Budget[]>;
+    }
+  }
+
+  async getBudgetsByPeriod(period: BudgetPeriod): Promise<Budget[]> {
+    const response = await this.getBudgets({ period });
+    return response.budgets;
+  }
+
+  async getBudgetsByPeriodWithWrapper(period: BudgetPeriod): Promise<ServiceResponse<Budget[]>> {
+    try {
+      const data = await this.getBudgetsByPeriod(period);
+      return {
+        success: true,
+        data,
+        metadata: { timestamp: new Date().toISOString() }
+      };
+    } catch (error) {
+      return {
+        success: false,
+        data: []
+      } as ServiceResponse<Budget[]>;
+    }
+  }
+
+  // Additional utility methods from standardized service
+  calculateUtilization(budgetedAmount: number, spentAmount: number): number {
+    if (budgetedAmount <= 0) return 0;
+    return Math.round((spentAmount / budgetedAmount) * 100);
+  }
+
+  isOverThreshold(budgetedAmount: number, spentAmount: number, threshold: number = 0.8): boolean {
+    const utilization = this.calculateUtilization(budgetedAmount, spentAmount);
+    return utilization >= (threshold * 100);
+  }
+
+  isExceeded(budgetedAmount: number, spentAmount: number): boolean {
+    return spentAmount > budgetedAmount;
+  }
+
+  getBudgetStatusDetailed(budgetedAmount: number, spentAmount: number, threshold: number = 0.8): 'good' | 'warning' | 'exceeded' {
+    if (this.isExceeded(budgetedAmount, spentAmount)) {
+      return 'exceeded';
+    }
+    
+    if (this.isOverThreshold(budgetedAmount, spentAmount, threshold)) {
+      return 'warning';
+    }
+    
+    return 'good';
+  }
 }
 
 export const budgetService = new BudgetService();
+export { BudgetService };

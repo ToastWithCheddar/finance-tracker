@@ -25,7 +25,7 @@ from app.services.transaction_sync_service import transaction_sync_service
 from app.services.account_sync_monitor import account_sync_monitor
 from app.services.enhanced_reconciliation_service import enhanced_reconciliation_service
 from app.services.automatic_sync_scheduler import automatic_sync_scheduler
-from app.websocket.manager import websocket_manager
+from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
 
 router = APIRouter()
@@ -127,6 +127,7 @@ async def exchange_plaid_token(
             # Don't fail the whole process if WebSocket fails
         
         # Schedule initial sync
+        # Use Background Tasks: User doesn't have to wait on a loading screen
         try:
             background_tasks.add_task(
                 _schedule_account_sync, 

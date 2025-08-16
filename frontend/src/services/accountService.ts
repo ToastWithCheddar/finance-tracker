@@ -55,7 +55,7 @@ export class AccountService extends BaseService {
   async getAccounts(options?: { context?: ErrorContext }): Promise<Account[]> {
     try {
       const response = await this.get<Account[]>(
-        this.buildEndpoint(''),
+        '/',
         undefined,
         { context: options?.context }
       );
@@ -83,7 +83,7 @@ export class AccountService extends BaseService {
   async getAccount(id: string, options?: { context?: ErrorContext }): Promise<Account> {
     try {
       const response = await this.get<Account>(
-        this.buildEndpoint(`/${id}`),
+        `/${id}`,
         undefined,
         { context: options?.context }
       );
@@ -113,7 +113,7 @@ export class AccountService extends BaseService {
   ): Promise<Account> {
     try {
       return await this.post<Account>(
-        this.buildEndpoint(''),
+        '/',
         accountData as unknown as Record<string, unknown>,
         { context: options?.context }
       );
@@ -137,7 +137,7 @@ export class AccountService extends BaseService {
   ): Promise<Account> {
     try {
       return await this.put<Account>(
-        this.buildEndpoint(`/${id}`),
+        `/${id}`,
         accountData as unknown as Record<string, unknown>,
         { context: options?.context }
       );
@@ -156,7 +156,7 @@ export class AccountService extends BaseService {
 
   async deleteAccount(id: string, options?: { context?: ErrorContext }): Promise<void> {
     try {
-      await this.delete(this.buildEndpoint(`/${id}`), { context: options?.context });
+      await this.delete(`/${id}`, { context: options?.context });
     } catch (error: unknown) {
       if ((error as { code?: string })?.code === 'UNAUTHORIZED' || (error as { code?: string })?.code === 'FORBIDDEN') {
         throw new Error('Authentication required to delete account. Please log in again.');

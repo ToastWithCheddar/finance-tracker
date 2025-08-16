@@ -10,16 +10,26 @@ export interface RecurringRule {
 export interface Transaction {
   id: string;
   userId: string;
+  user_id?: string; // Backend field name
   accountId: string;
+  account_id?: string; // Backend field name  
   accountName: string;
-  accountType: string;
+  account_name?: string; // Backend field name
+  accountType?: string;
+  account_type?: string; // Backend field name
   categoryId?: string;
+  category_id?: string; // Backend field name
+  categoryName?: string;
+  category_name?: string; // Backend field name
   amountCents: number;
+  amount_cents?: number; // Backend field name
   currency: string;
   description: string;
   merchant?: string;
   transactionDate: string;
+  transaction_date?: string | Date; // Backend field name - can be Date or string
   isRecurring: boolean;
+  is_recurring?: boolean; // Backend field name
   recurringRule?: RecurringRule;
   location?: {
     lat: number;
@@ -29,19 +39,32 @@ export interface Transaction {
   notes?: string;
   tags?: string[];
   plaidTransactionId?: string;
+  plaid_transaction_id?: string; // Backend field name
   confidenceScore?: number;
+  confidence_score?: number; // Backend field name
   createdAt: string;
+  created_at?: string; // Backend field name
   updatedAt: string;
+  updated_at?: string; // Backend field name
+  status?: string; // Backend field
+  isTransfer?: boolean;
+  is_transfer?: boolean; // Backend field name
+  mlSuggestedCategoryId?: string;
+  ml_suggested_category_id?: string; // Backend field name
 }
 
 export interface CreateTransactionRequest {
   accountId: string;
   categoryId?: string;
+  category_id?: string; // Backend field name
   amountCents: number;
+  amount?: number; // Frontend convenience field (dollars)
   currency?: string;
   description: string;
   merchant?: string;
   transactionDate: string;
+  transaction_date?: string; // Backend field name
+  transaction_type: 'income' | 'expense';
   isRecurring?: boolean;
   recurringRule?: RecurringRule;
   notes?: string;
@@ -52,6 +75,8 @@ export interface CreateTransactionRequest {
 export interface UpdateTransactionRequest extends Partial<CreateTransactionRequest> {
   id: string;
 }
+
+export type TransactionGroupBy = 'none' | 'date' | 'category' | 'merchant';
 
 export interface TransactionFilters {
   accountId?: string;
@@ -66,6 +91,8 @@ export interface TransactionFilters {
   page?: number;
   per_page?: number;
   limit?: number;
+  group_by?: TransactionGroupBy;
+  transaction_type?: 'income' | 'expense';
 }
 
 export interface TransactionSummary {
@@ -85,6 +112,22 @@ export interface TransactionListResponse {
   per_page: number;
   has_next: boolean;
   has_previous: boolean;
+}
+
+export interface TransactionGroup {
+  key: string;
+  total_amount_cents: number;
+  count: number;
+  transactions: Transaction[];
+}
+
+export interface TransactionGroupedResponse {
+  groups: TransactionGroup[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+  grouped: boolean;
 }
 
 export interface TransactionStats {

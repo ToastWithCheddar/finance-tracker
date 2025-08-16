@@ -1,5 +1,5 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui';
+import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import type { CategoryBreakdown } from '../../services/dashboardService';
 
 interface CategoryPieChartProps {

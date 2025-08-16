@@ -5,18 +5,13 @@ import {
   type UserPreferencesUpdate 
 } from '../services/userPreferencesService';
 import { syncThemeWithPreferences } from '../stores/themeStore';
+import { queryKeys } from '../services/queryClient';
 import toast from 'react-hot-toast';
-
-// Query keys
-const USER_PREFERENCES_KEYS = {
-  all: ['user-preferences'] as const,
-  preferences: () => [...USER_PREFERENCES_KEYS.all, 'current'] as const,
-} as const;
 
 // Get user preferences
 export function useUserPreferences() {
   return useQuery({
-    queryKey: USER_PREFERENCES_KEYS.preferences(),
+    queryKey: queryKeys.userPreferences.current(),
     queryFn: () => userPreferencesService.getPreferences(),
     staleTime: 10 * 60 * 1000, // 10 minutes (preferences don't change often)
     gcTime: 30 * 60 * 1000, // 30 minutes
@@ -41,7 +36,7 @@ export function useUpdateUserPreferences() {
     onSuccess: (updatedPreferences) => {
       // Update cache
       queryClient.setQueryData(
-        USER_PREFERENCES_KEYS.preferences(),
+        queryKeys.userPreferences.current(),
         updatedPreferences
       );
       
@@ -58,7 +53,8 @@ export function useUpdateUserPreferences() {
     },
     onError: (error) => {
       console.error('Failed to save preferences:', error);
-      toast.error(`Failed to save preferences: ${error.message}`);
+      const errorMessage = userPreferencesService.getErrorMessage(error);
+      toast.error(`Failed to save preferences: ${errorMessage}`);
     },
   });
 }
@@ -72,7 +68,7 @@ export function useResetUserPreferences() {
     onSuccess: (defaultPreferences) => {
       // Update cache
       queryClient.setQueryData(
-        USER_PREFERENCES_KEYS.preferences(),
+        queryKeys.userPreferences.current(),
         defaultPreferences
       );
       
@@ -86,7 +82,8 @@ export function useResetUserPreferences() {
     },
     onError: (error) => {
       console.error('Failed to reset preferences:', error);
-      toast.error(`Failed to reset preferences: ${error.message}`);
+      const errorMessage = userPreferencesService.getErrorMessage(error);
+      toast.error(`Failed to reset preferences: ${errorMessage}`);
     },
   });
 }

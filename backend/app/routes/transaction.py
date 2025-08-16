@@ -26,16 +26,16 @@ from ..schemas.transaction import (
     TransactionPagination,
     TransactionListResponse
 )
-from app.auth.dependencies import get_current_user
+from app.auth.dependencies import get_current_user, get_db_with_user_context
 from ..models.user import User
 from ..models.transaction import Transaction
-from ..websocket.manager import WebSocketManager
+from ..websocket.manager import redis_websocket_manager
 
 # Singleton pattern for the websocket manager and logger
 
 logger = logging.getLogger(__name__)
 
-manager = WebSocketManager()
+manager = redis_websocket_manager
 
 
 router = APIRouter(tags=["transactions"])
@@ -45,7 +45,7 @@ async def create_transaction(
     transaction: TransactionCreate,
     # This could be achieved by setting preferences think that later 
     notify: bool = Query(default=True, description="Send real-time notification"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     try:
@@ -77,7 +77,7 @@ async def create_transaction(
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 def get_transaction(
     transaction_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     transaction = TransactionService.get_transaction(db, transaction_id, current_user.id)
@@ -89,7 +89,7 @@ def get_transaction(
 async def update_transaction(
     transaction_id: UUID,
     transaction_update: TransactionUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     transaction = TransactionService.get_transaction(db, transaction_id, current_user.id)
@@ -108,7 +108,7 @@ async def update_transaction(
 @router.delete("/{transaction_id}")
 async def delete_transaction(
     transaction_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     transaction = TransactionService.get_transaction(db, transaction_id, current_user.id)
@@ -124,63 +124,72 @@ async def delete_transaction(
 
     return {"message": "Transaction deleted successfully"}
 
-@router.get("", response_model=dict)
+@router.get("")
 def get_transactions(
     filters: TransactionFilter = Depends(),
     pagination: TransactionPagination = Depends(),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
-    transactions, total_count = TransactionService.get_transactions_with_filters(
-        db, current_user.id, filters, pagination
-    )
-    
-    # Build response using proper serialization with eager-loaded relationships
-    transaction_responses = []
-    for transaction in transactions:
-        # Account information is now available due to eager loading
-        account_name = transaction.account.name if transaction.account else "Unknown Account"
+    # Check if grouping is requested
+    if filters.group_by and filters.group_by != "none":
+        # Use the new grouped method
+        return TransactionService.get_transactions_with_grouping(
+            db, current_user.id, filters, pagination
+        )
+    else:
+        # Use the original flat method
+        transactions, total_count = TransactionService.get_transactions_with_filters(
+            db, current_user.id, filters, pagination
+        )
         
-        # Category information is now available due to eager loading
-        category_name = transaction.category.name if transaction.category else None
+        # Build response using proper serialization with eager-loaded relationships
+        transaction_responses = []
+        for transaction in transactions:
+            # Account information is now available due to eager loading
+            account_name = transaction.account.name if transaction.account else "Unknown Account"
+            
+            # Category information is now available due to eager loading
+            category_name = transaction.category.name if transaction.category else None
+            
+            transaction_responses.append(TransactionResponse(
+                id=transaction.id,
+                user_id=transaction.user_id,
+                account_id=transaction.account_id,
+                amount_cents=transaction.amount_cents,
+                currency=transaction.currency,
+                description=transaction.description,
+                merchant=transaction.merchant,
+                transaction_date=transaction.transaction_date,
+                category_id=transaction.category_id,
+                status=transaction.status,
+                is_recurring=transaction.is_recurring,
+                is_transfer=transaction.is_transfer,
+                notes=transaction.notes,
+                tags=transaction.tags or [],
+                created_at=transaction.created_at,
+                updated_at=transaction.updated_at,
+                confidence_score=transaction.confidence_score,
+                ml_suggested_category_id=transaction.ml_suggested_category_id,
+                plaid_transaction_id=transaction.plaid_transaction_id,
+                category_name=category_name,
+                account_name=account_name
+            ))
         
-        transaction_responses.append(TransactionResponse(
-            id=transaction.id,
-            user_id=transaction.user_id,
-            account_id=transaction.account_id,
-            amount_cents=transaction.amount_cents,
-            currency=transaction.currency,
-            description=transaction.description,
-            merchant=transaction.merchant,
-            transaction_date=transaction.transaction_date,
-            category_id=transaction.category_id,
-            status=transaction.status,
-            is_recurring=transaction.is_recurring,
-            is_transfer=transaction.is_transfer,
-            notes=transaction.notes,
-            tags=transaction.tags or [],
-            created_at=transaction.created_at,
-            updated_at=transaction.updated_at,
-            confidence_score=transaction.confidence_score,
-            ml_suggested_category_id=transaction.ml_suggested_category_id,
-            plaid_transaction_id=transaction.plaid_transaction_id,
-            category_name=category_name,
-            account_name=account_name
-        ))
-    
-    return {
-        "items": transaction_responses,
-        "total": total_count,
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-        "pages": (total_count + pagination.per_page - 1) // pagination.per_page
-    }
+        return {
+            "items": transaction_responses,
+            "total": total_count,
+            "page": pagination.page,
+            "per_page": pagination.per_page,
+            "pages": (total_count + pagination.per_page - 1) // pagination.per_page,
+            "grouped": False
+        }
 
 @router.post("/import")
 async def import_transactions(
     file: UploadFile = File(...),
     notify: bool = Query(default=True, description="Send real-time notification"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     if not file.filename.endswith('.csv'):
@@ -191,21 +200,40 @@ async def import_transactions(
     csv_reader = csv.DictReader(csv_content)
     
     transactions = []
-    for row in csv_reader:
+    errors = []
+    for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 because row 1 is headers
         try:
+            # Parse amount (convert dollars to cents)
+            amount_dollars = float(row['amount'])
+            amount_cents = int(amount_dollars * 100)
+            
+            # Parse transaction type and adjust amount sign
+            transaction_type = row['transaction_type'].lower()
+            if transaction_type == 'expense' and amount_cents > 0:
+                amount_cents = -amount_cents  # Expenses should be negative
+            
+            # Parse date
+            transaction_date = datetime.strptime(row['transaction_date'], "%Y-%m-%d").date()
+            
+            # Create transaction object
             transaction = TransactionCreate(
-                amount=float(row['amount']),
-                category=row['category'],
-                description=row.get('description'),
-                transaction_date=datetime.strptime(row['transaction_date'], "%Y-%m-%d"),
-                transaction_type=row['transaction_type']
+                account_id=UUID('00000000-0000-0000-0000-000000000000'),  # Default account, will be updated by service
+                amount_cents=amount_cents,
+                description=row.get('description', ''),
+                transaction_date=transaction_date,
+                category_id=None  # Will be set by ML categorization
             )
             transactions.append(transaction)
         except (ValueError, KeyError) as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid data in CSV: {str(e)}"
-            )
+            errors.append(f"Row {row_num}: {str(e)}")
+        except Exception as e:
+            errors.append(f"Row {row_num}: Unexpected error - {str(e)}")
+    
+    if errors:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid data in CSV rows: {'; '.join(errors)}"
+        )
 
     imported_transactions = TransactionService.import_transactions_from_csv(
         db, current_user.id, transactions
@@ -226,14 +254,16 @@ async def import_transactions(
     
     return {
         "message": f"Successfully imported {len(imported_transactions)} transactions",
-        "imported_count": len(imported_transactions)
+        "imported_count": len(imported_transactions),
+        "errors": errors,
+        "transactions": [_serialize_transaction(t) for t in imported_transactions]
     }
 
 @router.post("/bulk-delete")
 async def bulk_delete_transactions(
     transaction_ids: List[UUID],
     notify: bool = Query(default=True, description="Send real-time notification"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Delete multiple transactions at once"""
@@ -273,7 +303,7 @@ async def search_transactions(
     transaction_type: Optional[str] = Query(None, description="Transaction type filter"),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(25, ge=1, le=100, description="Items per page"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Advanced search for transactions with multiple filters"""
@@ -301,7 +331,7 @@ async def search_transactions(
 
 @router.get("/categories", response_model=List[str])
 def get_transaction_categories(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get all unique transaction categories for the current user"""
@@ -316,7 +346,7 @@ async def export_transactions(
     start_date: Optional[datetime] = Query(None, description="Start date filter"),
     end_date: Optional[datetime] = Query(None, description="End date filter"),
     category: Optional[str] = Query(None, description="Category filter"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Export transactions in CSV or JSON format"""
@@ -343,13 +373,17 @@ async def export_transactions(
         writer.writeheader()
         
         for transaction in transactions:
+            # Convert cents to dollars for export
+            amount_dollars = transaction.amount_cents / 100
+            transaction_type = 'expense' if transaction.amount_cents < 0 else 'income'
+            
             writer.writerow({
-                'id': transaction.id,
-                'amount': transaction.amount,
-                'category': transaction.category,
+                'id': str(transaction.id),
+                'amount': abs(amount_dollars),  # Always positive, type indicates income/expense
+                'category': getattr(transaction.category, 'name', '') if transaction.category else '',
                 'description': transaction.description or '',
                 'transaction_date': transaction.transaction_date.strftime('%Y-%m-%d'),
-                'transaction_type': transaction.transaction_type,
+                'transaction_type': transaction_type,
                 'created_at': transaction.created_at.strftime('%Y-%m-%d %H:%M:%S')
             })
         
@@ -361,13 +395,17 @@ async def export_transactions(
     else:  # json
         data = []
         for transaction in transactions:
+            # Convert cents to dollars for export
+            amount_dollars = transaction.amount_cents / 100
+            transaction_type = 'expense' if transaction.amount_cents < 0 else 'income'
+            
             data.append({
-                'id': transaction.id,
-                'amount': transaction.amount,
-                'category': transaction.category,
-                'description': transaction.description,
+                'id': str(transaction.id),
+                'amount': abs(amount_dollars),  # Always positive, type indicates income/expense
+                'category': getattr(transaction.category, 'name', '') if transaction.category else '',
+                'description': transaction.description or '',
                 'transaction_date': transaction.transaction_date.isoformat(),
-                'transaction_type': transaction.transaction_type,
+                'transaction_type': transaction_type,
                 'created_at': transaction.created_at.isoformat(),
                 'updated_at': transaction.updated_at.isoformat()
             })
@@ -384,7 +422,7 @@ def get_transaction_stats(
     end_date: Optional[date] = Query(None, description="End date for stats period"),
     category_id: Optional[UUID] = Query(None, description="Filter by category"),
     search_query: Optional[str] = Query(None, description="Search query"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get transaction summary statistics"""
@@ -394,7 +432,7 @@ def get_transaction_stats(
 def get_dashboard_analytics(
     start_date: Optional[datetime] = Query(None, description="Start date for analytics period"),
     end_date: Optional[datetime] = Query(None, description="End date for analytics period"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get comprehensive dashboard analytics for the current user"""
@@ -403,7 +441,7 @@ def get_dashboard_analytics(
 @router.get("/analytics/trends")
 def get_spending_trends(
     period: str = Query("monthly", pattern="^(weekly|monthly)$", description="Trend period"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get spending trends over time"""

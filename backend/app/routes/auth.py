@@ -8,10 +8,9 @@ from app.auth.auth_service import AuthService
 from app.auth.dependencies import get_current_user, get_current_active_user, get_auth_service
 from app.schemas.auth import (
     UserRegister, UserLogin, RefreshTokenRequest,
-    PasswordResetRequest, PasswordUpdate,
-    ResendVerificationRequest, AuthResponse, StandardAuthResponse
-    # REMOVED: EmailVerification - No longer needed for Supabase-only auth
+    PasswordResetRequest, ResendVerificationRequest, AuthResponse, StandardAuthResponse
 )
+from app.schemas.user import PasswordUpdate
 from app.schemas.user import User as UserSchema
 from app.models.user import User
 from app.auth.supabase_client import supabase_client
@@ -67,9 +66,6 @@ async def request_password_reset(
     await auth_service.send_password_reset(reset_data.email)
     return
 
-# REMOVED: /verify-email endpoint - Using Supabase native email verification
-# Email verification is handled automatically by Supabase through their confirmation emails
-
 @router.post("/resend-verification", status_code=status.HTTP_204_NO_CONTENT)
 async def resend_verification(
     resend_data: ResendVerificationRequest,
@@ -79,8 +75,15 @@ async def resend_verification(
     await auth_service.resend_verification(resend_data.email)
     return
 
-# REMOVED: /confirm-email endpoint - Using Supabase native email confirmation
-# Supabase handles email confirmation automatically through their dashboard configuration
+@router.post("/change-password", response_model=Dict[str, str])
+async def change_password(
+    password_data: PasswordUpdate,
+    current_user: User = Depends(get_current_active_user),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Changes the current user's password."""
+    await auth_service.change_password(current_user.email, password_data)
+    return {"message": "Password changed successfully"}
 
 @router.get("/health")
 async def auth_health(auth_service: AuthService = Depends(get_auth_service)):

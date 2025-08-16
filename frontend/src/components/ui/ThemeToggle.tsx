@@ -11,15 +11,17 @@ export function ThemeToggle() {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
     }
-    return 'light';
+    return 'dark';
   });
 
   useEffect(() => {
     const root = document.documentElement;
     if (theme === 'dark') {
       root.classList.add('dark');
+      root.classList.add('theme-emerald');
     } else {
       root.classList.remove('dark');
+      root.classList.remove('theme-emerald');
     }
     localStorage.setItem('theme', theme);
   }, [theme]);
@@ -31,11 +33,11 @@ export function ThemeToggle() {
   return (
     <button
       onClick={toggleTheme}
-      className="p-2 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+      className="p-2 rounded-md transition-colors hover:bg-[hsl(var(--border)/0.35)]"
       aria-label="Toggle dark mode"
     >
       {theme === 'dark' ? (
-        <Sun className="h-4 w-4 text-yellow-400" />
+        <Sun className="h-4 w-4 text-[hsl(var(--brand))]" />
       ) : (
         <Moon className="h-4 w-4 text-gray-600" />
       )}

@@ -4,6 +4,7 @@ from sqlalchemy import text
 import redis
 import logging
 from typing import Dict, Any
+from datetime import datetime
 
 from app.database import get_db, check_database_health
 from app.config import settings

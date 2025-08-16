@@ -9,11 +9,17 @@ import { ToastProvider } from './components/ui/Toast';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { Settings } from './pages/Settings';
+import { Profile } from './pages/Profile';
 import { Transactions } from './pages/Transactions';
+import { Recurring } from './pages/Recurring';
 import { Categories } from './pages/Categories';
 import { Budgets } from './pages/Budgets';
+import Goals from './pages/Goals';
+import { Insights } from './pages/Insights';
+import { Timeline } from './pages/Timeline';
 import { AdminBypassButton } from './components/ui/AdminBypassButton';
 import { Layout } from './components/layout/Navigation';
+import { CommandPalette } from './components/layout/CommandPalette';
 
 function App() {
   return (
@@ -51,6 +57,17 @@ function App() {
                 />
                 
                 <Route
+                  path="/recurring"
+                  element={
+                    <ProtectedRoute>
+                      <Layout>
+                        <Recurring />
+                      </Layout>
+                    </ProtectedRoute>
+                  }
+                />
+                
+                <Route
                   path="/categories"
                   element={
                     <ProtectedRoute>
@@ -73,11 +90,55 @@ function App() {
                 />
                 
                 <Route
+                  path="/goals"
+                  element={
+                    <ProtectedRoute>
+                      <Layout>
+                        <Goals />
+                      </Layout>
+                    </ProtectedRoute>
+                  }
+                />
+                
+                <Route
+                  path="/insights"
+                  element={
+                    <ProtectedRoute>
+                      <Layout>
+                        <Insights />
+                      </Layout>
+                    </ProtectedRoute>
+                  }
+                />
+                
+                <Route
+                  path="/timeline"
+                  element={
+                    <ProtectedRoute>
+                      <Layout>
+                        <Timeline />
+                      </Layout>
+                    </ProtectedRoute>
+                  }
+                />
+                
+                <Route
                   path="/settings"
                   element={
                     <ProtectedRoute>
                       <Layout>
                         <Settings />
+                      </Layout>
+                    </ProtectedRoute>
+                  }
+                />
+                
+                <Route
+                  path="/profile"
+                  element={
+                    <ProtectedRoute>
+                      <Layout>
+                        <Profile />
                       </Layout>
                     </ProtectedRoute>
                   }
@@ -93,6 +154,8 @@ function App() {
             
             {/* Admin bypass button for development */}
             <AdminBypassButton />
+            {/* Command Palette must be inside Router for useNavigate */}
+            <CommandPalette />
           </Router>
           
           {/* React Query Devtools - only in development */}

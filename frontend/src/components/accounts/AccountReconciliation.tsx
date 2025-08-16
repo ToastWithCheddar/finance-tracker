@@ -6,7 +6,7 @@ import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { apiClient } from '../../services/api';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { useWebSocket } from '../../hooks/useWebSocket';
+import { useWebSocket, type WebSocketMessage } from '../../hooks/useWebSocket';
 
 interface ReconciliationResult {
   account_id: string;
@@ -38,9 +38,9 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
 
   // Listen for real-time reconciliation updates
   useWebSocket({
-    onMessage: (event: { type: string; data: Record<string, unknown> }) => {
-      if (event.type === 'ACCOUNT_RECONCILED' && event.data.account_id === accountId) {
-        setReconciliation(prev => prev ? { ...prev, ...event.data } : null);
+    onMessage: (message: WebSocketMessage) => {
+      if (message.type === 'ACCOUNT_RECONCILED' && message.payload.account_id === accountId) {
+        setReconciliation(prev => prev ? { ...prev, ...message.payload } : null);
         onReconciliationComplete?.();
       }
     }

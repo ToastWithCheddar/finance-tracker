@@ -16,7 +16,7 @@ from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.transaction import TransactionCreate
 from app.services.transaction_service import TransactionService
-from app.websocket.manager import websocket_manager
+from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
 
 logger = logging.getLogger(__name__)
@@ -27,15 +27,30 @@ class ReconciliationResult:
     account_id: str
     account_name: str
     is_reconciled: bool
-    expected_balance: float
-    actual_balance: float
-    discrepancy: float
+    expected_balance_cents: int
+    actual_balance_cents: int
+    discrepancy_cents: int
     discrepancy_type: str  # 'none', 'positive', 'negative'
     transaction_count: int
     reconciliation_date: datetime
     suggestions: List[str]
     confidence_score: float  # 0-100
     details: Dict[str, Any]
+    
+    @property
+    def expected_balance(self) -> float:
+        """Convert cents to dollars for display"""
+        return self.expected_balance_cents / 100.0
+    
+    @property
+    def actual_balance(self) -> float:
+        """Convert cents to dollars for display"""
+        return self.actual_balance_cents / 100.0
+    
+    @property
+    def discrepancy(self) -> float:
+        """Convert cents to dollars for display"""
+        return self.discrepancy_cents / 100.0
 
 @dataclass
 class TransactionMatch:
@@ -76,41 +91,39 @@ class EnhancedReconciliationService:
             Transaction.account_id == account_id
         ).all()
         
-        # Calculate expected balance from transactions
+        # Calculate expected balance from transactions (keep as cents)
         expected_balance_cents = sum(txn.amount_cents for txn in transactions)
-        expected_balance = expected_balance_cents / 100.0
-        actual_balance = account.balance_cents / 100.0
+        actual_balance_cents = account.balance_cents
         
-        # Calculate discrepancy
-        discrepancy = actual_balance - expected_balance
-        discrepancy_cents = int(discrepancy * 100)
+        # Calculate discrepancy in cents (integer arithmetic only)
+        discrepancy_cents = actual_balance_cents - expected_balance_cents
         
         # Determine if reconciled (within tolerance)
         is_reconciled = abs(discrepancy_cents) <= self.tolerance_cents
         
         # Analyze discrepancy
         analysis = await self._analyze_discrepancy(
-            account, transactions, discrepancy, db
+            account, transactions, discrepancy_cents, db
         )
         
         # Generate suggestions
         suggestions = await self._generate_reconciliation_suggestions(
-            account, discrepancy, analysis, db
+            account, discrepancy_cents, analysis, db
         )
         
         # Calculate confidence score
         confidence_score = self._calculate_confidence_score(
-            account, transactions, discrepancy, analysis
+            account, transactions, discrepancy_cents, analysis
         )
         
         result = ReconciliationResult(
             account_id=str(account.id),
             account_name=account.name,
             is_reconciled=is_reconciled,
-            expected_balance=expected_balance,
-            actual_balance=actual_balance,
-            discrepancy=discrepancy,
-            discrepancy_type=self._categorize_discrepancy(discrepancy),
+            expected_balance_cents=expected_balance_cents,
+            actual_balance_cents=actual_balance_cents,
+            discrepancy_cents=discrepancy_cents,
+            discrepancy_type=self._categorize_discrepancy(discrepancy_cents),
             transaction_count=len(transactions),
             reconciliation_date=datetime.now(timezone.utc),
             suggestions=suggestions,
@@ -147,8 +160,9 @@ class EnhancedReconciliationService:
         # Identify discrepancies
         discrepancies = await self._identify_transaction_discrepancies(matches)
         
-        # Calculate balance discrepancy
-        balance_discrepancy = plaid_balance - (account.balance_cents / 100.0)
+        # Calculate balance discrepancy in cents
+        plaid_balance_cents = int(plaid_balance * 100)
+        balance_discrepancy_cents = plaid_balance_cents - account.balance_cents
         
         # Generate reconciliation report
         report = {
@@ -156,7 +170,7 @@ class EnhancedReconciliationService:
             'account_name': account.name,
             'plaid_balance': plaid_balance,
             'current_balance': account.balance_cents / 100.0,
-            'balance_discrepancy': balance_discrepancy,
+            'balance_discrepancy': balance_discrepancy_cents / 100.0,
             'transaction_matches': {
                 'total_plaid_transactions': len(plaid_transactions),
                 'total_existing_transactions': len(existing_transactions),
@@ -167,7 +181,7 @@ class EnhancedReconciliationService:
             },
             'discrepancies': discrepancies,
             'recommendations': await self._generate_plaid_reconciliation_recommendations(
-                matches, balance_discrepancy, discrepancies
+                matches, balance_discrepancy_cents, discrepancies
             )
         }
         
@@ -177,20 +191,21 @@ class EnhancedReconciliationService:
         self, 
         account: Account, 
         transactions: List[Transaction], 
-        discrepancy: float, 
+        discrepancy_cents: int, 
         db: Session
     ) -> Dict[str, Any]:
         """Analyze the source of balance discrepancy"""
         
         analysis = {
             'total_transactions': len(transactions),
+            'transaction_sum_cents': sum(txn.amount_cents for txn in transactions),
             'transaction_sum': sum(txn.amount_cents for txn in transactions) / 100.0,
             'date_range': self._get_transaction_date_range(transactions),
             'potential_causes': [],
-            'missing_transactions': [],
-            'duplicate_transactions': [],
-            'pending_transactions': [],
-            'reconciliation_entries': []
+            'missing_transactions': 0,
+            'duplicate_transactions': 0,
+            'pending_transactions': 0,
+            'reconciliation_entries': 0
         }
         
         if not transactions:
@@ -301,14 +316,15 @@ class EnhancedReconciliationService:
         
         score = 0.0
         
-        # Amount matching (most important)
-        plaid_amount = float(plaid_txn.get('amount', 0))
-        existing_amount = existing_txn.amount_cents / 100.0
+        # Amount matching (most important) - use integer cents for precision
+        plaid_amount_cents = int(float(plaid_txn.get('amount', 0)) * 100)
+        existing_amount_cents = existing_txn.amount_cents
         
         # Plaid amounts are positive for debits, we store negative for expenses
-        if abs(abs(plaid_amount) - abs(existing_amount)) < 0.01:
+        amount_diff_cents = abs(abs(plaid_amount_cents) - abs(existing_amount_cents))
+        if amount_diff_cents <= 1:  # Within 1 cent
             score += 0.4
-        elif abs(abs(plaid_amount) - abs(existing_amount)) < 1.00:
+        elif amount_diff_cents <= 100:  # Within $1.00
             score += 0.2
         
         # Date matching
@@ -375,6 +391,7 @@ class EnhancedReconciliationService:
                         'type': 'extra_transaction',
                         'description': 'Transaction exists in database but not in Plaid',
                         'existing_transaction_id': str(match.existing_transaction.id),
+                        'amount_cents': match.existing_transaction.amount_cents,
                         'amount': match.existing_transaction.amount_cents / 100.0,
                         'date': match.existing_transaction.transaction_date.isoformat() if match.existing_transaction.transaction_date else None,
                         'description': match.existing_transaction.description
@@ -383,16 +400,20 @@ class EnhancedReconciliationService:
             elif match.match_type in ['fuzzy', 'partial']:
                 # Check for amount discrepancies in matched transactions
                 if match.plaid_transaction and match.existing_transaction:
-                    plaid_amount = float(match.plaid_transaction.get('amount', 0))
-                    existing_amount = match.existing_transaction.amount_cents / 100.0
+                    plaid_amount_cents = int(float(match.plaid_transaction.get('amount', 0)) * 100)
+                    existing_amount_cents = match.existing_transaction.amount_cents
                     
-                    if abs(abs(plaid_amount) - abs(existing_amount)) > 0.01:
+                    # Check discrepancy using integer cents (1 cent tolerance)
+                    if abs(abs(plaid_amount_cents) - abs(existing_amount_cents)) > 1:
                         discrepancies.append({
                             'type': 'amount_mismatch',
                             'description': 'Transaction amounts do not match',
-                            'plaid_amount': plaid_amount,
-                            'existing_amount': existing_amount,
-                            'difference': abs(plaid_amount) - abs(existing_amount),
+                            'plaid_amount_cents': plaid_amount_cents,
+                            'existing_amount_cents': existing_amount_cents,
+                            'plaid_amount': plaid_amount_cents / 100.0,
+                            'existing_amount': existing_amount_cents / 100.0,
+                            'difference_cents': abs(plaid_amount_cents) - abs(existing_amount_cents),
+                            'difference': (abs(plaid_amount_cents) - abs(existing_amount_cents)) / 100.0,
                             'match_confidence': match.match_confidence
                         })
         
@@ -467,26 +488,32 @@ class EnhancedReconciliationService:
         
         # Group by month
         monthly_counts = {}
+        monthly_amounts_cents = {}
         monthly_amounts = {}
         
         for txn in transactions:
             if txn.transaction_date:
                 month_key = txn.transaction_date.strftime('%Y-%m')
                 monthly_counts[month_key] = monthly_counts.get(month_key, 0) + 1
-                monthly_amounts[month_key] = monthly_amounts.get(month_key, 0) + (txn.amount_cents / 100.0)
+                monthly_amounts_cents[month_key] = monthly_amounts_cents.get(month_key, 0) + txn.amount_cents
+                monthly_amounts[month_key] = monthly_amounts_cents[month_key] / 100.0
         
         # Calculate averages
         if monthly_counts:
             avg_monthly_transactions = sum(monthly_counts.values()) / len(monthly_counts)
-            avg_monthly_amount = sum(monthly_amounts.values()) / len(monthly_amounts)
+            avg_monthly_amount_cents = sum(monthly_amounts_cents.values()) // len(monthly_amounts_cents)
+            avg_monthly_amount = avg_monthly_amount_cents / 100.0
         else:
             avg_monthly_transactions = 0
+            avg_monthly_amount_cents = 0
             avg_monthly_amount = 0
         
         return {
             'monthly_transaction_counts': monthly_counts,
+            'monthly_amounts_cents': monthly_amounts_cents,
             'monthly_amounts': monthly_amounts,
             'avg_monthly_transactions': avg_monthly_transactions,
+            'avg_monthly_amount_cents': avg_monthly_amount_cents,
             'avg_monthly_amount': avg_monthly_amount,
             'total_months_analyzed': len(monthly_counts)
         }
@@ -507,7 +534,7 @@ class EnhancedReconciliationService:
     async def _generate_reconciliation_suggestions(
         self, 
         account: Account, 
-        discrepancy: float, 
+        discrepancy_cents: int, 
         analysis: Dict[str, Any], 
         db: Session
     ) -> List[str]:
@@ -515,16 +542,17 @@ class EnhancedReconciliationService:
         
         suggestions = []
         
-        if abs(discrepancy) <= 0.01:  # Reconciled
+        if abs(discrepancy_cents) <= 1:  # Reconciled within 1 cent
             suggestions.append("Account is properly reconciled")
             return suggestions
         
         # Discrepancy-specific suggestions
-        if discrepancy > 0:
-            suggestions.append(f"Account balance is ${abs(discrepancy):.2f} higher than expected")
+        discrepancy_dollars = discrepancy_cents / 100.0
+        if discrepancy_cents > 0:
+            suggestions.append(f"Account balance is ${abs(discrepancy_dollars):.2f} higher than expected")
             suggestions.append("Check for missing expense transactions or extra income")
         else:
-            suggestions.append(f"Account balance is ${abs(discrepancy):.2f} lower than expected")
+            suggestions.append(f"Account balance is ${abs(discrepancy_dollars):.2f} lower than expected")
             suggestions.append("Check for missing income transactions or extra expenses")
         
         # Analysis-based suggestions
@@ -542,8 +570,8 @@ class EnhancedReconciliationService:
             if hours_since_sync > 24:
                 suggestions.append("Sync account with your bank to get latest transactions")
         
-        # Large discrepancy suggestions
-        if abs(discrepancy) > 100:
+        # Large discrepancy suggestions (over $100)
+        if abs(discrepancy_cents) > 10000:  # 10000 cents = $100
             suggestions.append("Large discrepancy detected - consider manual reconciliation entry")
         
         return suggestions[:5]  # Return top 5 suggestions
@@ -551,7 +579,7 @@ class EnhancedReconciliationService:
     async def _generate_plaid_reconciliation_recommendations(
         self, 
         matches: List[TransactionMatch], 
-        balance_discrepancy: float, 
+        balance_discrepancy_cents: int, 
         discrepancies: List[Dict[str, Any]]
     ) -> List[str]:
         """Generate recommendations based on Plaid reconciliation"""
@@ -574,11 +602,12 @@ class EnhancedReconciliationService:
             recommendations.append(f"Correct {mismatch_count} transactions with amount discrepancies")
         
         # Balance discrepancy
-        if abs(balance_discrepancy) > 0.01:
-            if balance_discrepancy > 0:
-                recommendations.append(f"Account balance is ${balance_discrepancy:.2f} higher than Plaid balance")
+        if abs(balance_discrepancy_cents) > 1:  # More than 1 cent
+            balance_discrepancy_dollars = balance_discrepancy_cents / 100.0
+            if balance_discrepancy_cents > 0:
+                recommendations.append(f"Account balance is ${balance_discrepancy_dollars:.2f} higher than Plaid balance")
             else:
-                recommendations.append(f"Account balance is ${abs(balance_discrepancy):.2f} lower than Plaid balance")
+                recommendations.append(f"Account balance is ${abs(balance_discrepancy_dollars):.2f} lower than Plaid balance")
         
         if not recommendations:
             recommendations.append("Account is in sync with Plaid data")
@@ -589,15 +618,16 @@ class EnhancedReconciliationService:
         self, 
         account: Account, 
         transactions: List[Transaction], 
-        discrepancy: float, 
+        discrepancy_cents: int, 
         analysis: Dict[str, Any]
     ) -> float:
         """Calculate confidence score for reconciliation"""
         
         score = 100.0
         
-        # Deduct for discrepancy size
-        discrepancy_penalty = min(50, abs(discrepancy) * 2)
+        # Deduct for discrepancy size (penalty based on dollars)
+        discrepancy_dollars = abs(discrepancy_cents) / 100.0
+        discrepancy_penalty = min(50, discrepancy_dollars * 2)
         score -= discrepancy_penalty
         
         # Deduct for potential issues
@@ -617,11 +647,11 @@ class EnhancedReconciliationService:
         
         return max(0, min(100, score))
     
-    def _categorize_discrepancy(self, discrepancy: float) -> str:
+    def _categorize_discrepancy(self, discrepancy_cents: int) -> str:
         """Categorize discrepancy type"""
-        if abs(discrepancy) <= 0.01:
+        if abs(discrepancy_cents) <= 1:  # Within 1 cent
             return 'none'
-        elif discrepancy > 0:
+        elif discrepancy_cents > 0:
             return 'positive'
         else:
             return 'negative'
@@ -640,7 +670,8 @@ class EnhancedReconciliationService:
         reconciliation_entry = {
             'timestamp': result.reconciliation_date.isoformat(),
             'is_reconciled': result.is_reconciled,
-            'discrepancy': result.discrepancy,
+            'discrepancy_cents': result.discrepancy_cents,
+            'discrepancy': result.discrepancy,  # Keep for backward compatibility
             'confidence_score': result.confidence_score,
             'transaction_count': result.transaction_count
         }

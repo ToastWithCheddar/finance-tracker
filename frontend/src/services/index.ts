@@ -3,20 +3,25 @@
  * This file provides both legacy and standardized service access
  */
 
-// Legacy services (for backward compatibility during migration)
-export { TransactionService } from './transactionService';
-export { default as budgetService } from './budgetService';
+// Enhanced consolidated services (single implementation)
+export { TransactionService, transactionService } from './transactionService';
+export { BudgetService, budgetService } from './budgetService';
 export { GoalService } from './goalService';
-export { default as categoryService } from './categoryService';
-export { default as userPreferencesService } from './userPreferencesService';
-export { default as dashboardService } from './dashboardService';
-export { default as mlService } from './mlService';
+export { categoryService } from './categoryService';
+export { userPreferencesService } from './userPreferencesService';
+export { dashboardService } from './dashboardService';
+export { mlService } from './mlService';
+export { NotificationService } from './notificationService';
+export { timelineService } from './timelineService';
+export { savedFilterService } from './savedFilterService';
 
-// Standardized services (new recommended approach)
+// Service registry (now uses consolidated services)
 export {
   serviceRegistry,
-  transactionService as standardizedTransactionService,
-  budgetService as standardizedBudgetService,
+  registryTransactionService,
+  registryBudgetService,
+  registrySavedFilterService,
+  registryTimelineService,
   ServiceRegistry,
   ServiceOperations,
   ServiceErrorHandler,
@@ -26,13 +31,8 @@ export {
 // Base service classes and utilities
 export {
   BaseService,
-  ServiceResult,
-  ServiceCallError,
+  type ServiceResult,
 } from './base/BaseService';
-
-// Standardized service classes
-export { StandardizedTransactionService } from './standardized/TransactionService';
-export { StandardizedBudgetService } from './standardized/BudgetService';
 
 // Types
 export type {
@@ -53,45 +53,48 @@ export { csrfService } from './csrf';
 export { queryClient } from './queryClient';
 
 /**
- * Migration Guide:
+ * Usage Guide (Consolidated Services):
  * 
- * OLD WAY (Legacy):
+ * DIRECT SERVICE ACCESS:
  * ```typescript
- * import { TransactionService } from '@/services';
- * const service = new TransactionService();
- * const transactions = await service.getTransactions();
- * ```
+ * import { transactionService, budgetService } from '@/services';
  * 
- * NEW WAY (Standardized):
- * ```typescript
- * import { transactionService, ServiceResult } from '@/services';
- * const response = await transactionService.getTransactions();
- * const transactions = ServiceResult.unwrap(response);
- * ```
+ * // Returns raw data (backward compatible)
+ * const transactions = await transactionService.getTransactions();
  * 
- * OR with error handling:
- * ```typescript
- * import { transactionService, ServiceResult } from '@/services';
- * const response = await transactionService.getTransactions();
- * if (ServiceResult.isSuccess(response)) {
+ * // Returns ServiceResponse wrapper (new pattern)
+ * const response = await transactionService.getTransactionsWithWrapper();
+ * if (response.success) {
  *   const transactions = response.data;
- * } else {
- *   console.error('Failed to load transactions:', response.error);
  * }
  * ```
  * 
- * Using service registry:
+ * SERVICE REGISTRY ACCESS:
  * ```typescript
  * import { serviceRegistry } from '@/services';
- * const response = await serviceRegistry.transaction.getTransactions();
+ * const transactions = await serviceRegistry.transaction.getTransactions();
+ * const budgets = await serviceRegistry.budget.getBudgets();
  * ```
  * 
- * Creating service hooks for React:
+ * CREATING SERVICE HOOKS FOR REACT:
  * ```typescript
  * import { createServiceHook } from '@/services';
  * const useTransactionService = createServiceHook('transaction');
  * 
  * // In component:
  * const transactionService = useTransactionService();
+ * ```
+ * 
+ * ENHANCED FEATURES:
+ * ```typescript
+ * import { transactionService, budgetService } from '@/services';
+ * 
+ * // New transaction features
+ * const trends = await transactionService.getSpendingTrends('month');
+ * const breakdown = await transactionService.getCategoryBreakdown();
+ * 
+ * // New budget features  
+ * const analytics = await budgetService.getBudgetAnalytics();
+ * const comparison = await budgetService.getBudgetComparison(start1, end1, start2, end2);
  * ```
  */

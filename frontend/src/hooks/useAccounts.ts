@@ -1,65 +1,50 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { accountService, type Account, type AccountCreate, type AccountUpdate } from '../services/accountService';
-import type { ErrorContext } from '../types/errors';
 import { useAuthUser } from '../stores/authStore';
 
-// Query keys
-// Hierarchical caching caching systems
-const ACCOUNT_KEYS = {
+// Simple query keys
+const accountKeys = {
   all: ['accounts'] as const,
-  lists: () => [...ACCOUNT_KEYS.all, 'list'] as const,
-  list: (userId?: string) => [...ACCOUNT_KEYS.lists(), userId] as const,
-  details: () => [...ACCOUNT_KEYS.all, 'detail'] as const,
-  detail: (id: string) => [...ACCOUNT_KEYS.details(), id] as const,
+  list: (userId?: string) => ['accounts', userId] as const,
+  detail: (id: string) => ['accounts', 'detail', id] as const,
 } as const;
 
-// Get all user accounts
-export function useAccounts(
-  options?: { useCache?: boolean; context?: ErrorContext }
-) {
+// Main accounts hook - simplified
+export function useAccounts() {
   const user = useAuthUser();
   
   return useQuery({
-    queryKey: ACCOUNT_KEYS.list(user?.id),
-    queryFn: () => accountService.getAccounts(options),
+    queryKey: accountKeys.list(user?.id),
+    queryFn: () => accountService.getAccounts(),
     enabled: !!user?.id,
     staleTime: 30 * 1000, // 30 seconds
-    gcTime: 2 * 60 * 1000, // 2 minutes
-    retry: 2,
   });
 }
 
-// Get single account
-export function useAccount(
-  accountId: string,
-  options?: { enabled?: boolean; context?: ErrorContext }
-) {
+// Single account
+export function useAccount(accountId: string, enabled = true) {
   return useQuery({
-    queryKey: ACCOUNT_KEYS.detail(accountId),
-    queryFn: () => accountService.getAccount(accountId, options),
-    enabled: options?.enabled !== false && !!accountId,
-    staleTime: 30 * 1000, // 30 seconds
-    gcTime: 2 * 60 * 1000, // 2 minutes
+    queryKey: accountKeys.detail(accountId),
+    queryFn: () => accountService.getAccount(accountId),
+    enabled: enabled && !!accountId,
+    staleTime: 30 * 1000,
   });
 }
 
-// Create account mutation
+// Create account
 export function useCreateAccount() {
   const queryClient = useQueryClient();
   const user = useAuthUser();
 
   return useMutation({
-    mutationFn: (accountData: AccountCreate) => 
-      accountService.createAccount(accountData),
+    mutationFn: (data: AccountCreate) => accountService.createAccount(data),
     onSuccess: () => {
-      // Invalidate and refetch accounts list
-      queryClient.invalidateQueries({ queryKey: ACCOUNT_KEYS.list(user?.id) });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: accountKeys.list(user?.id) });
     },
   });
 }
 
-// Update account mutation
+// Update account
 export function useUpdateAccount() {
   const queryClient = useQueryClient();
   const user = useAuthUser();
@@ -68,20 +53,13 @@ export function useUpdateAccount() {
     mutationFn: ({ id, data }: { id: string; data: AccountUpdate }) => 
       accountService.updateAccount(id, data),
     onSuccess: (updatedAccount) => {
-      // Update the specific account in cache
-      queryClient.setQueryData(
-        ACCOUNT_KEYS.detail(updatedAccount.id),
-        updatedAccount
-      );
-      
-      // Invalidate accounts list to reflect changes
-      queryClient.invalidateQueries({ queryKey: ACCOUNT_KEYS.list(user?.id) });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.setQueryData(accountKeys.detail(updatedAccount.id), updatedAccount);
+      queryClient.invalidateQueries({ queryKey: accountKeys.list(user?.id) });
     },
   });
 }
 
-// Delete account mutation
+// Delete account
 export function useDeleteAccount() {
   const queryClient = useQueryClient();
   const user = useAuthUser();
@@ -89,76 +67,8 @@ export function useDeleteAccount() {
   return useMutation({
     mutationFn: (accountId: string) => accountService.deleteAccount(accountId),
     onSuccess: (_, accountId) => {
-      // Remove account from cache
-      queryClient.removeQueries({ queryKey: ACCOUNT_KEYS.detail(accountId) });
-      
-      // Invalidate accounts list
-      queryClient.invalidateQueries({ queryKey: ACCOUNT_KEYS.list(user?.id) });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.removeQueries({ queryKey: accountKeys.detail(accountId) });
+      queryClient.invalidateQueries({ queryKey: accountKeys.list(user?.id) });
     },
   });
 }
-
-// Combined accounts actions hook
-// Instead of using three separate hooks in a component, you
-// can use just one and get everything you need.
-export function useAccountActions() {
-  const createMutation = useCreateAccount();
-  const updateMutation = useUpdateAccount();
-  const deleteMutation = useDeleteAccount();
-
-  return {
-    // Create
-    createAccount: createMutation.mutate,
-    isCreating: createMutation.isPending,
-    createError: createMutation.error,
-    createResult: createMutation.data,
-    
-    // Update
-    updateAccount: updateMutation.mutate,
-    isUpdating: updateMutation.isPending,
-    updateError: updateMutation.error,
-    updateResult: updateMutation.data,
-    
-    // Delete
-    deleteAccount: deleteMutation.mutate,
-    isDeleting: deleteMutation.isPending,
-    deleteError: deleteMutation.error,
-    
-    // Loading states
-    isLoading: createMutation.isPending || updateMutation.isPending || deleteMutation.isPending,
-  };
-}
-
-// Utility hooks
-export function usePlaidConnectedAccounts() {
-  const { data: accounts, ...rest } = useAccounts();
-  
-  return {
-    ...rest,
-    data: accounts?.filter(account => !!account.plaid_account_id) || []
-  };
-}
-
-export function useManualAccounts() {
-  const { data: accounts, ...rest } = useAccounts();
-  
-  return {
-    ...rest,
-    data: accounts?.filter(account => !account.plaid_account_id) || []
-  };
-}
-
-export function useAccountsByType(accountType?: string) {
-  const { data: accounts, ...rest } = useAccounts();
-  
-  return {
-    ...rest,
-    data: accountType 
-      ? accounts?.filter(account => account.account_type === accountType) || []
-      : accounts || []
-  };
-}
-
-// Export query keys for manual cache management
-export { ACCOUNT_KEYS };

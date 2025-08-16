@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.database import engine, check_database_health, create_database
 from app.models import Base
-from app.routes import auth, user, health, categories, transaction, budget, mlcategory, mock, accounts, analytics
+from app.routes import auth, user, health, categories, transaction, recurring, budget, mock, accounts, analytics, insights, webhooks, notifications, ml, annotations, saved_filters, websockets
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -273,6 +273,16 @@ app.include_router(
 )
 
 app.include_router(
+    recurring.router,
+    tags=["Recurring Transactions"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
     budget.router,
     prefix="/api/budgets",
     tags=["Budgets"],
@@ -306,12 +316,71 @@ app.include_router(
 )
 
 app.include_router(
-    mlcategory.router,
-    prefix="/api/ml",
-    tags=["Machine Learning"],
+    insights.router,
+    prefix="/api/insights",
+    tags=["AI Insights"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
+    webhooks.router,
+    prefix="/api",
+    tags=["Webhooks"],
+    responses={
+        401: {"description": "Unauthorized"},
+        422: {"description": "Validation Error"},
+        500: {"description": "Internal Server Error"},
+    }
+)
+
+app.include_router(
+    ml.router,
+    prefix="/api",
     responses={
         422: {"description": "Validation Error"},
     }
+)
+
+app.include_router(
+    notifications.router,
+    prefix="/api",
+    tags=["Notifications"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
+    annotations.router,
+    tags=["Timeline Annotations"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
+    saved_filters.router,
+    prefix="/api/saved-filters",
+    tags=["Saved Filters"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+# Realtime WebSocket routes (no prefix)
+app.include_router(
+    websockets.router,
+    tags=["Realtime"],
 )
 
 # Mock API routes (for UI development)
@@ -337,9 +406,15 @@ async def api_base():
             "users": "/api/users", 
             "categories": "/api/categories",
             "transactions": "/api/transactions",
+            "recurring": "/api/recurring",
             "budgets": "/api/budgets",
             "accounts": "/api/accounts",
             "analytics": "/api/analytics",
+            "insights": "/api/insights",
+            "webhooks": "/api/webhooks",
+            "notifications": "/api/notifications",
+            "annotations": "/api/annotations",
+            "saved_filters": "/api/saved-filters",
             "ml": "/api/ml",
             "health": "/health",
             "docs": "/docs" if settings.DEBUG else None,

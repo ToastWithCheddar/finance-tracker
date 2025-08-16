@@ -67,16 +67,16 @@ export function Budgets() {
   const hasActiveFilters = Object.values(filters).some(value => value !== undefined && value !== '');
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="min-h-screen" style={{ backgroundColor: 'hsl(var(--bg))' }}>
       {/* Header */}
-      <div className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+      <div className="glass-surface border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+              <h1 className="text-2xl font-bold">
                 Budget Management
               </h1>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-[hsl(var(--text))/0.7]">
                 Track and manage your spending budgets
               </p>
             </div>
@@ -90,7 +90,7 @@ export function Budgets() {
                 <Filter className="h-4 w-4 mr-2" />
                 Filters
                 {hasActiveFilters && (
-                  <span className="absolute -top-1 -right-1 h-2 w-2 bg-primary-600 rounded-full" />
+                  <span className="absolute -top-1 -right-1 h-2 w-2 bg-brand rounded-full" />
                 )}
               </Button>
               
@@ -107,23 +107,23 @@ export function Budgets() {
         {/* Alerts Section */}
         {alerts.length > 0 && (
           <div className="mb-8">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+            <h2 className="text-lg font-semibold mb-4">
               Budget Alerts
             </h2>
             <div className="space-y-3">
               {alerts.map((alert) => (
                 <div
                   key={`${alert.budget_id}-${alert.alert_type}`}
-                  className={`p-4 rounded-lg border ${
+                   className={`p-4 rounded-lg border ${
                     alert.alert_type === 'exceeded'
-                      ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                      ? 'bg-red-500/10 border-red-500/30'
                       : alert.alert_type === 'warning'
-                      ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
-                      : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                      ? 'bg-yellow-500/10 border-yellow-500/30'
+                      : 'bg-blue-500/10 border-blue-500/30'
                   }`}
                 >
                   <div className="flex items-start gap-3">
-                    <AlertCircle className={`h-5 w-5 mt-0.5 ${
+                     <AlertCircle className={`h-5 w-5 mt-0.5 ${
                       alert.alert_type === 'exceeded'
                         ? 'text-red-500'
                         : alert.alert_type === 'warning'
@@ -131,22 +131,22 @@ export function Budgets() {
                         : 'text-blue-500'
                     }`} />
                     <div className="flex-1">
-                      <p className={`font-medium ${
+                       <p className={`font-medium ${
                         alert.alert_type === 'exceeded'
-                          ? 'text-red-700 dark:text-red-300'
-                          : alert.alert_type === 'warning'
-                          ? 'text-yellow-700 dark:text-yellow-300'
-                          : 'text-blue-700 dark:text-blue-300'
+                           ? 'text-red-500'
+                           : alert.alert_type === 'warning'
+                           ? 'text-yellow-500'
+                           : 'text-blue-500'
                       }`}>
                         {alert.budget_name}
                         {alert.category_name && ` (${alert.category_name})`}
                       </p>
-                      <p className={`text-sm ${
+                       <p className={`text-sm ${
                         alert.alert_type === 'exceeded'
-                          ? 'text-red-600 dark:text-red-400'
-                          : alert.alert_type === 'warning'
-                          ? 'text-yellow-600 dark:text-yellow-400'
-                          : 'text-blue-600 dark:text-blue-400'
+                           ? 'text-red-600'
+                           : alert.alert_type === 'warning'
+                           ? 'text-yellow-600'
+                           : 'text-blue-600'
                       }`}>
                         {alert.message}
                       </p>
@@ -165,13 +165,13 @@ export function Budgets() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Budgets</p>
-                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+                    <p className="text-sm font-medium text-[hsl(var(--text))/0.7]">Total Budgets</p>
+                    <p className="text-2xl font-bold">
                       {summary.total_budgets}
                     </p>
                   </div>
-                  <div className="h-10 w-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Target className="h-5 w-5 text-blue-600" />
+                  <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-[hsl(var(--border)/0.35)]">
+                    <Target className="h-5 w-5 text-[hsl(var(--text))/0.7]" />
                   </div>
                 </div>
               </CardContent>
@@ -181,13 +181,13 @@ export function Budgets() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Budgeted</p>
-                    <p className="text-2xl font-bold text-green-600">
+                    <p className="text-sm font-medium text-[hsl(var(--text))/0.7]">Total Budgeted</p>
+                    <p className="text-2xl font-bold text-green-500">
                       {budgetService.formatCurrency(summary.total_budgeted_cents)}
                     </p>
                   </div>
-                  <div className="h-10 w-10 bg-green-100 rounded-lg flex items-center justify-center">
-                    <DollarSign className="h-5 w-5 text-green-600" />
+                  <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-[hsl(var(--border)/0.35)]">
+                    <DollarSign className="h-5 w-5 text-green-500" />
                   </div>
                 </div>
               </CardContent>
@@ -197,13 +197,13 @@ export function Budgets() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Spent</p>
-                    <p className="text-2xl font-bold text-red-600">
+                    <p className="text-sm font-medium text-[hsl(var(--text))/0.7]">Total Spent</p>
+                    <p className="text-2xl font-bold text-red-500">
                       {budgetService.formatCurrency(summary.total_spent_cents)}
                     </p>
                   </div>
-                  <div className="h-10 w-10 bg-red-100 rounded-lg flex items-center justify-center">
-                    <TrendingUp className="h-5 w-5 text-red-600" />
+                  <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-[hsl(var(--border)/0.35)]">
+                    <TrendingUp className="h-5 w-5 text-red-500" />
                   </div>
                 </div>
               </CardContent>
@@ -213,13 +213,13 @@ export function Budgets() {
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Over Budget</p>
-                    <p className="text-2xl font-bold text-orange-600">
+                    <p className="text-sm font-medium text-[hsl(var(--text))/0.7]">Over Budget</p>
+                    <p className="text-2xl font-bold text-orange-500">
                       {summary.over_budget_count}
                     </p>
                   </div>
-                  <div className="h-10 w-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <AlertCircle className="h-5 w-5 text-orange-600" />
+                  <div className="h-10 w-10 rounded-lg flex items-center justify-center bg-[hsl(var(--border)/0.35)]">
+                    <AlertCircle className="h-5 w-5 text-orange-500" />
                   </div>
                 </div>
               </CardContent>

@@ -1,7 +1,7 @@
   import { useState } from 'react';
   import { Button } from '../ui/Button';
   import { Input } from '../ui/Input';
-  import { Modal } from '../ui';
+  import { Modal } from '../ui/Modal';
   import { CategorySelector } from '../categories/CategorySelector';
   import type { Transaction, CreateTransactionRequest, UpdateTransactionRequest } from '../../types/transaction';
   import type { Category } from '../../types/category';
@@ -26,6 +26,10 @@
       amountCents: transaction?.amountCents || 0,
       description: transaction?.description || '',
       transactionDate: transaction?.transactionDate?.split('T')[0] || new Date().toISOString().split('T')[0],
+      transaction_type: 'expense',
+      amount: transaction ? (transaction.amountCents / 100) : 0,
+      transaction_date: transaction?.transactionDate?.split('T')[0] || new Date().toISOString().split('T')[0],
+      category_id: transaction?.categoryId,
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -36,7 +40,7 @@
    const validateForm = (): boolean => {
      const newErrors: Record<string, string> = {};
 
-      if (!formData.amountCents || formData.amountCents === 0) {
+      if (!formData.amount || formData.amount === 0) {
         newErrors.amount = 'Amount must be greater than 0';
       }
 
@@ -48,7 +52,7 @@
         newErrors.transaction_date = 'Transaction date is required';
       }
 
-      if (!['income', 'expense'].includes(formData.transaction_type)) {
+      if (!formData.transaction_type || !['income', 'expense'].includes(formData.transaction_type)) {
         newErrors.transaction_type = 'Transaction type must be income or expense';
       }
 
@@ -75,9 +79,12 @@
         onClose();
         // Reset form and confirmation state
         setFormData({
+          accountId: '',
+          amountCents: 0,
           amount: 0,
           category_id: undefined,
           description: '',
+          transactionDate: new Date().toISOString().split('T')[0],
           transaction_date: new Date().toISOString().split('T')[0],
           transaction_type: 'expense',
         });
@@ -109,8 +116,27 @@
       }
     };
 
-    const handleInputChange = (field: keyof TransactionCreate, value: string | number | boolean | null) => {
-      setFormData(prev => ({ ...prev, [field]: value }));
+    const handleInputChange = (field: string, value: string | number | boolean | null) => {
+      setFormData(prev => {
+        const updated = { ...prev, [field]: value };
+        
+        // Keep amount and amountCents in sync
+        if (field === 'amount') {
+          updated.amountCents = Math.round((value as number) * 100);
+        } else if (field === 'amountCents') {
+          updated.amount = (value as number) / 100;
+        }
+        
+        // Keep transaction dates in sync
+        if (field === 'transaction_date') {
+          updated.transactionDate = value as string;
+        } else if (field === 'transactionDate') {
+          updated.transaction_date = value as string;
+        }
+        
+        return updated;
+      });
+      
       // Clear error for this field
       if (errors[field]) {
         setErrors(prev => ({ ...prev, [field]: '' }));
@@ -131,7 +157,7 @@
       <Modal isOpen={isOpen} onClose={onClose} title={title}>
       {needsCategoryConfirmation ? (
         <div className="space-y-4">
-          <p className="text-sm text-gray-600">
+          <p className="text-sm text-[hsl(var(--text)/0.8)]">
             {errors.submit || "We couldn't automatically categorize this transaction. Please select a category below."}
           </p>
           <CategorySelector
@@ -162,14 +188,14 @@
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* ... existing form ... */}
           {errors.submit && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-800 text-sm">
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-600 text-sm">
               {errors.submit}
             </div>
           )}
 
           {/* Transaction Type */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[hsl(var(--text))] mb-2">
               Transaction Type
             </label>
             <div className="flex space-x-4">
@@ -182,7 +208,7 @@
                   onChange={(e) => handleInputChange('transaction_type', e.target.value)}
                   className="text-red-600 focus:ring-red-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">💸 Expense</span>
+                <span className="ml-2 text-sm text-[hsl(var(--text))]">💸 Expense</span>
               </label>
               <label className="flex items-center">
                 <input
@@ -193,7 +219,7 @@
                   onChange={(e) => handleInputChange('transaction_type', e.target.value)}
                   className="text-green-600 focus:ring-green-500"
                 />
-                <span className="ml-2 text-sm text-gray-700">💰 Income</span>
+                <span className="ml-2 text-sm text-[hsl(var(--text))]">💰 Income</span>
               </label>
             </div>
             {errors.transaction_type && (
@@ -203,7 +229,7 @@
 
           {/* Amount */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[hsl(var(--text))] mb-2">
               Amount
             </label>
             <Input
@@ -222,7 +248,7 @@
 
           {/* Category */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[hsl(var(--text))] mb-2">
               Category (Optional)
             </label>
             <CategorySelector
@@ -241,7 +267,7 @@
 
           {/* Description */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[hsl(var(--text))] mb-2">
               Description (Optional)
             </label>
             <textarea
@@ -250,15 +276,15 @@
               placeholder="Add a note about this transaction..."
               rows={3}
               maxLength={200}
-              className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                errors.description ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''
+              className={`w-full px-3 py-2 border border-[hsl(var(--border))] rounded-lg focus:ring-2 focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))] bg-[hsl(var(--surface))] text-[hsl(var(--text))] ${
+                errors.description ? 'border-red-500/50 focus:border-red-500 focus:ring-red-500/30' : ''
               }`}
             />
             <div className="flex justify-between mt-1">
               {errors.description && (
                 <p className="text-sm text-red-600">{errors.description}</p>
               )}
-              <p className="text-xs text-gray-500 ml-auto">
+              <p className="text-xs text-[hsl(var(--text)/0.6)] ml-auto">
                 {formData.description?.length || 0}/200
               </p>
             </div>
@@ -266,7 +292,7 @@
 
           {/* Date */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-[hsl(var(--text))] mb-2">
               Transaction Date
             </label>
             <Input

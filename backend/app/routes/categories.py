@@ -4,7 +4,7 @@ from typing import List, Optional
 import uuid
 
 from app.database import get_db
-from app.auth.dependencies import get_current_user, get_optional_user
+from app.auth.dependencies import get_current_user, get_optional_user, get_db_with_user_context
 from app.models.category import Category
 from app.models.user import User
 from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
@@ -21,7 +21,7 @@ async def get_categories(
     parent_only: bool = Query(False),
     search: Optional[str] = Query(None),
     current_user: Optional[User] = Depends(get_optional_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Get all categories (system + user's custom categories)"""
     categories = category_service.get_categories(
@@ -46,7 +46,7 @@ async def get_system_categories(
 async def get_my_categories(
     include_system: bool = Query(True),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Get current user's categories"""
     return category_service.get_user_categories(
@@ -59,7 +59,7 @@ async def get_my_categories(
 async def get_categories_hierarchy(
     include_system: bool = Query(True),
     current_user: Optional[User] = Depends(get_optional_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Get categories organized in hierarchical structure"""
     categories = category_service.get_categories(
@@ -79,7 +79,7 @@ async def get_categories_hierarchy(
 async def get_category(
     category_id: uuid.UUID,
     current_user: Optional[User] = Depends(get_optional_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Get a specific category by ID"""
     category = category_service.get(db=db, id=category_id)
@@ -102,7 +102,7 @@ async def get_category(
 async def create_category(
     category: CategoryCreate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Create a new custom category"""
     # Check if category name already exists for user
@@ -128,7 +128,7 @@ async def update_category(
     category_id: uuid.UUID,
     category: CategoryUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Update a custom category"""
     db_category = category_service.get(db=db, id=category_id)
@@ -162,7 +162,7 @@ async def update_category(
 async def delete_category(
     category_id: uuid.UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Delete a custom category"""
     db_category = category_service.get(db=db, id=category_id)

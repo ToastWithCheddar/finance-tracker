@@ -167,9 +167,19 @@ export function useExportTransactions() {
   return useMutation({
     mutationFn: (filters: ExportFilters) => transactionService.exportTransactions(filters),
     onSuccess: (blob, filters) => {
-      // Download the file
-      const filename = `transactions.${filters.format}`;
-      transactionService.downloadExportFile(blob, filename);
+      try {
+        // Download the file
+        const filename = `transactions.${filters.format}`;
+        transactionService.downloadExportFile(blob, filename);
+        console.log('✅ Export successful:', filename);
+      } catch (error) {
+        console.error('❌ Export download failed:', error);
+        throw error; // Re-throw to trigger onError
+      }
+    },
+    onError: (error) => {
+      console.error('❌ Export failed:', error);
+      // You could add a toast notification here
     },
   });
 }

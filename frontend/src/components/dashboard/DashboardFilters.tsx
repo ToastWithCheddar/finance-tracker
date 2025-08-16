@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Calendar } from 'lucide-react';
-import { Button } from '../ui';
+import { Button } from '../ui/Button';
 import type { DashboardFilters as FilterType } from '../../services/dashboardService';
 
 interface DashboardFiltersProps {

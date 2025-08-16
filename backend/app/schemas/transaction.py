@@ -4,6 +4,12 @@ from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field, field_validator, model_validator
 from enum import Enum
 
+class TransactionGroupBy(str, Enum):
+    NONE = "none"
+    DATE = "date"
+    CATEGORY = "category"
+    MERCHANT = "merchant"
+
 class TransactionStatus(str, Enum):
     PENDING = "pending"
     POSTED = "posted"
@@ -22,6 +28,17 @@ class TransactionBase(BaseModel):
     is_transfer: bool = Field(False, description="Is this a transfer between accounts")
     notes: Optional[str] = Field(None, description="Additional notes")
     tags: Optional[List[str]] = Field(None, description="Transaction tags")
+    metadata_json: Optional[Dict[str, Any]] = Field(None, description="Additional metadata in JSON format")
+    
+    # Plaid-specific fields
+    plaid_transaction_id: Optional[str] = Field(None, description="Plaid transaction ID")
+    plaid_category: Optional[List[str]] = Field(None, description="Plaid category")
+    
+    # Additional date fields
+    authorized_date: Optional[date] = Field(None, description="Authorization date")
+    
+    # Merchant logo
+    merchant_logo: Optional[str] = Field(None, description="Merchant logo URL")
 
     @field_validator('currency')
     @classmethod
@@ -129,6 +146,7 @@ class TransactionFilter(BaseModel):
     is_recurring: Optional[bool] = None
     is_transfer: Optional[bool] = None
     tags: Optional[List[str]] = None
+    group_by: Optional[TransactionGroupBy] = Field(None, description="Group transactions by field")
 
     @field_validator('max_amount_cents')
     @classmethod
@@ -178,3 +196,18 @@ class TransactionBulkUpdate(BaseModel):
     """Schema for bulk transaction updates"""
     transaction_ids: List[UUID] = Field(..., min_items=1, max_items=1000)
     updates: TransactionUpdate
+
+class TransactionGroup(BaseModel):
+    """Schema for grouped transaction response"""
+    key: str = Field(..., description="Group key (category name, merchant name, or date)")
+    total_amount_cents: int = Field(..., description="Total amount for this group in cents")
+    count: int = Field(..., description="Number of transactions in this group")
+    transactions: List[TransactionResponse] = Field(..., description="Transactions in this group")
+
+class TransactionGroupedResponse(BaseModel):
+    """Schema for grouped transaction list response"""
+    groups: List[TransactionGroup] = Field(..., description="Grouped transactions")
+    total: int = Field(..., description="Total number of transactions across all groups")
+    page: int = Field(..., description="Current page number")
+    per_page: int = Field(..., description="Items per page")
+    pages: int = Field(..., description="Total number of pages")

@@ -44,19 +44,19 @@ Common error codes include:
 **`POST /auth/register`**
 *   **Description**: Registers a new user.
 *   **Request Body**: `UserRegister` schema
-*   **Response**: `AuthResponse` schema
+*   **Response**: `Dict[str, Any]`
 *   **Errors**: `422` (Validation Error), `409` (User already exists)
 
 **`POST /auth/login`**
 *   **Description**: Authenticates a user and returns access and refresh tokens.
 *   **Request Body**: `UserLogin` schema
-*   **Response**: `AuthResponse` schema
+*   **Response**: `StandardAuthResponse`
 *   **Errors**: `401` (Invalid credentials), `422` (Validation Error)
 
 **`POST /auth/refresh`**
 *   **Description**: Refreshes an expired access token using a refresh token.
 *   **Request Body**: `RefreshTokenRequest` schema
-*   **Response**: `AuthResponse` schema
+*   **Response**: `StandardAuthResponse`
 *   **Errors**: `401` (Invalid or expired refresh token)
 
 **`GET /auth/me`**
@@ -65,23 +65,23 @@ Common error codes include:
 *   **Response**: `User` schema
 *   **Errors**: `401` (Unauthorized)
 
-**`POST /auth/forgot-password`**
+**`POST /auth/request-password-reset`**
 *   **Description**: Initiates a password reset process.
 *   **Request Body**: `{ "email": "user@example.com" }`
-*   **Response**: `{ "message": "Password reset email sent." }`
+*   **Response**: `204 No Content`
 *   **Errors**: `422` (Validation Error)
-
-**`POST /auth/reset-password`**
-*   **Description**: Resets user password using a reset token.
-*   **Request Body**: `{ "token": "reset_token", "new_password": "new_secure_password" }`
-*   **Response**: `{ "message": "Password has been reset successfully." }`
-*   **Errors**: `400` (Invalid or expired token), `422` (Validation Error)
 
 **`POST /auth/resend-verification`**
 *   **Description**: Resends email verification link.
 *   **Request Body**: `{ "email": "user@example.com" }`
-*   **Response**: `{ "message": "Verification email sent." }`
+*   **Response**: `204 No Content`
 *   **Errors**: `422` (Validation Error)
+
+**`GET /auth/health`**
+*   **Description**: Health check for the authentication service.
+*   **Authentication**: None
+*   **Response**: `Dict[str, Any]`
+*   **Errors**: `500` (Internal Server Error)
 
 ### 2. Users
 
@@ -98,6 +98,30 @@ Common error codes include:
 *   **Response**: `User` schema
 *   **Errors**: `401` (Unauthorized), `422` (Validation Error)
 
+**`DELETE /users/me`**
+*   **Description**: Deletes the currently authenticated user's account.
+*   **Authentication**: Required
+*   **Response**: `{ "message": "Account deactivated successfully" }`
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /users/search`**
+*   **Description**: Searches for users by query.
+*   **Authentication**: Required
+*   **Query Parameters**:
+    *   `query` (string, required): Search query.
+    *   `skip` (int, optional): Number of users to skip (default: 0).
+    *   `limit` (int, optional): Maximum number of users to return (default: 20).
+*   **Response**: `List[UserProfile]` schema
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /users/{user_id}`**
+*   **Description**: Retrieves a specific user's public profile by ID.
+*   **Authentication**: Required
+*   **Path Parameters**:
+    *   `user_id` (UUID): The ID of the user.
+*   **Response**: `UserProfile` schema
+*   **Errors**: `401` (Unauthorized), `404` (User not found)
+
 **`GET /users/me/preferences`**
 *   **Description**: Retrieves the preferences of the currently authenticated user.
 *   **Authentication**: Required
@@ -110,6 +134,18 @@ Common error codes include:
 *   **Request Body**: `UserPreferencesUpdate` schema
 *   **Response**: `UserPreferences` schema
 *   **Errors**: `401` (Unauthorized), `422` (Validation Error)
+
+**`POST /users/me/preferences/reset`**
+*   **Description**: Resets user preferences to default values.
+*   **Authentication**: Required
+*   **Response**: `UserPreferences` schema
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /users/me/profile`**
+*   **Description**: Retrieves the current user's public profile information.
+*   **Authentication**: Required
+*   **Response**: `UserProfile` schema
+*   **Errors**: `401` (Unauthorized)
 
 ### 3. Accounts
 
@@ -224,7 +260,7 @@ Common error codes include:
     *   `search_query` (string, optional): Search by description or merchant.
     *   `page` (int, optional): Page number (default: 1).
     *   `per_page` (int, optional): Items per page (default: 25).
-*   **Response**: `TransactionListResponse` schema
+*   **Response**: `dict` (containing `items`, `total`, `page`, `per_page`, `pages`)
 *   **Errors**: `401` (Unauthorized)
 
 **`GET /transactions/{transaction_id}`**
@@ -256,21 +292,21 @@ Common error codes include:
 *   **Authentication**: Required
 *   **Path Parameters**:
     *   `transaction_id` (UUID): The ID of the transaction to delete.
-*   **Response**: `{ "message": "Transaction deleted successfully." }`
+*   **Response**: `{ "message": "Transaction deleted successfully" }`
 *   **Errors**: `401` (Unauthorized), `404` (Transaction not found)
 
 **`POST /transactions/bulk-delete`**
 *   **Description**: Deletes multiple transactions by their IDs.
 *   **Authentication**: Required
 *   **Request Body**: `{ "transaction_ids": ["uuid1", "uuid2"] }`
-*   **Response**: `{ "message": "Transactions deleted successfully.", "deleted_count": int }`
+*   **Response**: `{ "message": "Successfully deleted X transactions", "deleted_count": int }`
 *   **Errors**: `401` (Unauthorized), `422` (Validation Error)
 
-**`POST /transactions/import/csv`**
+**`POST /transactions/import`**
 *   **Description**: Imports transactions from a CSV file.
 *   **Authentication**: Required
 *   **Request Body**: `multipart/form-data` with a `file` field containing the CSV.
-*   **Response**: `CSVImportResponse` schema
+*   **Response**: `{ "message": "Successfully imported X transactions", "imported_count": int }`
 *   **Errors**: `401` (Unauthorized), `422` (Invalid CSV format or data)
 
 **`GET /transactions/export`**
@@ -290,7 +326,44 @@ Common error codes include:
 *   **Description**: Retrieves statistics for transactions (total income, expenses, net amount).
 *   **Authentication**: Required
 *   **Query Parameters**: (Same as `GET /transactions` for filtering)
-*   **Response**: `TransactionStats` schema
+*   **Response**: `dict`
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /transactions/analytics/dashboard`**
+*   **Description**: Retrieves comprehensive dashboard analytics for the current user.
+*   **Authentication**: Required
+*   **Query Parameters**:
+    *   `start_date` (datetime, optional): Start date for analytics period.
+    *   `end_date` (datetime, optional): End date for analytics period.
+*   **Response**: `dict`
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /transactions/analytics/trends`**
+*   **Description**: Retrieves spending trends over time.
+*   **Authentication**: Required
+*   **Query Parameters**:
+    *   `period` (string, optional): Trend period (`weekly` or `monthly`, default: `monthly`).
+*   **Response**: `List[Dict[str, Any]]`
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /transactions/search_transactions`**
+*   **Description**: Advanced search for transactions with multiple filters.
+*   **Authentication**: Required
+*   **Query Parameters**:
+    *   `q` (string, required): Search query.
+    *   `start_date` (datetime, optional): Start date filter.
+    *   `end_date` (datetime, optional): End date filter.
+    *   `category` (string, optional): Category filter.
+    *   `transaction_type` (string, optional): Transaction type filter.
+    *   `page` (int, optional): Page number (default: 1).
+    *   `per_page` (int, optional): Items per page (default: 25).
+*   **Response**: `dict`
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /transactions/categories`**
+*   **Description**: Retrieves all unique transaction categories for the current user.
+*   **Authentication**: Required
+*   **Response**: `List[str]`
 *   **Errors**: `401` (Unauthorized)
 
 ### 5. Categories
@@ -299,9 +372,25 @@ Common error codes include:
 *   **Description**: Retrieves a list of all categories (system-defined and user-defined).
 *   **Authentication**: Required
 *   **Query Parameters**:
+    *   `skip` (int, optional): Number of categories to skip (default: 0).
+    *   `limit` (int, optional): Maximum number of categories to return (default: 100).
     *   `include_system` (boolean, optional): Include system categories (default: true).
     *   `parent_only` (boolean, optional): Only return top-level categories.
     *   `search` (string, optional): Search categories by name.
+*   **Response**: `List[Category]` schema
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /categories/system`**
+*   **Description**: Retrieves a list of all system (default) categories.
+*   **Authentication**: None
+*   **Response**: `List[Category]` schema
+*   **Errors**: `500` (Internal Server Error)
+
+**`GET /categories/my`**
+*   **Description**: Retrieves a list of the current user's categories.
+*   **Authentication**: Required
+*   **Query Parameters**:
+    *   `include_system` (boolean, optional): Include system categories (default: true).
 *   **Response**: `List[Category]` schema
 *   **Errors**: `401` (Unauthorized)
 
@@ -310,7 +399,7 @@ Common error codes include:
 *   **Authentication**: Required
 *   **Query Parameters**:
     *   `include_system` (boolean, optional): Include system categories (default: true).
-*   **Response**: `List[CategoryWithChildren]` schema
+*   **Response**: `List[Category]` schema
 *   **Errors**: `401` (Unauthorized)
 
 **`GET /categories/{category_id}`**
@@ -342,7 +431,7 @@ Common error codes include:
 *   **Authentication**: Required
 *   **Path Parameters**:
     *   `category_id` (UUID): The ID of the category to delete.
-*   **Response**: `{ "message": "Category deleted successfully." }`
+*   **Response**: `{ "message": "Category deleted successfully" }`
 *   **Errors**: `401` (Unauthorized), `403` (Cannot delete system category), `404` (Category not found)
 
 ### 6. Budgets
@@ -355,6 +444,8 @@ Common error codes include:
     *   `period` (string, optional): Filter by budget period (`monthly`, `weekly`, etc.).
     *   `is_active` (boolean, optional): Filter by active status.
     *   `over_budget` (boolean, optional): Filter by budgets that are over budget.
+    *   `skip` (int, optional): Number of budgets to skip (default: 0).
+    *   `limit` (int, optional): Maximum number of budgets to return (default: 100).
 *   **Response**: `BudgetListResponse` schema
 *   **Errors**: `401` (Unauthorized)
 
@@ -419,7 +510,15 @@ Common error codes include:
     *   `status` (string, optional): Filter by goal status (`active`, `completed`, `paused`, `cancelled`).
     *   `goal_type` (string, optional): Filter by goal type (`savings`, `debt_payoff`, etc.).
     *   `priority` (string, optional): Filter by priority (`low`, `medium`, `high`, `critical`).
+    *   `skip` (int, optional): Number of goals to skip (default: 0).
+    *   `limit` (int, optional): Maximum number of goals to return (default: 100).
 *   **Response**: `GoalsResponse` schema
+*   **Errors**: `401` (Unauthorized)
+
+**`GET /goals/stats`**
+*   **Description**: Retrieves overall statistics for financial goals.
+*   **Authentication**: Required
+*   **Response**: `GoalStats` schema
 *   **Errors**: `401` (Unauthorized)
 
 **`GET /goals/{goal_id}`**
@@ -471,67 +570,78 @@ Common error codes include:
 *   **Response**: `List[GoalContribution]` schema
 *   **Errors**: `401` (Unauthorized), `404` (Goal not found)
 
-**`GET /goals/stats`**
-*   **Description**: Retrieves overall statistics for financial goals.
-*   **Authentication**: Required
-*   **Response**: `GoalStats` schema
-*   **Errors**: `401` (Unauthorized)
-
 **`POST /goals/process-auto-contributions`**
 *   **Description**: Processes automatic contributions for eligible goals.
 *   **Authentication**: Required
 *   **Response**: `{ "message": "string", "results": { "success": int, "failed": int } }`
 *   **Errors**: `401` (Unauthorized)
 
-### 8. Machine Learning (ML)
+**`GET /goals/types/options`**
+*   **Description**: Retrieves available goal types and priorities for UI dropdowns.
+*   **Authentication**: None
+*   **Response**: `dict`
+*   **Errors**: `500` (Internal Server Error)
 
-**`POST /ml/categorise`**
+### 8. AI Insights
+
+**`GET /insights`**
+*   **Description**: Retrieves a list of AI-generated financial insights for the authenticated user.
+*   **Authentication**: Required
+*   **Query Parameters**:
+    *   `type` (string, optional): Filter by insight type (`spending_spike`, `savings_opportunity`, `budget_alert`, `spending_pattern`, `goal_progress`, `cashflow_analysis`, `recurring_expense`, `unusual_transaction`).
+    *   `priority` (integer, optional): Filter by priority level (`1` = High, `2` = Medium, `3` = Low).
+    *   `is_read` (boolean, optional): Filter by read status.
+    *   `limit` (integer, optional): Number of insights to return (1-100, default: 30).
+    *   `offset` (integer, optional): Offset for pagination (default: 0).
+*   **Response**: `InsightListResponse` schema
+*   **Errors**: `401` (Unauthorized)
+
+**`PATCH /insights/{insight_id}`**
+*   **Description**: Updates an insight (primarily for marking as read/unread).
+*   **Authentication**: Required
+*   **Path Parameters**:
+    *   `insight_id` (UUID): The ID of the insight.
+*   **Request Body**: `InsightUpdate` schema
+*   **Response**: `InsightResponse` schema
+*   **Errors**: `401` (Unauthorized), `404` (Insight not found)
+
+**`DELETE /insights/{insight_id}`**
+*   **Description**: Deletes a specific insight.
+*   **Authentication**: Required
+*   **Path Parameters**:
+    *   `insight_id` (UUID): The ID of the insight.
+*   **Response**: `{ "message": "Insight deleted successfully" }`
+*   **Errors**: `401` (Unauthorized), `404` (Insight not found)
+
+### 9. Machine Learning (ML)
+
+**`POST /ml/categorize`**
 *   **Description**: Categorizes a transaction using the ML model.
 *   **Authentication**: Required
 *   **Request Body**: `MLCategorizeRequest` schema
-*   **Response**: `MLCategorizeResponse` schema
-*   **Errors**: `401` (Unauthorized), `422` (Validation Error)
-
-**`POST /ml/batch-categorise`**
-*   **Description**: Categorizes multiple transactions in a batch.
-*   **Authentication**: Required
-*   **Request Body**: `BatchCategorizeRequest` schema
-*   **Response**: `List[MLCategorizeResponse]` schema
+*   **Response**: `Dict[str, Any]`
 *   **Errors**: `401` (Unauthorized), `422` (Validation Error)
 
 **`POST /ml/feedback`**
 *   **Description**: Submits user feedback to improve the ML model's categorization.
 *   **Authentication**: Required
-*   **Request Body**: `MLFeedbackRequest` schema
-*   **Response**: `{ "message": "Feedback received." }`
+*   **Request Body**: `transaction_id: UUID, correct_category_id: UUID`
+*   **Response**: `{ "success": True, "message": "Feedback submitted successfully" }`
 *   **Errors**: `401` (Unauthorized), `422` (Validation Error)
-
-**`POST /ml/add-example`**
-*   **Description**: Adds a new example to a category for model training.
-*   **Authentication**: Required
-*   **Request Body**: `CategoryExampleRequest` schema
-*   **Response**: `{ "message": "Example added." }`
-*   **Errors**: `401` (Unauthorized), `422` (Validation Error)
-
-**`POST /ml/export-model`**
-*   **Description**: Exports the current ML model to ONNX format (with quantization).
-*   **Authentication**: Required
-*   **Response**: `{ "message": "Model exported.", "onnx_path": "string", "quantized_path": "string" }`
-*   **Errors**: `401` (Unauthorized), `500` (Export failed)
-
-**`GET /ml/performance`**
-*   **Description**: Retrieves performance metrics for the ML model.
-*   **Authentication**: Required
-*   **Response**: `MLModelPerformance` schema
-*   **Errors**: `401` (Unauthorized)
 
 **`GET /ml/health`**
 *   **Description**: Retrieves the health status of the ML service.
 *   **Authentication**: Required
-*   **Response**: `MLHealthStatus` schema
+*   **Response**: `Dict[str, Any]`
 *   **Errors**: `401` (Unauthorized)
 
-### 9. Health Check
+**`GET /ml/stats`**
+*   **Description**: Retrieves ML usage statistics for the current user.
+*   **Authentication**: Required
+*   **Response**: `Dict[str, Any]`
+*   **Errors**: `401` (Unauthorized)
+
+### 10. Health Check
 
 **`GET /health`**
 *   **Description**: Performs a basic health check of the API.

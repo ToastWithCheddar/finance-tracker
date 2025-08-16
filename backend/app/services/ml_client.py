@@ -18,7 +18,10 @@ from ..schemas.ml import (
     MLBatchCategorizationResponse,
     MLErrorResponse,
     MLServiceResponse,
-    MLServiceConfig
+    MLServiceConfig,
+    MCategoryExampleRequest,
+    MLModelPerformanceResponse,
+    MLModelExportResponse
 )
 
 logger = logging.getLogger(__name__)
@@ -353,6 +356,169 @@ class MLServiceClient:
                 error=MLErrorResponse(
                     error="health_check_error",
                     message=f"Health check error: {str(e)}"
+                )
+            )
+    
+    async def add_training_example(self, category: str, example: str, user_id: str) -> MLServiceResponse:
+        """
+        Add a new training example to a category for improved classification
+        
+        Args:
+            category: Category name
+            example: Example text for the category
+            user_id: User ID providing the example
+            
+        Returns:
+            MLServiceResponse with operation result
+        """
+        try:
+            request_data = MCategoryExampleRequest(
+                category=category,
+                example=example
+            )
+            
+            start_time = datetime.utcnow()
+            
+            async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+                response = await client.post(
+                    f"{self.config.base_url}/ml/add-example",
+                    json=request_data.model_dump(),
+                    headers={"Content-Type": "application/json"}
+                )
+                
+                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                
+                if response.status_code in [200, 201]:
+                    response_data = response.json()
+                    
+                    return MLServiceResponse(
+                        success=True,
+                        data=response_data,
+                        request_duration_ms=duration_ms
+                    )
+                else:
+                    try:
+                        error_data = response.json()
+                        error = MLErrorResponse.model_validate(error_data)
+                    except Exception:
+                        error = MLErrorResponse(
+                            error="http_error",
+                            message=f"HTTP {response.status_code}: {response.text}"
+                        )
+                    
+                    return MLServiceResponse(
+                        success=False,
+                        error=error,
+                        request_duration_ms=duration_ms
+                    )
+                    
+        except Exception as e:
+            logger.error(f"Error adding training example: {str(e)}")
+            return MLServiceResponse(
+                success=False,
+                error=MLErrorResponse(
+                    error="add_example_error",
+                    message=f"Failed to add training example: {str(e)}"
+                )
+            )
+    
+    async def export_model(self) -> MLServiceResponse:
+        """
+        Export the current model to ONNX format with quantization
+        
+        Returns:
+            MLServiceResponse with export result
+        """
+        try:
+            start_time = datetime.utcnow()
+            
+            async with httpx.AsyncClient(timeout=300.0) as client:  # 5 minutes timeout for export
+                response = await client.post(f"{self.config.base_url}/ml/export-model")
+                
+                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    export_result = MLModelExportResponse.model_validate(response_data)
+                    
+                    return MLServiceResponse(
+                        success=True,
+                        data=export_result,
+                        request_duration_ms=duration_ms
+                    )
+                else:
+                    try:
+                        error_data = response.json()
+                        error = MLErrorResponse.model_validate(error_data)
+                    except Exception:
+                        error = MLErrorResponse(
+                            error="http_error",
+                            message=f"HTTP {response.status_code}: {response.text}"
+                        )
+                    
+                    return MLServiceResponse(
+                        success=False,
+                        error=error,
+                        request_duration_ms=duration_ms
+                    )
+                    
+        except Exception as e:
+            logger.error(f"Error exporting model: {str(e)}")
+            return MLServiceResponse(
+                success=False,
+                error=MLErrorResponse(
+                    error="export_error",
+                    message=f"Failed to export model: {str(e)}"
+                )
+            )
+    
+    async def get_model_performance(self) -> MLServiceResponse:
+        """
+        Get current model performance metrics
+        
+        Returns:
+            MLServiceResponse with performance metrics
+        """
+        try:
+            start_time = datetime.utcnow()
+            
+            async with httpx.AsyncClient(timeout=self.config.timeout_seconds) as client:
+                response = await client.get(f"{self.config.base_url}/ml/performance")
+                
+                duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+                
+                if response.status_code == 200:
+                    response_data = response.json()
+                    performance_result = MLModelPerformanceResponse.model_validate(response_data)
+                    
+                    return MLServiceResponse(
+                        success=True,
+                        data=performance_result,
+                        request_duration_ms=duration_ms
+                    )
+                else:
+                    try:
+                        error_data = response.json()
+                        error = MLErrorResponse.model_validate(error_data)
+                    except Exception:
+                        error = MLErrorResponse(
+                            error="http_error",
+                            message=f"HTTP {response.status_code}: {response.text}"
+                        )
+                    
+                    return MLServiceResponse(
+                        success=False,
+                        error=error,
+                        request_duration_ms=duration_ms
+                    )
+                    
+        except Exception as e:
+            logger.error(f"Error getting model performance: {str(e)}")
+            return MLServiceResponse(
+                success=False,
+                error=MLErrorResponse(
+                    error="performance_error",
+                    message=f"Failed to get model performance: {str(e)}"
                 )
             )
 

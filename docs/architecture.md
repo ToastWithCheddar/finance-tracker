@@ -12,7 +12,7 @@ graph TD
 
     Backend -->|Database Operations| PostgreSQL[PostgreSQL DB]
     Backend -->|Caching/Messaging| Redis[Redis]
-    Backend -->|Async ML Tasks| MLWorker[ML Worker (Celery)]
+    Backend -->|HTTP ML Requests| MLWorker[ML Worker (HTTP API)]
 
     MLWorker -->|Model Storage| MLModels[ML Models]
     MLWorker -->|Database Access| PostgreSQL
@@ -35,10 +35,10 @@ graph TD
 ## 2. Core Architectural Principles
 
 *   **Microservices**: The application is composed of several independent, loosely coupled services (Backend API, Frontend UI, ML Worker, Database, Cache) that communicate via well-defined interfaces. This promotes scalability, maintainability, and independent deployment.
-*   **Asynchronous Processing**: Heavy or long-running tasks (e.g., ML model training, batch processing) are offloaded to a dedicated ML Worker via a message queue (Redis/Celery), ensuring the main API remains responsive.
+*   **Service Communication**: Heavy or long-running tasks (e.g., ML model training, batch processing) are handled by a dedicated ML Worker via HTTP API calls, ensuring the main API remains responsive and maintains clear service boundaries.
 *   **Containerization**: Docker and Docker Compose are used to package each service into isolated containers, providing consistent environments across development, testing, and production.
 *   **Layered Architecture**: Each service (especially the backend) follows a layered design (e.g., API routes, business logic services, data access layer) to separate concerns.
-*   **Real-time Capabilities**: WebSockets enable real-time updates to the frontend, providing an interactive and dynamic user experience.
+*   **Real-time Capabilities**: Redis-based pub/sub WebSocket system enables scalable real-time updates to the frontend, providing an interactive and dynamic user experience with message persistence.
 *   **Observability**: Integrated monitoring (Prometheus) and A/B testing frameworks for ML models allow for continuous performance tracking and data-driven decision-making.
 
 ## 3. Service Breakdown
@@ -62,13 +62,13 @@ graph TD
 *   **API Endpoints**: Exposes RESTful API endpoints for accounts, transactions, categories, budgets, goals, user preferences, and analytics.
 *   **Business Logic**: Contains the core business rules and orchestrates interactions between different data models and services.
 *   **Data Access**: Interacts with PostgreSQL for data storage and retrieval.
-*   **Asynchronous Tasks**: Dispatches ML-related tasks to the Celery-based ML Worker via Redis.
-*   **WebSockets**: Manages WebSocket connections for real-time data push to the frontend.
+*   **ML Service Integration**: Communicates with the ML Worker via HTTP-based MLServiceClient for transaction categorization and model management.
+*   **WebSockets**: Manages scalable Redis-based WebSocket connections for real-time data push to the frontend with message persistence and multi-instance support.
 
-### 3.3. ML Worker (Celery/Python)
+### 3.3. ML Worker (HTTP API/Python)
 
-*   **Purpose**: A dedicated service for performing computationally intensive machine learning tasks asynchronously.
-*   **Technology Stack**: Python, Celery (task queue), Redis (message broker), Sentence Transformers, ONNX Runtime.
+*   **Purpose**: A dedicated service for performing computationally intensive machine learning tasks via HTTP API.
+*   **Technology Stack**: Python, FastAPI/Flask (HTTP server), Sentence Transformers, ONNX Runtime.
 *   **Core Functionality**:
     *   **Transaction Categorization**: Uses a few-shot learning approach with Sentence Transformers to automatically categorize transactions.
     *   **Model Optimization**: Leverages ONNX for optimized inference and INT8 quantization for performance and reduced model size.
@@ -112,7 +112,7 @@ graph TD
     *   **CSRF Protection**: Implemented for API requests.
     *   **Non-root Containers**: Services run as non-root users in Docker containers.
     *   **Environment Variables**: Sensitive configurations are managed via environment variables.
-*   **Scalability**: The microservices architecture allows individual services to be scaled independently based on demand. Celery/Redis provide a scalable task queue for ML workloads.
+*   **Scalability**: The microservices architecture allows individual services to be scaled independently based on demand. HTTP-based ML service communication provides clear service boundaries and horizontal scaling capabilities.
 *   **Maintainability**: Clear separation of concerns, modular codebase, and strong typing (TypeScript, Python type hints) contribute to easier maintenance and development.
 *   **Observability**: Logging, monitoring (Prometheus), and A/B testing provide insights into system health and performance.
 

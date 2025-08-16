@@ -1,11 +1,16 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import { toast } from 'sonner';
 
+import { queryClient } from '../services/queryClient';
 import type { Transaction } from '../types/transaction';
 import type { MilestoneAlert } from '../types/goals';
 import type { 
   TypedWebSocketMessage, 
-  TransactionPayload
+  TransactionPayload,
+  WebhookSyncPayload,
+  TransactionSyncPayload,
+  BulkSyncPayload
 } from '../types/websocket';
 import { 
   MessageType,
@@ -30,6 +35,20 @@ export interface RealtimeNotification {
   action_url?: string;
   created_at: string; // ISO timestamp string
   read: boolean;
+  isNew?: boolean;
+}
+
+export interface RealtimeInsight {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  priority: number;
+  is_read: boolean;
+  extra_payload?: Record<string, any>;
+  created_at: string;
+  updated_at?: string;
+  transaction_id?: string;
   isNew?: boolean;
 }
 
@@ -70,6 +89,9 @@ interface RealtimeState {
   /* Budget alerts */
   budgetAlerts: Array<{ message: string; category?: string; amount?: number }>;
 
+  /* AI Insights */
+  insights: RealtimeInsight[];
+
   /* ====== Actions ====== */
   // Connection actions
   updateConnectionStatus: (status: ConnectionStatusValue, reconnectAttempts?: number) => void;
@@ -101,6 +123,11 @@ interface RealtimeState {
   addBudgetAlert: (alert: { message: string; category?: string; amount?: number }) => void;
   clearBudgetAlerts: () => void;
 
+  // Insight actions
+  addInsight: (insight: RealtimeInsight) => void;
+  markInsightRead: (id: string) => void;
+  clearInsights: () => void;
+
   // WebSocket helpers
   handleWebSocketMessage: (message: Record<string, unknown>) => void;
   dispatchMessage: (message: { type: string; payload?: Record<string, unknown>; timestamp?: string }) => void;
@@ -128,6 +155,7 @@ export const useRealtimeStore = create<RealtimeState>()(
 
     notifications: [],
     budgetAlerts: [],
+    insights: [],
 
     /***** Connection actions *****/
     updateConnectionStatus: (status, reconnectAttempts = 0) => {
@@ -298,6 +326,38 @@ export const useRealtimeStore = create<RealtimeState>()(
       set({ budgetAlerts: [] });
     },
 
+    /***** Insight actions *****/
+    addInsight: (insight) => {
+      set((state) => ({
+        insights: [
+          { ...insight, isNew: true },
+          ...state.insights.slice(0, 49), // keep max 50
+        ],
+      }));
+
+      // Also add as notification for high priority insights
+      if (insight.priority === 1) {
+        get().addNotification({
+          type: 'info',
+          title: 'New Insight',
+          message: insight.title,
+          priority: 'high',
+        });
+      }
+    },
+
+    markInsightRead: (id) => {
+      set((state) => ({
+        insights: state.insights.map((insight) =>
+          insight.id === id ? { ...insight, is_read: true, isNew: false } : insight,
+        ),
+      }));
+    },
+
+    clearInsights: () => {
+      set({ insights: [] });
+    },
+
     /***** WebSocket helpers *****/
     handleWebSocketMessage: (message) => {
       try {
@@ -315,6 +375,14 @@ export const useRealtimeStore = create<RealtimeState>()(
         if (isDashboardUpdate(typedMessage)) {
           // Dashboard update - could trigger a full refresh
           console.log('[RealtimeStore] Dashboard update received');
+          
+        } else if (typedMessage.type === MessageType.BALANCE_UPDATE) {
+          const payload = typedMessage.payload as any;
+          toast.info(`Balance updated for ${payload.account_name}.`);
+
+          // Invalidate queries that depend on account balances
+          queryClient.invalidateQueries({ queryKey: ['accounts'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
           
         } else if (isTransactionMessage(typedMessage)) {
           const payload = typedMessage.payload;
@@ -407,6 +475,71 @@ export const useRealtimeStore = create<RealtimeState>()(
             priority: payload.priority,
             action_url: payload.action_url,
           });
+          
+        } else if (typedMessage.type === 'AI_INSIGHT_GENERATED') {
+          const payload = typedMessage.payload as any;
+          const insight: RealtimeInsight = {
+            id: payload.insight_id,
+            type: payload.insight_type,
+            title: payload.title,
+            description: payload.description,
+            priority: payload.priority === 'high' ? 1 : payload.priority === 'medium' ? 2 : 3,
+            is_read: false,
+            extra_payload: payload.data,
+            created_at: payload.generated_at || new Date().toISOString(),
+            transaction_id: payload.transaction_id,
+            isNew: true,
+          };
+          
+          get().addInsight(insight);
+          
+        } else if (typedMessage.type === MessageType.WEBHOOK_SYNC_COMPLETE) {
+          const payload = typedMessage.payload as WebhookSyncPayload;
+          
+          if (payload.success && payload.total_new_transactions > 0) {
+            toast.success(`Sync complete! ${payload.total_new_transactions} new transaction(s) imported from Plaid.`);
+          } else if (payload.success) {
+            toast.info('Account sync complete - all transactions are up to date.');
+          } else {
+            toast.error('Sync failed. Please try again later.');
+          }
+
+          // Invalidate queries to trigger refetch
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
+          queryClient.invalidateQueries({ queryKey: ['accounts'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+          
+        } else if (typedMessage.type === MessageType.TRANSACTION_SYNC_COMPLETE) {
+          const payload = typedMessage.payload as TransactionSyncPayload;
+          
+          if (payload.new_transactions > 0) {
+            toast.success(`Sync complete! ${payload.new_transactions} new transaction(s) imported from ${payload.account_name}.`);
+          } else {
+            toast.info(`${payload.account_name} is up to date.`);
+          }
+
+          // Invalidate queries to trigger refetch
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
+          queryClient.invalidateQueries({ queryKey: ['accounts'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+          
+        } else if (typedMessage.type === MessageType.BULK_SYNC_COMPLETE) {
+          const payload = typedMessage.payload as BulkSyncPayload;
+          
+          if (payload.total_new_transactions > 0) {
+            toast.success(`Bulk sync complete! ${payload.total_new_transactions} new transaction(s) imported.`);
+          } else {
+            toast.info('Bulk sync complete - all accounts are up to date.');
+          }
+
+          if (payload.total_errors > 0) {
+            toast.warning(`Sync completed with ${payload.total_errors} error(s). Some accounts may need attention.`);
+          }
+
+          // Invalidate queries to trigger refetch
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
+          queryClient.invalidateQueries({ queryKey: ['accounts'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
           
         } else if (typedMessage.type === MessageType.PING) {
           // Handle ping - could send pong response

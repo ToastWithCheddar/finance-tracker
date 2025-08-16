@@ -201,16 +201,16 @@ export function Categories() {
     const paddingLeft = level * 24;
 
     return (
-      <div key={category.id} className="border-b border-gray-100 last:border-b-0">
+      <div key={category.id} className="border-b last:border-b-0 border-[hsl(var(--border))]">
         <div 
-          className="flex items-center justify-between p-4 hover:bg-gray-50"
+          className="flex items-center justify-between p-4 hover:bg-[hsl(var(--border)/0.12)]"
           style={{ paddingLeft: `${16 + paddingLeft}px` }}
         >
           <div className="flex items-center flex-1 min-w-0">
             {hasChildren && (
               <button
                 onClick={() => toggleCategoryExpansion(category.id)}
-                className="mr-2 p-1 hover:bg-gray-200 rounded"
+                className="mr-2 p-1 hover:bg-[hsl(var(--border)/0.35)] rounded"
               >
                 {isExpanded ? (
                   <ChevronDownIcon className="h-4 w-4" />
@@ -228,17 +228,17 @@ export function Categories() {
             
             <div className="flex-1 min-w-0">
               <div className="flex items-center">
-                <h3 className="font-medium text-gray-900 truncate">
+                <h3 className="font-medium text-[hsl(var(--text))] truncate">
                   {category.name}
                 </h3>
                 {category.is_system && (
-                  <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                  <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100 rounded-full">
                     System
                   </span>
                 )}
               </div>
               {category.description && (
-                <p className="text-sm text-gray-500 truncate">
+                <p className="text-sm text-[hsl(var(--text))] opacity-70 truncate">
                   {category.description}
                 </p>
               )}
@@ -246,7 +246,7 @@ export function Categories() {
             
             {category.color && (
               <div 
-                className="w-4 h-4 rounded-full border border-gray-300 mr-3"
+                className="w-4 h-4 rounded-full border mr-3 border-[hsl(var(--border))]"
                 style={{ backgroundColor: category.color }}
               />
             )}
@@ -307,7 +307,7 @@ export function Categories() {
       )}
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-[hsl(var(--text))] opacity-80 mb-1">
           Name *
         </label>
         <Input
@@ -323,7 +323,7 @@ export function Categories() {
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-[hsl(var(--text))] opacity-80 mb-1">
           Description
         </label>
         <textarea
@@ -332,7 +332,7 @@ export function Categories() {
           placeholder="Optional description"
           rows={3}
           maxLength={500}
-          className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+          className={`w-full px-3 py-2 rounded-lg focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))] ${
             formErrors.description ? 'border-red-300' : ''
           }`}
         />
@@ -340,7 +340,7 @@ export function Categories() {
           {formErrors.description && (
             <p className="text-sm text-red-600">{formErrors.description}</p>
           )}
-          <p className="text-xs text-gray-500 ml-auto">
+          <p className="text-xs ml-auto text-[hsl(var(--text))] opacity-60">
             {formData.description.length}/500
           </p>
         </div>
@@ -348,7 +348,7 @@ export function Categories() {
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-[hsl(var(--text))] opacity-80 mb-1">
             Emoji
           </label>
           <Input
@@ -365,7 +365,7 @@ export function Categories() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
+          <label className="block text-sm font-medium text-[hsl(var(--text))] opacity-80 mb-1">
             Color
           </label>
           <div className="flex items-center space-x-2">
@@ -373,7 +373,7 @@ export function Categories() {
               type="color"
               value={formData.color}
               onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
-              className="w-10 h-10 border border-gray-300 rounded cursor-pointer"
+              className="w-10 h-10 border rounded cursor-pointer border-[hsl(var(--border))] bg-[hsl(var(--surface))]"
             />
             <Input
               type="text"
@@ -395,10 +395,10 @@ export function Categories() {
     return (
       <div className="p-6">
         <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="h-8 rounded w-1/4 mb-6 bg-[hsl(var(--border)/0.35)]"></div>
           <div className="space-y-3">
             {[...Array(5)].map((_, i) => (
-              <div key={i} className="h-16 bg-gray-200 rounded"></div>
+              <div key={i} className="h-16 rounded bg-[hsl(var(--border)/0.35)]"></div>
             ))}
           </div>
         </div>
@@ -411,8 +411,8 @@ export function Categories() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Categories</h1>
-            <p className="text-gray-600 mt-1">
+            <h1 className="text-2xl font-bold text-[hsl(var(--text))]">Categories</h1>
+            <p className="mt-1 text-[hsl(var(--text))] opacity-70">
               Manage your transaction categories
             </p>
           </div>
@@ -423,10 +423,10 @@ export function Categories() {
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow">
+      <div className="rounded-lg shadow border bg-[hsl(var(--surface))] border-[hsl(var(--border))] text-[hsl(var(--text))]">
         {categories.length === 0 ? (
           <div className="p-8 text-center">
-            <p className="text-gray-500">No categories found</p>
+            <p className="opacity-70">No categories found</p>
           </div>
         ) : (
           <div>
@@ -500,7 +500,7 @@ export function Categories() {
         }}
         title="Delete Category"
       >
-        <p className="text-gray-600 mb-4">
+        <p className="mb-4 text-[hsl(var(--text))] opacity-80">
           Are you sure you want to delete "{deletingCategory?.name}"? This action cannot be undone.
         </p>
         <div className="flex justify-end space-x-3">

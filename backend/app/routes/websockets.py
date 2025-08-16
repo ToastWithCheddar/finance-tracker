@@ -1,12 +1,13 @@
-# backend/app/websocket/endpoints.py
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException
+# backend/app/routes/websockets.py
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException 
+from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 import json
 import asyncio
 import logging
 from datetime import datetime
 
-from ..websocket.manager import manager
+from ..websocket.manager import redis_websocket_manager as manager
 from ..websocket.events import WebSocketEvents, MessageType
 from ..auth.dependencies import get_current_user_from_token
 from ..database import get_db
@@ -19,12 +20,13 @@ router = APIRouter()
 async def websocket_endpoint(
     websocket: WebSocket,
     token: str = Query(..., description="JWT authentication token"),
+    db: Session = Depends(get_db)
 ):
     """Main WebSocket endpoint for real-time updates"""
     user = None
     try:
         # Authenticate user from token
-        user = await get_current_user_from_token(token)
+        user = await get_current_user_from_token(token=token, db=db)
         if not user:
             await websocket.close(code=4001, reason="Authentication failed")
             return
@@ -72,7 +74,7 @@ async def websocket_endpoint(
     finally:
         # Always cleanup connection
         if user:
-            manager.disconnect(websocket)
+            await manager.disconnect(websocket)
 
 async def handle_client_message(websocket: WebSocket, user_id: str, message_data: str):
     """Handle incoming messages from WebSocket clients"""
@@ -224,8 +226,8 @@ async def handle_get_connection_stats(websocket: WebSocket, user_id: str, payloa
             "type": "connection_stats",
             "payload": {
                 "user_connections": user_connections,
-                "total_connections": stats["total_connections"],
-                "connected_users": stats["connected_users"],
+                "total_connections": stats.get("active_connections", 0),
+                "connected_users": stats.get("connected_users", 0),
                 "server_uptime": datetime.utcnow().isoformat()
             }
         }
@@ -256,8 +258,8 @@ async def websocket_health():
         stats = await manager.get_connection_stats()
         return {
             "status": "healthy",
-            "total_connections": stats["total_connections"],
-            "connected_users": stats["connected_users"],
+            "total_connections": stats.get("active_connections", 0),
+            "connected_users": stats.get("connected_users", 0),
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
@@ -364,4 +366,8 @@ async def cleanup_stale_connections():
             await asyncio.sleep(60)  # Wait 1 minute before retrying
 
 # Start cleanup task when module is imported
-asyncio.create_task(cleanup_stale_connections())
+try:
+    asyncio.create_task(cleanup_stale_connections())
+except RuntimeError:
+    # Handle case where event loop is not yet running
+    logger.info("Event loop not ready, cleanup task will be started later")

@@ -1,21 +1,20 @@
-import { useState } from 'react';
-import { useAccounts, usePlaidConnectedAccounts, useManualAccounts } from '../../hooks/useAccounts';
+import { useState, useMemo } from 'react';
+import { useAccounts } from '../../hooks/useAccounts';
 import { usePlaidActions } from '../../hooks/usePlaid';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { 
   Building2, 
-  DollarSign, 
-  CreditCard, 
-  Banknote, 
   RefreshCw,
   AlertTriangle,
   CheckCircle,
   Clock,
   PiggyBank,
   TrendingUp,
-  Wallet
+  Wallet,
+  Banknote,
+  CreditCard
 } from 'lucide-react';
 import { accountService } from '../../services/accountService';
 import { PlaidLink } from '../plaid/PlaidLink';
@@ -26,91 +25,71 @@ interface AccountsListProps {
 }
 
 export function AccountsList({ className = '', showTitle = true }: AccountsListProps) {
+  const [showModal, setShowModal] = useState(false);
   const [selectedTab, setSelectedTab] = useState<'all' | 'plaid' | 'manual'>('all');
-  const [showPlaidLink, setShowPlaidLink] = useState(false);
   
-  // Fetch accounts data
-  const { data: allAccounts, isLoading, error, refetch } = useAccounts();
-  const { data: plaidAccounts } = usePlaidConnectedAccounts();
-  const { data: manualAccounts } = useManualAccounts();
-  const { 
-    syncBalances, 
-    isSyncingBalances, 
-    syncTransactions, 
-    isSyncingTransactions,
-    syncBalancesError,
-    syncTransactionsError 
-  } = usePlaidActions();
+  // Single data source
+  const { data: accounts, isLoading, error, refetch } = useAccounts();
+  const { syncBalances, syncTransactions, isSyncingBalances, isSyncingTransactions } = usePlaidActions();
 
-  // Get accounts based on selected tab
-  const getDisplayAccounts = () => {
-    switch (selectedTab) {
-      case 'plaid': return plaidAccounts;
-      case 'manual': return manualAccounts;
-      default: return allAccounts;
-    }
-  };
+  // Derive filtered data locally
+  const { plaidAccounts, manualAccounts, displayAccounts } = useMemo(() => {
+    const plaid = accounts?.filter(account => !!account.plaid_account_id) || [];
+    const manual = accounts?.filter(account => !account.plaid_account_id) || [];
+    
+    let display = accounts || [];
+    if (selectedTab === 'plaid') display = plaid;
+    else if (selectedTab === 'manual') display = manual;
 
-  const displayAccounts = getDisplayAccounts() || [];
+    return {
+      plaidAccounts: plaid,
+      manualAccounts: manual,
+      displayAccounts: display
+    };
+  }, [accounts, selectedTab]);
 
-  // Handle balance sync
-  const handleSyncBalances = () => {
-    console.log('🔄 Starting balance sync...');
-    console.log('🔍 Button clicked, calling syncBalances with force_sync');
-    // Force sync to bypass "recently synced" protection
-    syncBalances({ force_sync: true });
-    console.log('📤 syncBalances function called');
-  };
+  // Calculate totals
+  const totals = useMemo(() => {
+    return displayAccounts.reduce(
+      (acc, account) => {
+        acc.total += account.balance_cents;
+        if (account.balance_cents > 0) acc.assets += account.balance_cents;
+        else acc.liabilities += Math.abs(account.balance_cents);
+        return acc;
+      },
+      { total: 0, assets: 0, liabilities: 0 }
+    );
+  }, [displayAccounts]);
 
-  const handleSyncTransactions = () => {
-    syncTransactions(undefined);
-  };
+  // Modal handlers
+  const openModal = () => setShowModal(true);
+  const closeModal = () => setShowModal(false);
 
   const handlePlaidSuccess = () => {
-    setShowPlaidLink(false);
+    closeModal();
     refetch();
   };
 
-  const handleRefresh = () => {
-    refetch();
-  };
-
-  // Get account icon based on type
+  // Account icon helper
   const getAccountIcon = (accountType: string) => {
     switch (accountType) {
       case 'checking': return <Banknote className="h-5 w-5 text-blue-600" />;
       case 'savings': return <PiggyBank className="h-5 w-5 text-green-600" />;
       case 'credit_card': return <CreditCard className="h-5 w-5 text-red-600" />;
       case 'investment': return <TrendingUp className="h-5 w-5 text-purple-600" />;
-      case 'retirement': return <TrendingUp className="h-5 w-5 text-orange-600" />;
       default: return <Wallet className="h-5 w-5 text-gray-600" />;
     }
   };
 
-  // Get connection health icon
+  // Health icon helper
   const getHealthIcon = (health?: string) => {
     switch (health) {
-      case 'healthy':
-        return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'warning':
-        return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-      case 'failed':
-        return <AlertTriangle className="h-4 w-4 text-red-500" />;
-      default:
-        return <Clock className="h-4 w-4 text-gray-400" />;
+      case 'healthy': return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case 'warning': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+      case 'failed': return <AlertTriangle className="h-4 w-4 text-red-500" />;
+      default: return <Clock className="h-4 w-4 text-gray-400" />;
     }
   };
-
-  // Calculate totals
-  const totals = displayAccounts.reduce(
-    (acc, account) => {
-      acc.total += account.balance_cents;
-      if (account.balance_cents > 0) acc.assets += account.balance_cents;
-      else acc.liabilities += Math.abs(account.balance_cents);
-      return acc;
-    },
-    { total: 0, assets: 0, liabilities: 0 }
-  );
 
   if (isLoading) {
     return (
@@ -148,7 +127,7 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
             <div className="text-center">
               <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
               <p className="text-red-600 mb-2">Failed to load accounts</p>
-              <Button onClick={handleRefresh} size="sm" variant="outline">
+              <Button onClick={() => refetch()} size="sm" variant="outline">
                 Try Again
               </Button>
             </div>
@@ -158,7 +137,7 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
     );
   }
 
-  if (!displayAccounts.length) {
+  if (!accounts?.length) {
     return (
       <Card className={className}>
         {showTitle && (
@@ -170,22 +149,24 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
           </CardHeader>
         )}
         <CardContent>
-          <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          <div className="text-center py-8">
             <Building2 className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-            <p className="mb-2">No accounts found</p>
-            <p className="text-sm mb-4">Connect your bank account or add a manual account to get started</p>
-            <Button onClick={() => setShowPlaidLink(true)} className="bg-blue-600 hover:bg-blue-700">
+            <p className="mb-2 text-gray-600">No accounts found</p>
+            <p className="text-sm mb-4 text-gray-500">Connect your bank account to get started</p>
+            <Button onClick={openModal} className="bg-blue-600 hover:bg-blue-700">
               <Building2 className="h-4 w-4 mr-2" />
               Connect Bank Account
             </Button>
           </div>
         </CardContent>
-        {showPlaidLink && (
+
+        {/* Modal */}
+        {showModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Connect Bank Account</h3>
-              <PlaidLink onSuccess={handlePlaidSuccess} onError={() => setShowPlaidLink(false)} />
-              <Button onClick={() => setShowPlaidLink(false)} variant="ghost" size="sm" className="mt-4 w-full">
+              <PlaidLink onSuccess={handlePlaidSuccess} onError={closeModal} />
+              <Button onClick={closeModal} variant="ghost" size="sm" className="mt-4 w-full">
                 Cancel
               </Button>
             </div>
@@ -204,35 +185,9 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
               <Building2 className="h-5 w-5 mr-2" />
               Accounts
             </CardTitle>
-            
-            <div className="flex items-center space-x-2">
-              {plaidAccounts.length > 0 && (
-                <Button
-                  onClick={handleSyncBalances}
-                  disabled={isSyncingBalances}
-                  size="sm"
-                  variant="outline"
-                  className="text-xs"
-                >
-                  <RefreshCw className={`h-3 w-3 mr-1 ${isSyncingBalances ? 'animate-spin' : ''}`} />
-                  Sync
-                </Button>
-              )}
-              
-              <Button
-                onClick={handleRefresh}
-                disabled={isLoading}
-                size="sm"
-                variant="ghost"
-                className="text-xs"
-              >
-                <RefreshCw className={`h-3 w-3 mr-1 ${isLoading ? 'animate-spin' : ''}`} />
-                Refresh
-              </Button>
-            </div>
           </div>
 
-          {/* Account Type Tabs */}
+          {/* Tabs */}
           <div className="flex space-x-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-lg">
             <button
               onClick={() => setSelectedTab('all')}
@@ -242,7 +197,7 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
                   : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100'
               }`}
             >
-              All ({allAccounts?.length || 0})
+              All ({accounts?.length || 0})
             </button>
             <button
               onClick={() => setSelectedTab('plaid')}
@@ -269,13 +224,11 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
       )}
       
       <CardContent>
-        {/* Account Totals Summary */}
+        {/* Totals */}
         <div className="grid grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
           <div className="text-center">
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Net Worth</p>
-            <p className={`font-semibold ${
-              totals.total >= 0 ? 'text-green-600' : 'text-red-600'
-            }`}>
+            <p className={`font-semibold ${totals.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
               {accountService.formatBalance(totals.total)}
             </p>
           </div>
@@ -331,9 +284,7 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
               </div>
 
               <div className="text-right">
-                <p className={`font-semibold ${
-                  account.balance_cents >= 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
+                <p className={`font-semibold ${account.balance_cents >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {accountService.formatBalance(account.balance_cents)}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -349,74 +300,55 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
           ))}
         </div>
 
-        {/* Sync and Connect Controls (merged from connection status) */}
-        <div className="border-t pt-4 mt-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <h4 className="font-medium text-gray-900 dark:text-gray-100">Sync Data</h4>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Keep your transactions and balances up to date</p>
-            </div>
-            <div className="flex space-x-2">
-              <Button onClick={handleSyncTransactions} disabled={isSyncingTransactions} variant="outline" size="sm">
-                {isSyncingTransactions ? (
-                  <LoadingSpinner size="xs" className="mr-2" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                Sync Transactions
-              </Button>
-              <Button onClick={handleSyncBalances} disabled={isSyncingBalances} variant="outline" size="sm">
-                {isSyncingBalances ? (
-                  <LoadingSpinner size="xs" className="mr-2" />
-                ) : (
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                )}
-                Sync Balances
-              </Button>
-            </div>
-          </div>
-
-          {/* Error Display */}
-          {syncBalancesError && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">
-                <strong>Sync Balance Error:</strong> {syncBalancesError.message}
-              </p>
-              <p className="text-xs text-red-500 mt-1">
-                Check console for details
-              </p>
-            </div>
-          )}
-          
-          {syncTransactionsError && (
-            <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-              <p className="text-sm text-red-600">
-                <strong>Sync Transactions Error:</strong> {syncTransactionsError.message}
-              </p>
-            </div>
-          )}
-
-          <div className="mt-4">
-            <Button onClick={() => setShowPlaidLink(true)} variant="outline" size="sm">
-              <Building2 className="h-4 w-4 mr-2" />
-              Add Another Account
+        {/* Bottom actions: Add account and Sync buttons */}
+        <div className="border-t pt-4 mt-6 flex flex-wrap items-center justify-between gap-2">
+          <Button onClick={openModal} variant="outline" size="sm">
+            <Building2 className="h-4 w-4 mr-2" />
+            Add Another Account
+          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => syncTransactions(undefined)} 
+              disabled={isSyncingTransactions} 
+              variant="outline" 
+              size="sm"
+            >
+              {isSyncingTransactions ? (
+                <LoadingSpinner size="xs" className="mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Sync Transactions
+            </Button>
+            <Button 
+              onClick={() => syncBalances(undefined)} 
+              disabled={isSyncingBalances} 
+              variant="outline" 
+              size="sm"
+            >
+              {isSyncingBalances ? (
+                <LoadingSpinner size="xs" className="mr-2" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              Sync Balances
             </Button>
           </div>
         </div>
-
-        {/* Plaid Link Modal */}
-        {showPlaidLink && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Connect Bank Account</h3>
-              <PlaidLink onSuccess={handlePlaidSuccess} onError={() => setShowPlaidLink(false)} />
-              <Button onClick={() => setShowPlaidLink(false)} variant="ghost" size="sm" className="mt-4 w-full">
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
       </CardContent>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Connect Bank Account</h3>
+            <PlaidLink onSuccess={handlePlaidSuccess} onError={closeModal} />
+            <Button onClick={closeModal} variant="ghost" size="sm" className="mt-4 w-full">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

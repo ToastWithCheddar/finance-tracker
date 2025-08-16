@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Modal } from '../ui';
+import { Modal } from '../ui/Modal';
 
 interface CSVImportProps {
   isOpen: boolean;

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PencilIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon } from 'lucide-react';
-import { Card, CardContent, Button } from '../ui';
+import { Card, CardContent } from '../ui/Card';
+import { Button } from '../ui/Button';
 import { budgetService } from '../../services/budgetService';
 import type { Budget } from '../../types/budgets';
 
@@ -34,17 +35,54 @@ export function BudgetCard({ budget, onEdit, onDelete, isLoading = false }: Budg
   const percentageUsed = budget.usage?.percentage_used || 0;
   const progressWidth = Math.min(percentageUsed, 100);
 
+  const getBudgetTheme = () => {
+    const percentageUsed = budget.usage?.percentage_used || 0;
+    if (budget.usage?.is_over_budget) {
+      return {
+        cardClass: 'bg-expense-gradient border-expense-300 dark:border-expense-600 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50 ring-1 ring-expense-200 dark:ring-expense-700',
+        headerColor: 'text-expense-900 dark:text-expense-100',
+        progressClass: 'progress-bar-danger'
+      };
+    } else if (percentageUsed >= 80) {
+      return {
+        cardClass: 'bg-warning-gradient border-yellow-300 dark:border-yellow-600 shadow-lg shadow-yellow-100/50 dark:shadow-yellow-800/50 ring-1 ring-yellow-200 dark:ring-yellow-700',
+        headerColor: 'text-yellow-900 dark:text-yellow-100',
+        progressClass: 'progress-bar-warning'
+      };
+    } else {
+      return {
+        cardClass: 'bg-budget-gradient border-budget-300 dark:border-budget-600 shadow-lg shadow-budget-100/50 dark:shadow-budget-800/50 ring-1 ring-budget-200 dark:ring-budget-700',
+        headerColor: 'text-budget-900 dark:text-budget-100',
+        progressClass: 'progress-bar-success'
+      };
+    }
+  };
+
+  const theme = getBudgetTheme();
+
   return (
-    <Card className={`${isLoading ? 'opacity-50' : ''} transition-opacity`}>
+    <Card className={`
+      ${theme.cardClass}
+      card-hover
+      backdrop-blur-sm
+      ${isLoading ? 'opacity-50 shimmer' : ''} 
+      transition-all duration-300
+      ${budget.usage?.is_over_budget ? 'animate-bounce-gentle' : ''}
+    `}>
       <CardContent className="p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1">
             <div className="flex items-center gap-2 mb-1">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+              <h3 className={`text-lg font-bold ${theme.headerColor}`}>
                 {budget.name}
               </h3>
               {budget.usage?.is_over_budget && (
-                <AlertTriangleIcon className="h-4 w-4 text-red-500" />
+                <div className="relative">
+                  <AlertTriangleIcon className="h-5 w-5 text-expense-600 animate-pulse" />
+                  <div className="absolute inset-0 animate-ping">
+                    <AlertTriangleIcon className="h-5 w-5 text-expense-600 opacity-75" />
+                  </div>
+                </div>
               )}
             </div>
             
@@ -112,26 +150,29 @@ export function BudgetCard({ budget, onEdit, onDelete, isLoading = false }: Budg
         {/* Progress Bar */}
         {budget.usage && (
           <div className="mb-4">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+            <div className="flex items-center justify-between mb-3">
+              <span className={`text-sm font-semibold ${theme.headerColor}`}>
                 Progress
               </span>
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              <span className={`text-sm font-bold px-2 py-1 rounded-full bg-white/20 backdrop-blur-sm ${theme.headerColor}`}>
                 {budgetService.formatPercentage(percentageUsed)}
               </span>
             </div>
             
-            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-              <div
-                className={`h-2 rounded-full transition-all duration-300 ${
-                  budget.usage.is_over_budget
-                    ? 'bg-red-500'
-                    : percentageUsed >= 80
-                    ? 'bg-yellow-500'
-                    : 'bg-green-500'
-                }`}
-                style={{ width: `${progressWidth}%` }}
-              />
+            <div className="relative">
+              <div className="w-full bg-white/30 dark:bg-gray-800/50 rounded-full h-3 shadow-inner backdrop-blur-sm">
+                <div
+                  className={`h-3 rounded-full transition-all duration-700 ease-out shadow-lg ${theme.progressClass} relative overflow-hidden`}
+                  style={{ width: `${progressWidth}%` }}
+                >
+                  {/* Shimmer effect for active progress */}
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+                </div>
+              </div>
+              {/* Glow effect for over-budget */}
+              {budget.usage.is_over_budget && (
+                <div className="absolute inset-0 rounded-full bg-expense-400/20 animate-pulse"></div>
+              )}
             </div>
           </div>
         )}
@@ -139,27 +180,41 @@ export function BudgetCard({ budget, onEdit, onDelete, isLoading = false }: Budg
         {/* Spending Details */}
         {budget.usage && (
           <div className="grid grid-cols-2 gap-4">
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <TrendingDownIcon className="h-4 w-4 text-red-500" />
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            <div className="text-center bg-white/20 dark:bg-gray-800/30 rounded-xl p-3 backdrop-blur-sm border border-white/30 dark:border-gray-700/50">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <div className="p-1 rounded-full bg-expense-100 dark:bg-expense-800">
+                  <TrendingDownIcon className="h-4 w-4 text-expense-600 dark:text-expense-400" />
+                </div>
+                <span className={`text-xs font-semibold ${theme.headerColor}`}>
                   Spent
                 </span>
               </div>
-              <p className="text-sm font-semibold text-red-600">
+              <p className="text-lg font-bold text-expense-700 dark:text-expense-300">
                 {budgetService.formatCurrency(budget.usage.spent_cents)}
               </p>
             </div>
             
-            <div className="text-center">
-              <div className="flex items-center justify-center gap-1 mb-1">
-                <TrendingUpIcon className="h-4 w-4 text-green-500" />
-                <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+            <div className="text-center bg-white/20 dark:bg-gray-800/30 rounded-xl p-3 backdrop-blur-sm border border-white/30 dark:border-gray-700/50">
+              <div className="flex items-center justify-center gap-2 mb-2">
+                <div className={`p-1 rounded-full ${
+                  budget.usage.remaining_cents >= 0 
+                    ? 'bg-success-100 dark:bg-success-800' 
+                    : 'bg-expense-100 dark:bg-expense-800'
+                }`}>
+                  <TrendingUpIcon className={`h-4 w-4 ${
+                    budget.usage.remaining_cents >= 0 
+                      ? 'text-success-600 dark:text-success-400' 
+                      : 'text-expense-600 dark:text-expense-400'
+                  }`} />
+                </div>
+                <span className={`text-xs font-semibold ${theme.headerColor}`}>
                   Remaining
                 </span>
               </div>
-              <p className={`text-sm font-semibold ${
-                budget.usage.remaining_cents >= 0 ? 'text-green-600' : 'text-red-600'
+              <p className={`text-lg font-bold ${
+                budget.usage.remaining_cents >= 0 
+                  ? 'text-success-700 dark:text-success-300' 
+                  : 'text-expense-700 dark:text-expense-300'
               }`}>
                 {budgetService.formatCurrency(budget.usage.remaining_cents)}
               </p>
@@ -169,12 +224,23 @@ export function BudgetCard({ budget, onEdit, onDelete, isLoading = false }: Budg
 
         {/* Over Budget Warning */}
         {budget.usage?.is_over_budget && (
-          <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-            <div className="flex items-center text-red-700 dark:text-red-400">
-              <AlertTriangleIcon className="h-4 w-4 mr-2" />
-              <span className="text-sm font-medium">
-                Over budget by {budgetService.formatCurrency(budget.usage.spent_cents - budget.amount_cents)}
-              </span>
+          <div className="mt-4 p-4 bg-gradient-to-r from-expense-100 via-expense-50 to-expense-100 dark:from-expense-900/40 dark:via-expense-800/30 dark:to-expense-900/40 border-2 border-expense-300 dark:border-expense-600 rounded-xl shadow-lg shadow-expense-200/50 dark:shadow-expense-800/50 animate-bounce-gentle">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center text-expense-800 dark:text-expense-200">
+                <div className="relative mr-3">
+                  <AlertTriangleIcon className="h-6 w-6 animate-pulse" />
+                  <div className="absolute inset-0 animate-ping">
+                    <AlertTriangleIcon className="h-6 w-6 opacity-75" />
+                  </div>
+                </div>
+                <div>
+                  <div className="font-bold text-sm">OVER BUDGET</div>
+                  <div className="text-xs opacity-80">
+                    Exceeded by {budgetService.formatCurrency(budget.usage.spent_cents - budget.amount_cents)}
+                  </div>
+                </div>
+              </div>
+              <div className="text-2xl">🚨</div>
             </div>
           </div>
         )}

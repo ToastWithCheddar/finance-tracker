@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Eye, EyeOff, Mail, Lock, User } from 'lucide-react';
-import { Button, Input } from '../ui';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
 import { useAuthStore } from '../../stores/authStore';
 import type { RegisterCredentials } from '../../types/auth';
 

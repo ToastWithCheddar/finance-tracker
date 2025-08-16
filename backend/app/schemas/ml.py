@@ -87,6 +87,30 @@ class MLServiceConfig(BaseModel):
     enable_feedback: bool = Field(default=True, description="Whether to enable feedback learning")
     batch_size: int = Field(default=100, description="Maximum batch size for bulk operations")
 
+# Additional schemas for migrated mlcategory endpoints
+class MCategoryExampleRequest(BaseModel):
+    """Request schema for adding training examples to categories"""
+    category: str = Field(..., example="Food & Dining", description="Category name")
+    example: str = Field(..., example="coffee shop morning latte", description="Example text for the category")
+
+class MLModelPerformanceResponse(BaseModel):
+    """Response schema for ML model performance metrics"""
+    total_predictions: int = Field(..., description="Total number of predictions made")
+    total_feedback: int = Field(..., description="Total number of feedback submissions")
+    correct_predictions: int = Field(..., description="Number of correct predictions")
+    accuracy: float = Field(..., ge=0.0, le=1.0, description="Overall accuracy rate")
+    model_version: str = Field(..., description="Current model version")
+    categories_count: int = Field(..., description="Number of categories in the model")
+    users_with_feedback: int = Field(..., description="Number of users who provided feedback")
+
+class MLModelExportResponse(BaseModel):
+    """Response schema for model export operations"""
+    success: bool = Field(..., description="Whether export was successful")
+    model_path: Optional[str] = Field(None, description="Path to exported model")
+    model_version: str = Field(..., description="Version of exported model")
+    export_format: str = Field(..., description="Format of exported model (e.g., 'onnx')")
+    file_size_bytes: Optional[int] = Field(None, description="Size of exported model file")
+
 # Response wrapper for consistent error handling
 class MLServiceResponse(BaseModel):
     """Wrapper for ML service responses with metadata"""

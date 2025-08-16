@@ -3,8 +3,9 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from gotrue.errors import AuthError
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
+from jose import jwt
 
 from app.auth.supabase_client import supabase_client
 from app.models.user import User
@@ -12,11 +13,13 @@ from app.schemas.auth import UserRegister, UserLogin, TokenResponse, PasswordRes
 from app.schemas.user import UserCreate, UserUpdate
 from app.services.user_service import UserService
 from app.config import settings
-# REMOVED: Custom JWT imports - Using Supabase-only authentication
+from app.core.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
 
 class AuthService:
+    ALGORITHM = "HS256"
+    
     def __init__(self, db: Session):
         self.db = db
         self.supabase = supabase_client
@@ -26,6 +29,13 @@ class AuthService:
                 detail="Authentication service is not configured."
             )
         self.user_service = UserService()
+        # Use Supabase JWT secret if available, fallback to app JWT secret for development
+        self.supabase_jwt_secret = settings.SUPABASE_JWT_SECRET
+
+        # ADD THIS LINE FOR DEBUGGING
+        print(f"--- Loaded SUPABASE_JWT_SECRET: '{self.supabase_jwt_secret}' ---")
+        if not self.supabase_jwt_secret:
+            logger.warning("No JWT secret configured - denylist functionality may not work in production")
 
     async def _create_local_user(self, user_data: UserRegister, supabase_user_id: uuid.UUID) -> User:
         """Creates a user in the local database."""
@@ -102,6 +112,13 @@ class AuthService:
             db_user = self.user_service.get_by_email(db=self.db, email=login_data.email)
             if not db_user:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+            
+            # Check if the user account is active
+            if not db_user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, 
+                    detail="Account has been deactivated."
+                )
 
             user_dict = {
                 "id": str(db_user.id),
@@ -141,6 +158,13 @@ class AuthService:
             db_user = self.user_service.get_by_email(db=self.db, email=user_data.user.email)
             if not db_user:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+            
+            # Check if the user account is active
+            if not db_user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN, 
+                    detail="Account has been deactivated."
+                )
 
             user_dict = {
                 "id": str(db_user.id),
@@ -174,23 +198,43 @@ class AuthService:
             logger.error(f"Unexpected token refresh error: {e}")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Token refresh failed")
     
-    # TODO: Logout doesn't invalidate the token, it just logs the user out of the current session, fix it
     async def logout_user(self, access_token: str) -> None:
-        """Logs out a user from Supabase and invalidates the session."""
+        """Logs out a user from Supabase and adds the token to the denylist."""
         try:
-            # Set the session first so Supabase knows which session to invalidate
+            # First, sign out from Supabase to invalidate the session server-side
             self.supabase.client.auth.set_session(access_token, "")
-            # Sign out to invalidate the session server-side
-            await self.supabase.client.auth.sign_out()
+            # Note: Supabase's sign_out is not an async function in the version we're likely using
+            self.supabase.client.auth.sign_out()
+
+            # Now, add the token to the denylist to invalidate it immediately
+            try:
+                # We don't need to verify the signature, just decode to get claims
+                payload = jwt.decode(
+                    access_token, 
+                    self.supabase_jwt_secret, 
+                    algorithms=[self.ALGORITHM], 
+                    options={"verify_signature": False}
+                )
+                jti = payload.get("jti")  # JWT ID
+                exp = payload.get("exp")  # Expiration time
+
+                if jti and exp:
+                    # Calculate remaining time to live for the token
+                    ttl = exp - int(datetime.now(timezone.utc).timestamp())
+                    if ttl > 0:
+                        denylist_key = f"denylist:{jti}"
+                        await redis_client.set_cache(denylist_key, "logged_out", expire_seconds=ttl)
+                        logger.info(f"Token {jti} added to denylist for {ttl} seconds.")
+                else:
+                    logger.warning("Token missing jti or exp claims - cannot add to denylist")
+
+            except Exception as e:
+                logger.error(f"Failed to add token to denylist during logout: {e}")
+
             logger.info("User logged out successfully")
         except Exception as e:
             logger.error(f"Logout failed: {e}")
-            # Don't re-raise as the client should still clear local tokens
-
-    # The Risk: If a user logs out and their accessToken is stolen before it expires, 
-    # an attacker could still use it to access the API.
-    # The Solution (Token Denylist): For high-security applications, you can implement a "denylist." 
-    # When a user logs out, you store the ID of the logged-out token in a fast db with its expiration time
+            # Do not re-raise; client should still clear local tokens
     
     async def send_password_reset(self, email: str) -> None:
         """Sends a password reset email."""
@@ -228,6 +272,51 @@ class AuthService:
         except Exception as e:
             logger.error(f"Resend verification failed: {e}")
             # Do not re-raise, to avoid leaking user existence
+
+    async def change_password(self, email: str, password_data: PasswordUpdate) -> None:
+        """Changes the user's password via Supabase."""
+        try:
+            # First, verify the current password by attempting to sign in
+            try:
+                auth_response = self.supabase.client.auth.sign_in_with_password({
+                    "email": email,
+                    "password": password_data.current_password
+                })
+                if not auth_response.user:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Current password is incorrect"
+                    )
+            except AuthError as e:
+                logger.error(f"Current password verification failed: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Current password is incorrect"
+                )
+            
+            # If current password is correct, update to new password
+            # Note: This requires the user to be signed in, so we need to get their session
+            update_response = self.supabase.client.auth.update_user({
+                "password": password_data.new_password
+            })
+            
+            if not update_response.user:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Failed to update password"
+                )
+                
+            logger.info(f"Password changed successfully for user: {email}")
+            
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(f"Password change failed for {email}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to change password"
+            )
 
     # REMOVED: create_magic_link_token() - No longer needed for Supabase-only auth
 

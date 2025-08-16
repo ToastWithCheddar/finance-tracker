@@ -45,6 +45,11 @@ export const MessageType = {
   PING: 'ping',
   PONG: 'pong',
   BATCH_UPDATE: 'batch_update',
+  
+  // Webhook sync events
+  WEBHOOK_SYNC_COMPLETE: 'webhook_sync_complete',
+  TRANSACTION_SYNC_COMPLETE: 'transaction_sync_complete',
+  BULK_SYNC_COMPLETE: 'bulk_sync_complete',
 } as const;
 
 export type MessageType = typeof MessageType[keyof typeof MessageType];
@@ -60,10 +65,10 @@ export type NotificationPriority = typeof NotificationPriority[keyof typeof Noti
 
 // Base WebSocket Message
 export interface WebSocketMessage {
-  id: string;
+  id?: string;
   type: MessageType;
-  timestamp: string; // ISO datetime string
-  user_id: string;
+  timestamp?: string; // ISO datetime string
+  user_id?: string;
 }
 
 // Payload interfaces for different message types
@@ -226,6 +231,32 @@ export interface BatchUpdatePayload {
   batch_id: string;
 }
 
+export interface WebhookSyncPayload {
+  item_id: string;
+  total_new_transactions: number;
+  total_updated_transactions: number;
+  accounts_synced: number;
+  sync_time: string; // ISO datetime string
+  success: boolean;
+}
+
+export interface TransactionSyncPayload {
+  account_id: string;
+  account_name: string;
+  new_transactions: number;
+  updated_transactions: number;
+  duplicates_skipped: number;
+  sync_duration: number;
+  date_range: string;
+}
+
+export interface BulkSyncPayload {
+  total_new_transactions: number;
+  total_updated_transactions: number;
+  total_errors: number;
+  sync_time: string; // ISO datetime string
+}
+
 // Union type for all possible payloads
 export type PayloadType = 
   | DashboardUpdatePayload
@@ -241,7 +272,10 @@ export type PayloadType =
   | SystemAlertPayload
   | AIInsightPayload
   | PingPayload
-  | BatchUpdatePayload;
+  | BatchUpdatePayload
+  | WebhookSyncPayload
+  | TransactionSyncPayload
+  | BulkSyncPayload;
 
 // Typed WebSocket Messages
 export interface TypedWebSocketMessage extends WebSocketMessage {
@@ -319,10 +353,7 @@ export function isValidWebSocketMessage(data: unknown): data is TypedWebSocketMe
     data &&
     typeof data === 'object' &&
     data !== null &&
-    typeof (data as any).id === 'string' &&
     typeof (data as any).type === 'string' &&
-    typeof (data as any).timestamp === 'string' &&
-    typeof (data as any).user_id === 'string' &&
     (data as any).payload &&
     typeof (data as any).payload === 'object'
   );

@@ -86,11 +86,21 @@ class UserPreferencesService {
   }
 
   async updatePreferences(preferences: UserPreferencesUpdate): Promise<UserPreferencesResponse> {
-    return apiClient.put<UserPreferencesResponse>('/users/me/preferences', preferences);
+    try {
+      return await apiClient.put<UserPreferencesResponse>('/users/me/preferences', preferences);
+    } catch (error) {
+      console.error('Failed to update preferences:', error);
+      throw error;
+    }
   }
 
   async resetToDefaults(): Promise<UserPreferencesResponse> {
-    return this.updatePreferences(defaultPreferences);
+    try {
+      return await this.updatePreferences(defaultPreferences);
+    } catch (error) {
+      console.error('Failed to reset preferences to defaults:', error);
+      throw error;
+    }
   }
 
   // Helper methods for working with preferences
@@ -188,8 +198,8 @@ class UserPreferencesService {
     const errors: string[] = [];
 
     if (preferences.budget_warning_threshold !== undefined) {
-      if (preferences.budget_warning_threshold < 0 || preferences.budget_warning_threshold > 1) {
-        errors.push('Budget warning threshold must be between 0 and 1');
+      if (preferences.budget_warning_threshold < 0.1 || preferences.budget_warning_threshold > 1) {
+        errors.push('Budget warning threshold must be between 10% and 100%');
       }
     }
 
@@ -197,11 +207,35 @@ class UserPreferencesService {
       if (preferences.low_balance_threshold < 0) {
         errors.push('Low balance threshold cannot be negative');
       }
+      if (preferences.low_balance_threshold > 1000000) {
+        errors.push('Low balance threshold seems unreasonably high');
+      }
     }
 
     if (preferences.items_per_page !== undefined) {
-      if (preferences.items_per_page < 5 || preferences.items_per_page > 100) {
-        errors.push('Items per page must be between 5 and 100');
+      if (preferences.items_per_page < 10 || preferences.items_per_page > 100) {
+        errors.push('Items per page must be between 10 and 100');
+      }
+    }
+
+    if (preferences.currency !== undefined) {
+      const validCurrencies = this.getCurrencyOptions().map(c => c.value);
+      if (!validCurrencies.includes(preferences.currency)) {
+        errors.push('Please select a valid currency');
+      }
+    }
+
+    if (preferences.theme !== undefined) {
+      const validThemes = this.getThemeOptions().map(t => t.value);
+      if (!validThemes.includes(preferences.theme)) {
+        errors.push('Please select a valid theme');
+      }
+    }
+
+    if (preferences.startup_page !== undefined) {
+      const validPages = this.getStartupPageOptions().map(p => p.value);
+      if (!validPages.includes(preferences.startup_page)) {
+        errors.push('Please select a valid startup page');
       }
     }
 
@@ -231,6 +265,26 @@ class UserPreferencesService {
 
   clearLocalPreferences(): void {
     localStorage.removeItem('user_preferences');
+  }
+
+  // Helper method to provide user-friendly error messages
+  getErrorMessage(error: any): string {
+    if (error?.response?.status === 401) {
+      return 'Session expired. Please log in again.';
+    }
+    if (error?.response?.status === 403) {
+      return 'You do not have permission to modify these settings.';
+    }
+    if (error?.response?.status === 400) {
+      return error?.response?.data?.detail || 'Invalid settings provided.';
+    }
+    if (error?.response?.status === 500) {
+      return 'Server error. Please try again later.';
+    }
+    if (error?.code === 'NETWORK_ERROR' || error?.message?.includes('Network')) {
+      return 'Network connection error. Please check your internet connection.';
+    }
+    return error?.message || 'An unexpected error occurred. Please try again.';
   }
 }
 

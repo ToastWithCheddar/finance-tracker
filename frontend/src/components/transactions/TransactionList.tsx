@@ -1,47 +1,78 @@
 import { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Modal } from '../ui';
-import type { Transaction, TransactionStats } from '../../types/transaction';
+import { Modal } from '../ui/Modal';
+import { TransactionItem } from './TransactionItem';
+import { formatCurrency, formatGroupDate, getCategoryColor, getAmountColor } from '../../utils';
+import type { Transaction, TransactionStats, TransactionGroup, TransactionGroupedResponse } from '../../types/transaction';
 
-interface TransactionListProps {
-  transactions: Transaction[];
+// Define the shape of our grouped data (legacy date-only format)
+interface GroupedTransactions {
+  [date: string]: {
+    transactions: Transaction[];
+    total: number; // Net total in cents for the day
+  };
+}
+
+// New interface for dynamic grouping
+interface DynamicTransactionListProps {
+  groups: TransactionGroup[];
+  expandedGroups: Set<string>;
+  onToggleGroup: (key: string) => void;
   stats?: TransactionStats;
   isLoading?: boolean;
   onEdit: (transaction: Transaction) => void;
-  onDelete: (transactionId: number) => void;
-  onBulkDelete: (transactionIds: number[]) => void;
+  onDelete: (transactionId: string) => void;
+  onBulkDelete: (transactionIds: string[]) => void;
+  groupType?: 'date' | 'category' | 'merchant' | 'none';
+}
+
+// Legacy interface for backward compatibility
+interface TransactionListProps {
+  groupedTransactions?: GroupedTransactions;
+  groups?: TransactionGroup[];
+  expandedGroups: Set<string>;
+  onToggleGroup: (key: string) => void;
+  stats?: TransactionStats;
+  isLoading?: boolean;
+  onEdit: (transaction: Transaction) => void;
+  onDelete: (transactionId: string) => void;
+  onBulkDelete: (transactionIds: string[]) => void;
+  groupType?: 'date' | 'category' | 'merchant' | 'none';
 }
 
 export function TransactionList({ 
-  transactions, 
+  groupedTransactions,
+  groups,
+  expandedGroups,
+  onToggleGroup,
   stats,
   isLoading = false,
   onEdit, 
   onDelete,
-  onBulkDelete 
+  onBulkDelete,
+  groupType = 'date'
 }: TransactionListProps) {
-  const [selectedTransactions, setSelectedTransactions] = useState<number[]>([]);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; transactionId?: number }>({
+  const [selectedTransactions, setSelectedTransactions] = useState<string[]>([]);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; transactionId?: string }>({
     isOpen: false
   });
+  
+  // Convert legacy format to new format if needed
+  const normalizedGroups: TransactionGroup[] = groups || 
+    Object.entries(groupedTransactions || {}).map(([key, group]) => ({
+      key,
+      total_amount_cents: group.total,
+      count: group.transactions.length,
+      transactions: group.transactions
+    }));
+  
+  // Get all transactions from grouped data for selection logic
+  const allTransactions = normalizedGroups.flatMap(group => group.transactions);
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(amount);
-  };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
-  };
-
-  const handleSelectTransaction = (transactionId: number) => {
+  const handleSelectTransaction = (transactionId: string) => {
     setSelectedTransactions(prev => 
       prev.includes(transactionId)
         ? prev.filter(id => id !== transactionId)
@@ -50,10 +81,10 @@ export function TransactionList({
   };
 
   const handleSelectAll = () => {
-    if (selectedTransactions.length === transactions.length) {
+    if (selectedTransactions.length === allTransactions.length) {
       setSelectedTransactions([]);
     } else {
-      setSelectedTransactions(transactions.map(t => t.id));
+      setSelectedTransactions(allTransactions.map(t => t.id));
     }
   };
 
@@ -64,39 +95,13 @@ export function TransactionList({
     }
   };
 
-  const handleDeleteConfirm = (transactionId?: number) => {
+  const handleDeleteConfirm = (transactionId?: string) => {
     if (transactionId) {
       onDelete(transactionId);
     }
     setDeleteConfirm({ isOpen: false });
   };
 
-  const getTransactionIcon = (type: string, category?: string) => {
-    if (type === 'income') return '💰';
-    
-    // Expense icons by category
-    const categoryIcons: Record<string, string> = {
-      'Food & Dining': '🍽️',
-      'Transportation': '🚗',
-      'Shopping': '🛍️',
-      'Entertainment': '🎬',
-      'Bills & Utilities': '📄',
-      'Healthcare': '🏥',
-      'Education': '📚',
-      'Travel': '✈️',
-      'Groceries': '🛒',
-      'Gas': '⛽',
-      'Rent': '🏠',
-      'Insurance': '🛡️',
-      'Salary': '💼',
-      'Freelance': '💻',
-      'Investment': '📈',
-      'Gift': '🎁',
-      'Refund': '↩️',
-    };
-    
-    return categoryIcons[category || ''] || '💸';
-  };
 
   if (isLoading) {
     return (
@@ -121,11 +126,11 @@ export function TransactionList({
     );
   }
 
-  if (transactions.length === 0) {
+  if (allTransactions.length === 0) {
     return (
       <Card>
         <div className="p-8 text-center">
-          <div className="text-6xl mb-4">📊</div>
+          <div className="text-6xl mb-4 text-[hsl(var(--text))/0.3]">No Data</div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No transactions found</h3>
           <p className="text-gray-500 mb-4">Start by adding your first transaction or adjust your filters.</p>
         </div>
@@ -170,14 +175,14 @@ export function TransactionList({
       )}
 
       {/* Bulk Actions */}
-      {transactions.length > 0 && (
+      {allTransactions.length > 0 && (
         <Card>
           <div className="p-4 flex items-center justify-between">
             <div className="flex items-center space-x-4">
               <label className="flex items-center">
                 <input
                   type="checkbox"
-                  checked={selectedTransactions.length === transactions.length}
+                  checked={selectedTransactions.length === allTransactions.length}
                   onChange={handleSelectAll}
                   className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                 />
@@ -200,81 +205,75 @@ export function TransactionList({
         </Card>
       )}
 
-      {/* Transaction List */}
-      <div className="space-y-2">
-        {transactions.map((transaction) => (
-          <Card key={transaction.id} className="hover:shadow-md transition-shadow">
-            <div className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <input
-                    type="checkbox"
-                    checked={selectedTransactions.includes(transaction.id)}
-                    onChange={() => handleSelectTransaction(transaction.id)}
-                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                  />
-                  
-                  <div className="text-2xl">
-                    {getTransactionIcon(transaction.transaction_type, transaction.category)}
+      {/* Grouped Transaction List */}
+      <div className="space-y-4">
+        {normalizedGroups.map((group) => {
+            const isExpanded = expandedGroups.has(group.key);
+            
+            // Format the group key based on the group type
+            const formatGroupKey = (key: string, type: string) => {
+              switch (type) {
+                case 'date':
+                  return formatGroupDate(key);
+                case 'category':
+                  return `${key}`;
+                case 'merchant':
+                  return `🏪 ${key}`;
+                default:
+                  return key;
+              }
+            };
+            
+            return (
+              <div key={group.key} className="bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+                {/* Group Header */}
+                <div
+                  className="flex items-center justify-between p-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+                  onClick={() => onToggleGroup(group.key)}
+                >
+                  <div className="flex items-center space-x-3">
+                    <ChevronDown 
+                      className={`h-5 w-5 text-gray-500 transition-transform duration-200 ${
+                        isExpanded ? 'rotate-0' : '-rotate-90'
+                      }`} 
+                    />
+                    <h3 className="font-semibold text-lg text-gray-900 dark:text-gray-100">
+                      {formatGroupKey(group.key, groupType)}
+                    </h3>
                   </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-2">
-                      <h4 className="text-sm font-medium text-gray-900 truncate">
-                        {transaction.category}
-                      </h4>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                        transaction.transaction_type === 'income' 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-red-100 text-red-800'
-                      }`}>
-                        {transaction.transaction_type}
-                      </span>
-                    </div>
-                    
-                    {transaction.description && (
-                      <p className="text-sm text-gray-500 truncate mt-1">
-                        {transaction.description}
-                      </p>
-                    )}
-                    
-                    <p className="text-xs text-gray-400 mt-1">
-                      {formatDate(transaction.transaction_date)}
+                  <div className="text-right">
+                    <p className={`font-bold ${
+                      group.total_amount_cents >= 0 ? 'text-green-600' : 'text-red-600'
+                    }`}>
+                      {formatCurrency(group.total_amount_cents)}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {group.count} transaction{group.count !== 1 ? 's' : ''}
                     </p>
                   </div>
                 </div>
-                
-                <div className="flex items-center space-x-3">
-                  <div className={`text-lg font-semibold ${
-                    transaction.transaction_type === 'income' ? 'text-green-600' : 'text-red-600'
-                  }`}>
-                    {transaction.transaction_type === 'income' ? '+' : '-'}
-                    {formatCurrency(Math.abs(transaction.amount))}
+    
+                {/* Collapsible Transaction Items */}
+                {isExpanded && (
+              <div className="px-4 pb-2 border-t border-[hsl(var(--border))]">
+                    <div className="space-y-2 pt-2">
+                      {group.transactions.map(transaction => (
+                        <TransactionItem
+                          key={transaction.id}
+                          transaction={transaction}
+                          onEdit={onEdit}
+                          onDelete={() => setDeleteConfirm({ isOpen: true, transactionId: transaction.id })}
+                          showCheckbox={true}
+                          isSelected={selectedTransactions.includes(transaction.id)}
+                          onSelect={handleSelectTransaction}
+                        />
+                      ))}
+                    </div>
                   </div>
-                  
-                  <div className="flex space-x-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onEdit(transaction)}
-                      className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
-                    >
-                      ✏️
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeleteConfirm({ isOpen: true, transactionId: transaction.id })}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      🗑️
-                    </Button>
-                  </div>
-                </div>
+                )}
               </div>
-            </div>
-          </Card>
-        ))}
+            );
+          })}
       </div>
 
       {/* Delete Confirmation Modal */}

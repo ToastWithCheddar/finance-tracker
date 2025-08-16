@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { LoadingSpinner } from '../ui';
+import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useDashboardAnalytics, useSpendingTrends } from '../../hooks/useDashboard';
 import { 
@@ -27,10 +27,12 @@ import {
 import { formatCurrency, formatRelativeTime } from '../../utils';
 import RealtimeTransactionFeed from './RealtimeTransactionFeed';
 import { NotificationPanel } from './NotificationPanel';
-import type { BudgetAlert } from '../../types/realtime';
+// Removed: import type { BudgetAlert } from '../../types/realtime';
 import { DashboardFilters } from './DashboardFilters';
 import { CategoryPieChart } from './CategoryPieChart';
 import MonthlyComparisonChart from './MonthlyComparisonChart';
+import { SankeyChart } from './SankeyChart';
+import { SpendingHeatmap } from './SpendingHeatmap';
 import type { DashboardFilters as FilterType } from '../../services/dashboardService';
 
 interface StatCardProps {
@@ -52,27 +54,90 @@ const StatCard: React.FC<StatCardProps> = ({
   isLoading = false,
   isUpdating = false
 }) => {
-  const changeColor = {
-    positive: 'text-green-600',
-    negative: 'text-red-600',
-    neutral: 'text-gray-600',
-  }[changeType];
+  // Get themed colors based on card type
+  const getCardTheme = () => {
+    if (title.includes('Income')) {
+      return {
+        cardClass: 'bg-income-gradient border-income-200 shadow-lg shadow-income-100/50 dark:shadow-income-800/50',
+        iconColor: 'text-income-600 dark:text-income-400',
+        titleColor: 'text-income-700 dark:text-income-300',
+        valueColor: 'text-income-900 dark:text-income-100',
+        changeColor: 'text-income-600 dark:text-income-400',
+      };
+    } else if (title.includes('Expense')) {
+      return {
+        cardClass: 'bg-expense-gradient border-expense-200 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50',
+        iconColor: 'text-expense-600 dark:text-expense-400',
+        titleColor: 'text-expense-700 dark:text-expense-300',
+        valueColor: 'text-expense-900 dark:text-expense-100',
+        changeColor: 'text-expense-600 dark:text-expense-400',
+      };
+    } else if (title.includes('Net')) {
+      const isPositive = changeType === 'positive';
+      return {
+        cardClass: isPositive 
+          ? 'bg-success-gradient border-success-200 shadow-lg shadow-success-100/50 dark:shadow-success-800/50'
+          : 'bg-expense-gradient border-expense-200 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50',
+        iconColor: isPositive ? 'text-success-600 dark:text-success-400' : 'text-expense-600 dark:text-expense-400',
+        titleColor: isPositive ? 'text-success-700 dark:text-success-300' : 'text-expense-700 dark:text-expense-300',
+        valueColor: isPositive ? 'text-success-900 dark:text-success-100' : 'text-expense-900 dark:text-expense-100',
+        changeColor: isPositive ? 'text-success-600 dark:text-success-400' : 'text-expense-600 dark:text-expense-400',
+      };
+    } else if (title.includes('Transaction')) {
+      return {
+        cardClass: 'bg-savings-gradient border-savings-200 shadow-lg shadow-savings-100/50 dark:shadow-savings-800/50',
+        iconColor: 'text-savings-600 dark:text-savings-400',
+        titleColor: 'text-savings-700 dark:text-savings-300',
+        valueColor: 'text-savings-900 dark:text-savings-100',
+        changeColor: 'text-savings-600 dark:text-savings-400',
+      };
+    } else {
+      // Default theme
+      return {
+        cardClass: 'bg-gradient-to-br from-white to-gray-50 border-gray-200 shadow-lg dark:from-gray-800 dark:to-gray-700 dark:border-gray-600',
+        iconColor: 'text-gray-500 dark:text-gray-400',
+        titleColor: 'text-gray-600 dark:text-gray-400',
+        valueColor: 'text-gray-900 dark:text-gray-100',
+        changeColor: 'text-gray-600 dark:text-gray-400',
+      };
+    }
+  };
 
+  const theme = getCardTheme();
   const ChangeIcon = changeType === 'positive' ? TrendingUp : TrendingDown;
 
   return (
-    <Card className={`transition-all duration-300 ${isUpdating ? 'ring-2 ring-blue-200 bg-blue-50' : ''}`}>
+    <Card className={`
+      ${theme.cardClass}
+      card-hover
+      transition-all duration-300 
+      ${isUpdating ? 'ring-2 ring-blue-300 scale-105 glow-savings animate-bounce-gentle' : ''}
+      backdrop-blur-sm
+    `}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-gray-600">{title}</CardTitle>
-        <Icon className={`h-4 w-4 ${isUpdating ? 'text-blue-500 animate-pulse' : 'text-gray-400'}`} />
+        <CardTitle className={`text-sm font-medium ${theme.titleColor}`}>
+          {title}
+        </CardTitle>
+        <div className="relative">
+          <Icon className={`h-5 w-5 ${theme.iconColor} ${isUpdating ? 'animate-pulse' : ''}`} />
+          {isUpdating && (
+            <div className="absolute inset-0 animate-ping">
+              <Icon className={`h-5 w-5 ${theme.iconColor} opacity-75`} />
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
-        <div className={`text-2xl font-bold transition-all duration-300 ${isLoading ? 'animate-pulse' : ''}`}>
+        <div className={`
+          text-3xl font-bold transition-all duration-300 
+          ${theme.valueColor}
+          ${isLoading ? 'animate-pulse shimmer' : ''}
+        `}>
           {isLoading ? '...' : value}
         </div>
         {change && (
-          <div className={`flex items-center text-xs ${changeColor} mt-1`}>
-            <ChangeIcon className="h-3 w-3 mr-1" />
+          <div className={`flex items-center text-sm ${theme.changeColor} mt-2 font-medium`}>
+            <ChangeIcon className="h-4 w-4 mr-1" />
             {change}
           </div>
         )}
@@ -129,7 +194,7 @@ export const RealtimeDashboard: React.FC = () => {
   const unreadCount = useUnreadNotificationsCount();
   const budgetAlerts = useBudgetAlerts();
   const stats = useRealtimeStats();
-  const { refreshDashboard, subscribe } = useWebSocket();
+  const { refreshDashboard } = useWebSocket();
   
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [updatingStats, setUpdatingStats] = useState<Record<string, boolean>>({});
@@ -139,16 +204,7 @@ export const RealtimeDashboard: React.FC = () => {
     setFilters(newFilters);
   };
 
-  // Subscribe to relevant message types
-  useEffect(() => {
-    subscribe([
-      'dashboard_update',
-      'new_transaction',
-      'balance_update',
-      'budget_alert',
-      'goal_progress_update'
-    ]);
-  }, [subscribe]);
+  // WebSocket connection automatically handles message routing
 
   // Update timestamp when dashboard data changes
   useEffect(() => {
@@ -205,7 +261,7 @@ export const RealtimeDashboard: React.FC = () => {
   // Calculate stats from dashboard data
   const summary = dashboard?.summary;
   const totalIncome = summary?.total_income || 0;
-  const totalExpenses = Math.abs(summary?.total_expenses || 0);
+  const totalExpenses = summary?.total_expenses || 0; // Remove Math.abs() - backend already returns positive
   const netAmount = summary?.net_amount || 0;
   const transactionCount = summary?.transaction_count || 0;
 
@@ -285,6 +341,19 @@ export const RealtimeDashboard: React.FC = () => {
         ))}
       </div>
 
+      {/* Money Flow Sankey Diagram */}
+      <SankeyChart 
+        startDate={filters.start_date || ''} 
+        endDate={filters.end_date || ''} 
+        className="col-span-full"
+      />
+
+      {/* Spending Heatmap */}
+      <SpendingHeatmap 
+        startDate={filters.start_date || ''} 
+        endDate={filters.end_date || ''} 
+      />
+
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <CategoryPieChart 
@@ -308,19 +377,18 @@ export const RealtimeDashboard: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {budgetAlerts.slice(0, 3).map((alert: BudgetAlert, index: number) => (
+              {budgetAlerts.slice(0, 3).map((alert, index: number) => (
                 <div key={index} className="flex items-center justify-between p-3 bg-yellow-50 rounded-lg">
                   <div>
-                    <div className="font-medium text-yellow-800">{alert.budget_name}</div>
+                    <div className="font-medium text-yellow-800">{alert.category || 'Budget Alert'}</div>
                     <div className="text-sm text-yellow-600">{alert.message}</div>
                   </div>
                   <div className="text-right">
-                    <div className="font-bold text-yellow-800">
-                      {alert.percentage_used.toFixed(1)}%
-                    </div>
-                    <div className="text-xs text-yellow-600">
-                      {formatCurrency(alert.remaining_cents)} left
-                    </div>
+                    {alert.amount && (
+                      <div className="font-bold text-yellow-800">
+                        {formatCurrency(alert.amount)}
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}

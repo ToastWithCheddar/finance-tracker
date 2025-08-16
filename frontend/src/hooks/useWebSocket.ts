@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
 import { useAuthStore } from '../stores/authStore';
+import { useRealtimeStore } from '../stores/realtimeStore';
 import { secureStorage } from '../services/secureStorage';
 
 const WEBSOCKET_URL_BASE = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8000/ws';
@@ -26,6 +27,7 @@ interface WebSocketState {
 export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
   const queryClient = useQueryClient();
   const { user, isAuthenticated } = useAuthStore();
+  const { handleWebSocketMessage, updateConnectionStatus } = useRealtimeStore();
   const socketRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -35,7 +37,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
 
   const refreshDashboard = () => {
     // Invalidate dashboard queries to trigger a refetch
-    queryClient.invalidateQueries({ queryKey: ['dashboardAnalytics'] });
+    queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
     queryClient.invalidateQueries({ queryKey: ['accounts'] });
     queryClient.invalidateQueries({ queryKey: ['transactions'] });
   };
@@ -59,7 +61,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
 
     const connect = () => {
       setIsConnecting(true);
-      const socketUrl = `${WEBSOCKET_URL_BASE}/${user.id}?token=${accessToken}`;
+      const socketUrl = `${WEBSOCKET_URL_BASE}?token=${accessToken}`;
       const socket = new WebSocket(socketUrl);
       socketRef.current = socket;
 
@@ -67,6 +69,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
         console.log('🔌 WebSocket connection established');
         setIsConnected(true);
         setIsConnecting(false);
+        updateConnectionStatus('connected');
         toast.info('Real-time updates connected.');
       };
 
@@ -80,7 +83,10 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
             options.onMessage(message);
           }
 
-          // Handle default event types
+          // Use RealtimeStore's comprehensive message handler
+          handleWebSocketMessage(message);
+
+          // Legacy fallback for old message formats
           if (message.type === 'DASHBOARD_UPDATE' && message.data?.event === 'sync_completed') {
             toast.success('Bank sync complete! Refreshing dashboard...');
             refreshDashboard();
@@ -95,10 +101,12 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
         socketRef.current = null;
         setIsConnected(false);
         setIsConnecting(false);
+        updateConnectionStatus('disconnected');
         
         // Optional: implement a reconnect strategy
         if (!event.wasClean) {
           toast.warning('Real-time connection lost. Attempting to reconnect...');
+          updateConnectionStatus('connecting');
           setTimeout(connect, 5000); // Reconnect after 5 seconds
         }
       };
@@ -107,6 +115,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
         console.error('🔌 WebSocket error:', error);
         setIsConnected(false);
         setIsConnecting(false);
+        updateConnectionStatus('disconnected');
         toast.error('Real-time connection error.');
       };
     };
@@ -120,8 +129,9 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
       }
       setIsConnected(false);
       setIsConnecting(false);
+      updateConnectionStatus('disconnected');
     };
-  }, [isAuthenticated, user?.id, accessToken, queryClient, options?.onMessage]);
+  }, [isAuthenticated, user?.id, accessToken, handleWebSocketMessage, updateConnectionStatus, options?.onMessage]);
 
   return {
     isConnected,

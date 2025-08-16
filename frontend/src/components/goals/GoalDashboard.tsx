@@ -14,8 +14,8 @@ export function GoalsDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         {[...Array(4)].map((_, i) => (
           <Card key={i} className="p-6 animate-pulse">
-            <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-            <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+            <div className="h-4 rounded w-3/4 mb-2 bg-[hsl(var(--border)/0.35)]"></div>
+            <div className="h-8 rounded w-1/2 bg-[hsl(var(--border)/0.35)]"></div>
           </Card>
         ))}
       </div>
@@ -24,9 +24,9 @@ export function GoalsDashboard() {
 
   if (!stats) return null;
 
-  const progressColor = stats.average_progress >= 75 ? 'text-green-600' : 
-                       stats.average_progress >= 50 ? 'text-blue-600' :
-                       stats.average_progress >= 25 ? 'text-yellow-600' : 'text-red-600';
+  const progressColor = stats.average_progress >= 75 ? 'text-green-600 dark:text-green-300' : 
+                       stats.average_progress >= 50 ? 'text-blue-600 dark:text-blue-300' :
+                       stats.average_progress >= 25 ? 'text-yellow-600 dark:text-yellow-300' : 'text-red-600 dark:text-red-300';
 
   // Transform data for charts
   const typeChartData = Object.entries(stats.goals_by_type || {}).map(([type, data]: [string, { current_amount: number; count: number; total_amount: number }]) => ({
@@ -42,60 +42,60 @@ export function GoalsDashboard() {
     <div className="space-y-6">
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card className="p-6 bg-gradient-to-br from-blue-50 to-blue-100 border-l-4 border-l-blue-500">
+        <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-blue-600">Total Goals</p>
-              <p className="text-3xl font-bold text-blue-900">{stats.total_goals}</p>
+              <p className="text-sm font-medium text-[hsl(var(--text))] opacity-70">Total Goals</p>
+              <p className="text-3xl font-bold text-[hsl(var(--text))]">{stats.total_goals}</p>
             </div>
             <div className="text-4xl">🎯</div>
           </div>
-          <div className="mt-2 text-sm text-blue-700">
+          <div className="mt-2 text-sm text-[hsl(var(--text))] opacity-70">
             {stats.active_goals} active, {stats.completed_goals} completed
           </div>
         </Card>
 
-        <Card className="p-6 bg-gradient-to-br from-green-50 to-green-100 border-l-4 border-l-green-500">
+        <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-green-600">Total Saved</p>
-              <p className="text-3xl font-bold text-green-900">
+              <p className="text-sm font-medium text-[hsl(var(--text))] opacity-70">Total Saved</p>
+              <p className="text-3xl font-bold text-[hsl(var(--text))]">
                 {formatCurrency(stats.total_saved_cents)}
               </p>
             </div>
             <div className="text-4xl">💰</div>
           </div>
-          <div className="mt-2 text-sm text-green-700">
+          <div className="mt-2 text-sm text-[hsl(var(--text))] opacity-70">
             of {formatCurrency(stats.total_target_cents)} target
           </div>
         </Card>
 
-        <Card className="p-6 bg-gradient-to-br from-purple-50 to-purple-100 border-l-4 border-l-purple-500">
+        <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-purple-600">Average Progress</p>
+              <p className="text-sm font-medium text-[hsl(var(--text))] opacity-70">Average Progress</p>
               <p className={`text-3xl font-bold ${progressColor}`}>
                 {stats.average_progress.toFixed(1)}%
               </p>
             </div>
             <div className="text-4xl">📊</div>
           </div>
-          <div className="mt-2 text-sm text-purple-700">
+          <div className="mt-2 text-sm text-[hsl(var(--text))] opacity-70">
             across all goals
           </div>
         </Card>
 
-        <Card className="p-6 bg-gradient-to-br from-yellow-50 to-yellow-100 border-l-4 border-l-yellow-500">
+        <Card className="p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-yellow-600">This Month</p>
-              <p className="text-3xl font-bold text-yellow-900">
+              <p className="text-sm font-medium text-[hsl(var(--text))] opacity-70">This Month</p>
+              <p className="text-3xl font-bold text-[hsl(var(--text))]">
                 {formatCurrency(stats.this_month_contributions_cents)}
               </p>
             </div>
             <div className="text-4xl">📈</div>
           </div>
-          <div className="mt-2 text-sm text-yellow-700">
+          <div className="mt-2 text-sm text-[hsl(var(--text))] opacity-70">
             contributions made
           </div>
         </Card>
@@ -105,7 +105,7 @@ export function GoalsDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Goals by Type */}
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Goals by Type</h3>
+          <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--text))]">Goals by Type</h3>
           {typeChartData.length > 0 ? (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -134,7 +134,7 @@ export function GoalsDashboard() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-64 flex items-center justify-center text-gray-500">
+            <div className="h-64 flex items-center justify-center text-[hsl(var(--text))] opacity-60">
               No goals created yet
             </div>
           )}
@@ -142,7 +142,7 @@ export function GoalsDashboard() {
 
         {/* Contribution Trend */}
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Monthly Contributions</h3>
+          <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--text))]">Monthly Contributions</h3>
           {trendData.length > 0 ? (
             <div className="h-64">
               <ResponsiveContainer width="100%" height="100%">
@@ -179,7 +179,7 @@ export function GoalsDashboard() {
               </ResponsiveContainer>
             </div>
           ) : (
-            <div className="h-64 flex items-center justify-center text-gray-500">
+            <div className="h-64 flex items-center justify-center text-[hsl(var(--text))] opacity-60">
               No contribution history yet
             </div>
           )}
@@ -190,7 +190,7 @@ export function GoalsDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* By Priority */}
         <Card className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Goals by Priority</h3>
+          <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--text))]">Goals by Priority</h3>
           <div className="space-y-3">
             {Object.entries(stats.goals_by_priority || {}).map(([priority, data]: [string, { current_amount: number; total_amount: number; count: number }]) => {
               const priorityColors = {
@@ -204,17 +204,17 @@ export function GoalsDashboard() {
                 (data.current_amount / data.total_amount) * 100 : 0;
 
               return (
-                <div key={priority} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div key={priority} className="flex items-center justify-between p-3 rounded-lg bg-[hsl(var(--surface))] border border-[hsl(var(--border))]">
                   <div className="flex items-center space-x-3">
                     <div className={`w-3 h-3 rounded-full ${priorityColors[priority as keyof typeof priorityColors] || 'bg-gray-500'}`}></div>
                     <div>
-                      <span className="font-medium capitalize">{priority}</span>
-                      <div className="text-sm text-gray-600">{data.count} goals</div>
+                      <span className="font-medium capitalize text-[hsl(var(--text))]">{priority}</span>
+                      <div className="text-sm text-[hsl(var(--text))] opacity-70">{data.count} goals</div>
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-semibold">{formatCurrency(data.current_amount)}</div>
-                    <div className="text-sm text-gray-600">
+                    <div className="font-semibold text-[hsl(var(--text))]">{formatCurrency(data.current_amount)}</div>
+                    <div className="text-sm text-[hsl(var(--text))] opacity-70">
                       {progressPercent.toFixed(1)}% of {formatCurrency(data.total_amount)}
                     </div>
                   </div>

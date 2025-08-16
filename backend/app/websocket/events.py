@@ -4,7 +4,7 @@ from datetime import datetime
 import logging
 from enum import Enum
 
-from .manager import websocket_manager as manager
+from .manager import redis_websocket_manager as manager
 from .schemas import (
     MessageType, NotificationPriority,
     create_dashboard_update_message, create_transaction_message,
@@ -31,6 +31,9 @@ class EventType(Enum):
     GOAL_PROGRESS = "goal_progress"
     NOTIFICATION = "notification"
     SYNC_STATUS = "sync_status"
+    TRANSACTION_SYNC_COMPLETE = "transaction_sync_complete"
+    BULK_SYNC_COMPLETE = "bulk_sync_complete"
+    WEBHOOK_SYNC_COMPLETE = "webhook_sync_complete"
 
 
 class WebSocketEvent:

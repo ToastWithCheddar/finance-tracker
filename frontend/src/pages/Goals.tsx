@@ -84,8 +84,8 @@ export default function Goals() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Financial Goals</h1>
-          <p className="text-gray-600">
+          <h1 className="text-3xl font-bold text-[hsl(var(--text))] mb-2">Financial Goals</h1>
+          <p className="text-[hsl(var(--text))] opacity-70">
             Track your progress and achieve your financial dreams
           </p>
         </div>
@@ -95,7 +95,7 @@ export default function Goals() {
             onClick={() => setShowCreateForm(true)}
             className="bg-blue-600 hover:bg-blue-700 text-white"
           >
-            ➕ Create Goal
+            Create Goal
           </Button>
           
           <Button
@@ -103,7 +103,7 @@ export default function Goals() {
             variant="outline"
             disabled={processAutoContributions.isPending}
           >
-            {processAutoContributions.isPending ? 'Processing...' : '🔄 Auto Contributions'}
+            {processAutoContributions.isPending ? 'Processing...' : 'Auto Contributions'}
           </Button>
         </div>
       </div>
@@ -111,24 +111,24 @@ export default function Goals() {
       {/* View Mode Selector */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-2">
-          <span className="text-sm font-medium text-gray-700">View:</span>
-          <div className="flex rounded-lg border border-gray-200 p-1">
+          <span className="text-sm font-medium text-[hsl(var(--text))] opacity-80">View:</span>
+          <div className="flex rounded-lg border border-[hsl(var(--border))] p-1">
             <button
               onClick={() => setViewMode('dashboard')}
               className={`px-3 py-1 text-sm rounded transition-colors ${
                 viewMode === 'dashboard' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[hsl(var(--brand))] text-white' 
+                  : 'text-[hsl(var(--text))] opacity-70 hover:opacity-100'
               }`}
             >
-              📊 Dashboard
+              Dashboard
             </button>
             <button
               onClick={() => setViewMode('list')}
               className={`px-3 py-1 text-sm rounded transition-colors ${
                 viewMode === 'list' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[hsl(var(--brand))] text-white' 
+                  : 'text-[hsl(var(--text))] opacity-70 hover:opacity-100'
               }`}
             >
               📋 List
@@ -137,8 +137,8 @@ export default function Goals() {
               onClick={() => setViewMode('grid')}
               className={`px-3 py-1 text-sm rounded transition-colors ${
                 viewMode === 'grid' 
-                  ? 'bg-blue-500 text-white' 
-                  : 'text-gray-600 hover:text-gray-900'
+                  ? 'bg-[hsl(var(--brand))] text-white' 
+                  : 'text-[hsl(var(--text))] opacity-70 hover:opacity-100'
               }`}
             >
               🔲 Grid
@@ -151,7 +151,7 @@ export default function Goals() {
           <select
             value={filters.status || ''}
             onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value as GoalStatus || undefined }))}
-            className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
           >
             <option value="">All Status</option>
             <option value="active">Active</option>
@@ -163,7 +163,7 @@ export default function Goals() {
           <select
             value={filters.goal_type || ''}
             onChange={(e) => setFilters(prev => ({ ...prev, goal_type: e.target.value as GoalType || undefined }))}
-            className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
           >
             <option value="">All Types</option>
             <option value="savings">Savings</option>
@@ -177,7 +177,7 @@ export default function Goals() {
           <select
             value={filters.priority || ''}
             onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value as GoalPriority || undefined }))}
-            className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
           >
             <option value="">All Priorities</option>
             <option value="critical">Critical</option>

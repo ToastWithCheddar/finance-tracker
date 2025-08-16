@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from ..database import get_db
-from ..auth.dependencies import get_current_user
+from ..auth.dependencies import get_current_user, get_db_with_user_context
 from ..schemas.goal import (
     Goal, GoalCreate, GoalUpdate, GoalContribution, GoalContributionCreate,
     GoalsResponse, GoalStats, GoalStatus, GoalType, GoalPriority
@@ -19,7 +19,7 @@ def get_goal_service():
 @router.post("/", response_model=Goal)
 async def create_goal(
     goal_data: GoalCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):
@@ -36,7 +36,7 @@ async def get_goals(
     priority: Optional[GoalPriority] = Query(None, description="Filter by priority"),
     skip: int = Query(0, ge=0, description="Number of goals to skip"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of goals to return"),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):
@@ -47,7 +47,7 @@ async def get_goals(
 
 @router.get("/stats", response_model=GoalStats)
 async def get_goal_statistics(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):
@@ -57,7 +57,7 @@ async def get_goal_statistics(
 @router.get("/{goal_id}", response_model=Goal)
 async def get_goal(
     goal_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):
@@ -71,7 +71,7 @@ async def get_goal(
 async def update_goal(
     goal_id: UUID,
     goal_data: GoalUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):
@@ -84,7 +84,7 @@ async def update_goal(
 @router.delete("/{goal_id}")
 async def delete_goal(
     goal_id: UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):
@@ -98,7 +98,7 @@ async def delete_goal(
 async def add_contribution(
     goal_id: UUID,
     contribution_data: GoalContributionCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):
@@ -118,7 +118,7 @@ async def get_goal_contributions(
     goal_id: UUID,
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):
@@ -134,7 +134,7 @@ async def get_goal_contributions(
 async def process_automatic_contributions(
     # BackgroundTasks is a FastAPI dependency that allows us to run tasks in the background
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_db_with_user_context),
     current_user: dict = Depends(get_current_user),
     goal_service: GoalService = Depends(get_goal_service)
 ):

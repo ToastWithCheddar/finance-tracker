@@ -15,7 +15,7 @@ from app.models.account import Account
 from app.models.user import User
 from app.services.enhanced_plaid_service import enhanced_plaid_service
 from app.services.transaction_sync_service import transaction_sync_service
-from app.websocket.manager import websocket_manager
+from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
 
 logger = logging.getLogger(__name__)

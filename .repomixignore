@@ -1,0 +1,26 @@
+# Add patterns to ignore here, one per line
+# Example:
+# *.log
+# tmp/
+frontend/node_modules/
+docs/
+analysiscomp.md
+CLAUDE.md
+CLAUDE.local.md
+COMPREHENSIVE_DOCUMENTATION.md
+DOCUMENTATION.md
+prompt.md
+temporary_updates.md
+README.md
+**/.cache/**
+**/.pytest_cache/**
+**/.mypy_cache/**
+**/.ruff_cache/**
+**/.coverage
+**/coverage/**
+**/*.coverage
+frontend/.vite/**
+frontend/coverage/**
+backend/tests/fixtures/**
+frontend/
+ml-worker/

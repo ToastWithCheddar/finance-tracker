@@ -25,7 +25,13 @@ from ..core.exceptions import (
 from ..models.transaction import Transaction
 from ..models.account import Account
 from ..schemas.ml import MLCategorizationResponse
-from ..schemas.transaction import TransactionCreate, TransactionUpdate, TransactionFilter, TransactionPagination
+from ..schemas.transaction import (
+    TransactionCreate, 
+    TransactionUpdate, 
+    TransactionFilter, 
+    TransactionPagination, 
+    TransactionResponse
+)
 from .ml_client import get_ml_client, MLServiceError
 
 logger = logging.getLogger(__name__)
@@ -85,8 +91,8 @@ class TransactionService:
                 logger.info("Transaction will be created without ML categorization")
                 # Continue without ML categorization
 
-        # Get transaction data for database
-        transaction_data = transaction.model_dump()
+        # Get transaction data for database - exclude 'amount' field as Transaction model uses 'amount_cents'
+        transaction_data = transaction.model_dump(exclude={'amount', 'transaction_type'})
         
         db_transaction = Transaction(
             user_id=user_id,
@@ -240,6 +246,108 @@ class TransactionService:
         return query.all(), total_count
 
     @staticmethod
+    def get_transactions_with_grouping(
+        db: Session,
+        user_id: UUID,
+        filters: TransactionFilter,
+        pagination: TransactionPagination
+    ) -> Dict[str, Any]:
+        """Get transactions with server-side grouping"""
+        from ..schemas.transaction import TransactionGroupBy
+        
+        # Use eager loading to prevent N+1 queries for grouping
+        query = db.query(Transaction).options(
+            joinedload(Transaction.account),
+            joinedload(Transaction.category)
+        ).join(Transaction.account).filter(Transaction.user_id == user_id)
+
+        # Apply all the same filters as the regular method
+        if filters.start_date:
+            query = query.filter(Transaction.transaction_date >= filters.start_date)
+        if filters.end_date:
+            query = query.filter(Transaction.transaction_date <= filters.end_date)
+        if filters.category_id:
+            query = query.filter(Transaction.category_id == filters.category_id)
+        if filters.status:
+            query = query.filter(Transaction.status == filters.status)
+        if filters.min_amount_cents is not None:
+            query = query.filter(Transaction.amount_cents >= filters.min_amount_cents)
+        if filters.max_amount_cents is not None:
+            query = query.filter(Transaction.amount_cents <= filters.max_amount_cents)
+        if filters.account_id:
+            query = query.filter(Transaction.account_id == filters.account_id)
+        if filters.is_recurring is not None:
+            query = query.filter(Transaction.is_recurring == filters.is_recurring)
+        if filters.is_transfer is not None:
+            query = query.filter(Transaction.is_transfer == filters.is_transfer)
+        if filters.search_query:
+            search = f"%{filters.search_query}%"
+            query = query.filter(
+                or_(
+                    Transaction.description.ilike(search),
+                    Transaction.merchant.ilike(search)
+                )
+            )
+        if filters.tags:
+            for tag in filters.tags:
+                query = query.filter(Transaction.tags.contains([tag]))
+
+        # Get total count for pagination
+        total_count = query.count()
+
+        # Apply pagination to the query
+        query = query.order_by(Transaction.transaction_date.desc())
+        query = query.offset((pagination.page - 1) * pagination.per_page)
+        query = query.limit(pagination.per_page)
+        
+        # Get the transactions
+        transactions = query.all()
+        
+        # Group the transactions based on group_by parameter
+        groups = {}
+        group_by = filters.group_by
+        
+        for transaction in transactions:
+            # Determine the group key based on grouping type
+            if group_by == TransactionGroupBy.DATE:
+                group_key = transaction.transaction_date.strftime('%Y-%m-%d')
+            elif group_by == TransactionGroupBy.CATEGORY:
+                group_key = transaction.category.name if transaction.category else "Uncategorized"
+            elif group_by == TransactionGroupBy.MERCHANT:
+                group_key = transaction.merchant if transaction.merchant else "Unknown Merchant"
+            else:
+                # Default to date grouping
+                group_key = transaction.transaction_date.strftime('%Y-%m-%d')
+            
+            if group_key not in groups:
+                groups[group_key] = {
+                    "key": group_key,
+                    "total_amount_cents": 0,
+                    "count": 0,
+                    "transactions": []
+                }
+            
+            groups[group_key]["total_amount_cents"] += transaction.amount_cents
+            groups[group_key]["count"] += 1
+            groups[group_key]["transactions"].append(transaction)
+        
+        # Sort groups appropriately
+        if group_by == TransactionGroupBy.DATE:
+            sorted_groups = sorted(groups.values(), key=lambda x: x["key"], reverse=True)
+        else:
+            # For category and merchant, sort alphabetically
+            sorted_groups = sorted(groups.values(), key=lambda x: x["key"])
+        
+        return {
+            "groups": sorted_groups,
+            "total": total_count,
+            "page": pagination.page,
+            "per_page": pagination.per_page,
+            "pages": (total_count + pagination.per_page - 1) // pagination.per_page,
+            "grouped": True
+        }
+
+    @staticmethod
     def import_transactions_from_csv(
         db: Session,
         user_id: UUID,
@@ -247,9 +355,11 @@ class TransactionService:
     ) -> List[Transaction]:
         db_transactions = []
         for transaction in transactions:
+            # Exclude 'amount' field as Transaction model uses 'amount_cents'
+            transaction_data = transaction.model_dump(exclude={'amount', 'transaction_type'})
             db_transaction = Transaction(
                 user_id=user_id,
-                **transaction.model_dump()
+                **transaction_data
             )
             db_transactions.append(db_transaction)
 
@@ -416,12 +526,30 @@ class TransactionService:
         # Sort by total amount descending
         category_breakdown.sort(key=lambda x: x["totalAmount"], reverse=True)
         
+        # Calculate additional statistics  
+        income_count = sum(1 for t in transactions if t.amount_cents > 0)
+        expense_count = sum(1 for t in transactions if t.amount_cents < 0)
+        average_transaction = (total_income + total_expenses) / transaction_count if transaction_count > 0 else 0
+        
         return {
+            # Main stats for compatibility
             "totalIncome": total_income,
             "totalExpenses": total_expenses, 
             "netAmount": net_amount,
             "transactionCount": transaction_count,
-            "categoryBreakdown": category_breakdown
+            "categoryBreakdown": category_breakdown,
+            
+            # Additional stats to match frontend TransactionStats interface
+            "total_income": total_income,
+            "total_expenses": total_expenses,
+            "net_amount": net_amount,
+            "total_count": transaction_count,
+            "transaction_count": transaction_count,
+            "average_transaction": average_transaction,
+            "transaction_count_by_type": {
+                "income": income_count,
+                "expense": expense_count
+            }
         }
 
     @staticmethod

@@ -104,7 +104,8 @@ export abstract class BaseService {
       wrapResponse?: boolean;
     }
   ): Promise<T> {
-    const cacheKey = `GET:${endpoint}:${JSON.stringify(params || {})}`;
+    const fullEndpoint = this.buildEndpoint(endpoint);
+    const cacheKey = `GET:${fullEndpoint}:${JSON.stringify(params || {})}`;
     
     // Check cache first
     if (options?.useCache) {
@@ -117,7 +118,7 @@ export abstract class BaseService {
 
     try {
       // API call, if not in cache
-      const result = await apiClient.get<T>(endpoint, params);
+      const result = await apiClient.get<T>(fullEndpoint, params);
       
       // Validate response before caching or returning
       const validatedResult = this.validateResponse(result, endpoint);
@@ -152,10 +153,11 @@ export abstract class BaseService {
     options?: { context?: ErrorContext }
   ): Promise<T> {
     try {
-      const result = await apiClient.post<T>(endpoint, data);
+      const fullEndpoint = this.buildEndpoint(endpoint);
+      const result = await apiClient.post<T>(fullEndpoint, data);
       
       // Clear related cache entries on successful POST, data has changed
-      this.invalidateRelatedCache(endpoint);
+      this.invalidateRelatedCache(fullEndpoint);
       
       return result;
     } catch (error) {
@@ -172,10 +174,11 @@ export abstract class BaseService {
     options?: { context?: ErrorContext }
   ): Promise<T> {
     try {
-      const result = await apiClient.put<T>(endpoint, data);
+      const fullEndpoint = this.buildEndpoint(endpoint);
+      const result = await apiClient.put<T>(fullEndpoint, data);
       
       // Clear related cache entries on successful PUT, data has changed
-      this.invalidateRelatedCache(endpoint);
+      this.invalidateRelatedCache(fullEndpoint);
       
       return result;
     } catch (error) {
@@ -191,10 +194,11 @@ export abstract class BaseService {
     options?: { context?: ErrorContext }
   ): Promise<T> {
     try {
-      const result = await apiClient.delete<T>(endpoint);
+      const fullEndpoint = this.buildEndpoint(endpoint);
+      const result = await apiClient.delete<T>(fullEndpoint);
       
       // Clear related cache entries on successful DELETE, data has changed
-      this.invalidateRelatedCache(endpoint);
+      this.invalidateRelatedCache(fullEndpoint);
       
       return result;
     } catch (error) {
@@ -214,6 +218,7 @@ export abstract class BaseService {
       context?: ErrorContext;
     }
   ): Promise<PaginatedResponse<T>> {
+    // Pass raw endpoint to avoid double-prefixing; this.get will build the full path
     return this.get<PaginatedResponse<T>>(endpoint, params, options);
   }
 
@@ -301,10 +306,9 @@ export abstract class BaseService {
    * Invalidate cache entries related to an endpoint
    */
   private invalidateRelatedCache(endpoint: string): void {
-    // Clear cache entries that start with the base endpoint
-    const baseEndpoint = endpoint.split('/')[1]; // Get base path
+    const basePath = this.baseEndpoint;
     for (const key of this.cache.keys()) {
-      if (key.includes(baseEndpoint)) {
+      if (key.includes(basePath) || key.includes(endpoint)) {
         this.cache.delete(key);
       }
     }
@@ -400,10 +404,11 @@ export abstract class BaseService {
     options?: { context?: ErrorContext }
   ): Promise<T> {
     try {
-      const result = await apiClient.postFormData<T>(endpoint, formData);
+      const fullEndpoint = this.buildEndpoint(endpoint);
+      const result = await apiClient.postFormData<T>(fullEndpoint, formData);
       
       // Clear related cache entries on successful POST
-      this.invalidateRelatedCache(endpoint);
+      this.invalidateRelatedCache(fullEndpoint);
       
       return result;
     } catch (error) {
@@ -420,7 +425,8 @@ export abstract class BaseService {
     options?: { context?: ErrorContext }
   ): Promise<ServiceResponse<Blob>> {
     try {
-      const result = await apiClient.getBlob(endpoint, params);
+      const fullEndpoint = this.buildEndpoint(endpoint);
+      const result = await apiClient.getBlob(fullEndpoint, params);
       
       return {
         success: true,

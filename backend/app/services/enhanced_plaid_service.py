@@ -23,7 +23,7 @@ from app.schemas.account import AccountCreate, AccountUpdate
 from app.schemas.transaction import TransactionCreate
 from app.services.account_service import AccountService
 from app.services.transaction_service import TransactionService
-from app.websocket.manager import websocket_manager
+from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
 
 logger = logging.getLogger(__name__)
@@ -871,6 +871,19 @@ class EnhancedPlaidService:
                 result = await self._make_request('transactions/get', request_data)
                 transactions = result.get('transactions', [])
                 
+                # DEBUG: Log what Plaid returned
+                logger.info(f"🔍 PLAID DEBUG: API Response:")
+                logger.info(f"   - Total transactions available: {result.get('total_transactions', 'Unknown')}")
+                logger.info(f"   - Transactions in this batch: {len(transactions)}")
+                logger.info(f"   - Current offset: {request_data['options']['offset']}")
+                
+                if transactions:
+                    # Log first transaction as example
+                    first_tx = transactions[0]
+                    logger.info(f"   - Example transaction: {first_tx.get('transaction_id', 'No ID')} - ${first_tx.get('amount', 0)} - {first_tx.get('name', 'No name')}")
+                else:
+                    logger.info(f"   - No transactions returned by Plaid API")
+                
                 if not transactions:
                     break
                 
@@ -886,6 +899,12 @@ class EnhancedPlaidService:
                 # Prevent infinite loop
                 if request_data['options']['offset'] > 10000:  # Reasonable limit
                     break
+            
+            # DEBUG: Log final result summary
+            logger.info(f"🔍 PLAID DEBUG: Final fetch_transactions result:")
+            logger.info(f"   - Total transactions fetched: {len(all_transactions)}")
+            if all_transactions:
+                logger.info(f"   - Date range of fetched transactions: {min(tx.get('date', '') for tx in all_transactions)} to {max(tx.get('date', '') for tx in all_transactions)}")
             
             return {
                 'transactions': all_transactions,
@@ -936,6 +955,59 @@ class EnhancedPlaidService:
         db.commit()
         return synced_count
     
+    def _determine_transaction_type(self, plaid_txn: Dict[str, Any], amount: float) -> str:
+        """Determine if transaction is income or expense based on Plaid data"""
+        
+        # Get transaction details
+        name = plaid_txn.get('name', '').lower()
+        categories = plaid_txn.get('category', [])
+        account_owner = plaid_txn.get('account_owner', '')
+        
+        # Plaid amount convention: positive = debit (money out), negative = credit (money in)
+        # So negative amounts are typically income
+        if amount < 0:
+            # Negative Plaid amount suggests money coming in (credit)
+            # Check for income patterns
+            income_patterns = [
+                'ach electronic credit', 'direct deposit', 'payroll', 'salary',
+                'transfer from', 'deposit', 'refund', 'cashback', 'interest',
+                'dividend', 'pension', 'unemployment', 'social security',
+                'tax refund', 'insurance claim', 'bonus'
+            ]
+            
+            # Check categories for income types
+            income_categories = [
+                'Deposit', 'Transfer', 'Payroll', 'Interest', 'Dividend',
+                'Refund', 'Reward', 'Credit'
+            ]
+            
+            # Check if any category suggests income
+            for category in categories:
+                if any(inc_cat.lower() in category.lower() for inc_cat in income_categories):
+                    return 'income'
+            
+            # Check name for income patterns
+            if any(pattern in name for pattern in income_patterns):
+                return 'income'
+            
+            # If negative amount but no clear income indicators, could be refund/credit
+            return 'income'  # Default negative amounts to income
+        else:
+            # Positive Plaid amount suggests money going out (debit)
+            # This is typically an expense, but double-check for transfers
+            
+            transfer_patterns = [
+                'transfer to', 'payment to', 'online transfer', 'internal transfer'
+            ]
+            
+            # Check if this is a transfer (might want different handling)
+            if any(pattern in name for pattern in transfer_patterns):
+                # For now, treat transfers as expenses, but we could add transfer logic later
+                return 'expense'
+            
+            # Default positive amounts to expense
+            return 'expense'
+    
     async def _create_transaction_from_plaid(
         self, 
         plaid_txn: Dict[str, Any], 
@@ -947,9 +1019,12 @@ class EnhancedPlaidService:
         try:
             # Parse transaction data
             amount = float(plaid_txn.get('amount', 0))
-            # Plaid amounts are positive for debits, negative for credits
-            # We store negative amounts as expenses
-            amount_cents = int(-amount * 100)
+            
+            # Determine transaction type based on Plaid data
+            transaction_type = self._determine_transaction_type(plaid_txn, amount)
+            
+            # Convert to cents - let the schema handle the sign based on transaction_type
+            amount_cents = int(abs(amount) * 100)
             
             transaction_date = datetime.fromisoformat(
                 plaid_txn.get('date', datetime.now(timezone.utc).date().isoformat())
@@ -965,10 +1040,13 @@ class EnhancedPlaidService:
                 merchant=plaid_txn.get('merchant_name'),
                 plaid_transaction_id=plaid_txn.get('transaction_id'),
                 plaid_category=plaid_txn.get('category', []),
+                transaction_type=transaction_type,  # Add transaction type
                 metadata_json={
                     'plaid_data': plaid_txn,
                     'imported_at': datetime.now(timezone.utc).isoformat(),
-                    'sync_method': 'initial_import'
+                    'sync_method': 'initial_import',
+                    'original_plaid_amount': amount,  # Store original for debugging
+                    'determined_type': transaction_type
                 }
             )
             

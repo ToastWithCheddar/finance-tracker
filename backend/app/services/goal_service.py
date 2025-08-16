@@ -4,12 +4,13 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 from ..models.goal import Goal, GoalContribution, GoalMilestone, GoalStatus, GoalType, GoalPriority
 from ..schemas.goal import GoalCreate, GoalUpdate, GoalContributionCreate, MilestoneAlert
-from ..websocket.manager import WebSocketManager
+from ..websocket.manager import RedisWebSocketManager
+from .notification_service import NotificationService
 import json
 from uuid import UUID
 
 class GoalService:
-    def __init__(self, websocket_manager: WebSocketManager = None):
+    def __init__(self, websocket_manager: RedisWebSocketManager = None):
         self.websocket_manager = websocket_manager
 
     def create_goal(self, db: Session, user_id: UUID, goal_data: GoalCreate) -> Goal:
@@ -124,7 +125,7 @@ class GoalService:
         
         return True
 
-    def add_contribution(
+    async def add_contribution(
         self, 
         db: Session, 
         user_id: UUID, 
@@ -134,7 +135,14 @@ class GoalService:
         is_automatic: bool = False
     ) -> Optional[GoalContribution]:
         """Add a contribution to a goal"""
-        goal = self.get_goal(db, user_id, goal_id)
+        goal = db.query(Goal).options(
+            joinedload(Goal.contributions),
+            joinedload(Goal.milestones)
+        ).filter(
+            Goal.id == goal_id, 
+            Goal.user_id == user_id
+        ).with_for_update().first()
+        
         if not goal or goal.status not in [GoalStatus.ACTIVE]:
             return None
         
@@ -152,7 +160,7 @@ class GoalService:
         goal.last_contribution_date = datetime.now(datetime.timezone.utc)
         
         # Check for milestones
-        milestones_reached = self._check_milestones(db, goal)
+        milestones_reached = await self._check_milestones(db, goal)
         
         # Check if goal is completed
         if goal.current_amount >= goal.target_amount:
@@ -330,7 +338,7 @@ class GoalService:
             "contribution_trend": contribution_trend
         }
 
-    def _check_milestones(self, db: Session, goal: Goal) -> List[GoalMilestone]:
+    async def _check_milestones(self, db: Session, goal: Goal) -> List[GoalMilestone]:
         """Check and create milestone records for goal progress"""
         milestones_reached = []
         current_percentage = goal.progress_percentage
@@ -352,6 +360,34 @@ class GoalService:
                 db.add(milestone)
                 milestones_reached.append(milestone)
                 goal.last_milestone_reached = percentage
+                
+                # Create persistent notification for milestone
+                try:
+                    if percentage == 100:
+                        # Goal achieved
+                        await NotificationService.create_goal_achieved(
+                            db=db,
+                            user_id=goal.user_id,
+                            goal_name=goal.name,
+                            final_amount=goal.current_amount / 100,  # Convert to dollars
+                            goal_id=goal.id
+                        )
+                    else:
+                        # Milestone reached
+                        await NotificationService.create_goal_milestone(
+                            db=db,
+                            user_id=goal.user_id,
+                            goal_name=goal.name,
+                            milestone_percentage=percentage,
+                            current_amount=goal.current_amount / 100,  # Convert to dollars
+                            target_amount=goal.target_amount / 100,  # Convert to dollars
+                            goal_id=goal.id
+                        )
+                except Exception as e:
+                    # Log error but don't fail the milestone creation
+                    import logging
+                    logger = logging.getLogger(__name__)
+                    logger.error(f"Failed to create goal notification for goal {goal.id}: {e}")
         
         return milestones_reached
 

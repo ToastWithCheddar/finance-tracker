@@ -106,14 +106,14 @@ export interface SyncBalancesResponse {
 }
 
 export class PlaidService extends BaseService {
-  protected baseEndpoint = '/accounts';
+  protected baseEndpoint = '';
 
   async createLinkToken(
     options?: { context?: ErrorContext }
   ): Promise<PlaidLinkTokenResponse> {
     try {
       const response = await this.post<{ success: boolean; data: PlaidLinkTokenResponse } | PlaidLinkTokenResponse>(
-        this.buildEndpoint('/plaid/link-token'),
+        '/accounts/plaid/link-token',
         {},
         { context: options?.context }
       );
@@ -154,7 +154,7 @@ export class PlaidService extends BaseService {
       const { public_token, ...bodyData } = exchangeData;
       
       // Build URL with public_token as query parameter
-      const baseUrl = this.buildEndpoint('/plaid/exchange-token');
+      const baseUrl = this.buildEndpoint('/accounts/plaid/exchange-token');
       const urlWithParams = `${baseUrl}?public_token=${encodeURIComponent(public_token)}`;
       
       console.log('🔗 Exchanging Plaid token...', { url: urlWithParams, hasToken: !!public_token });
@@ -210,7 +210,7 @@ export class PlaidService extends BaseService {
   ): Promise<PlaidConnectionStatus> {
     try {
       const response = await this.get<{ success: boolean; data: any } | any>(
-        this.buildEndpoint('/connection-status'),
+        '/accounts/connection-status',
         undefined,
         {
           useCache: options?.useCache ?? true,
@@ -279,10 +279,10 @@ export class PlaidService extends BaseService {
     };
     
     console.log('📦 Sending transaction sync request body:', requestBody);
-    console.log('🎯 Transaction sync endpoint:', this.buildEndpoint('/sync-transactions'));
+    console.log('🎯 Transaction sync endpoint:', this.buildEndpoint('/accounts/sync-transactions'));
 
     return this.post<SyncTransactionsResponse>(
-      this.buildEndpoint('/sync-transactions'),
+      '/accounts/sync-transactions',
       requestBody,
       { context: options?.context }
     );
@@ -301,11 +301,19 @@ export class PlaidService extends BaseService {
     };
     
     console.log('📦 Sending request body:', requestBody);
-    console.log('🎯 Endpoint:', this.buildEndpoint('/sync-balances'));
+    console.log('🎯 Endpoint:', this.buildEndpoint('/accounts/sync-balances'));
 
     return this.post<SyncBalancesResponse>(
-      this.buildEndpoint('/sync-balances'),
+      '/accounts/sync-balances',
       requestBody,
+      { context: options?.context }
+    );
+  }
+
+  async quickSandboxLink(options?: { context?: ErrorContext }): Promise<{ success: boolean; message: string } | any> {
+    return this.post(
+      '/accounts/plaid/sandbox/quick-link',
+      {},
       { context: options?.context }
     );
   }

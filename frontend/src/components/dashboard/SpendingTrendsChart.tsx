@@ -1,5 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui';
+import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import type { SpendingTrend } from '../../services/dashboardService';
 
 interface SpendingTrendsChartProps {
@@ -24,7 +24,7 @@ const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
         <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">{label}</p>
         {payload.map((entry, index: number) => (
           <p key={index} className="text-sm" style={{ color: entry.color }}>
-            {entry.name}: ${Math.abs(entry.value).toFixed(2)}
+            {entry.name}: ${entry.value.toFixed(2)}
           </p>
         ))}
       </div>
@@ -34,12 +34,12 @@ const CustomTooltip: React.FC<TooltipProps> = ({ active, payload, label }) => {
 };
 
 export function SpendingTrendsChart({ data, title = "Spending Trends" }: SpendingTrendsChartProps) {
-  // Format data for the chart
+  // Format data for the chart - backend already returns correct positive values
   const chartData = data.map(item => ({
     ...item,
-    income: Math.abs(item.income),
-    expenses: Math.abs(item.expenses),
-    net: item.net,
+    income: item.income, // Remove Math.abs() - backend already returns correct values
+    expenses: item.expenses, // Remove Math.abs() - backend already returns correct values
+    net: item.income - item.expenses,
   }));
 
   if (chartData.length === 0) {

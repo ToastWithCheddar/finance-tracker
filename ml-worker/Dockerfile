@@ -11,7 +11,6 @@ RUN apt-get update \
         build-essential \
         libpq-dev \
         curl \
-        software-properties-common \
         git \
     && rm -rf /var/lib/apt/lists/*
 

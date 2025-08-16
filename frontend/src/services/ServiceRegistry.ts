@@ -2,21 +2,26 @@
  * Service Registry for centralized service management
  * Provides standardized access to all application services
  */
-import { StandardizedTransactionService } from './standardized/TransactionService';
-import { StandardizedBudgetService } from './standardized/BudgetService';
+import { transactionService as importedTransactionService, TransactionService } from './transactionService';
+import { budgetService as importedBudgetService, BudgetService } from './budgetService';
+import { savedFilterService as importedSavedFilterService } from './savedFilterService';
+import { timelineService as importedTimelineService } from './timelineService';
 import { type ServiceResponse, type ServiceError, type ServiceResult } from './base/BaseService';
 
-// Service instances
+// Service instances - using the enhanced legacy services
 const services = {
-  transaction: new StandardizedTransactionService(),
-  budget: new StandardizedBudgetService(),
-  // Add other services as they're standardized
+  transaction: importedTransactionService,
+  budget: importedBudgetService,
+  savedFilter: importedSavedFilterService,
+  timeline: importedTimelineService,
 } as const;
 
 // Service registry interface
 export interface IServiceRegistry {
-  readonly transaction: StandardizedTransactionService;
-  readonly budget: StandardizedBudgetService;
+  readonly transaction: TransactionService;
+  readonly budget: BudgetService;
+  readonly savedFilter: typeof importedSavedFilterService;
+  readonly timeline: typeof importedTimelineService;
 }
 
 /**
@@ -27,6 +32,8 @@ export class ServiceRegistry implements IServiceRegistry {
   
   readonly transaction = services.transaction;
   readonly budget = services.budget;
+  readonly savedFilter = services.savedFilter;
+  readonly timeline = services.timeline;
   
   private constructor() {
     // Private constructor for singleton
@@ -51,12 +58,16 @@ export class ServiceRegistry implements IServiceRegistry {
       return {
         transaction: true,
         budget: true,
+        savedFilter: true,
+        timeline: true,
       };
     } catch (error) {
       console.error('Service health check failed:', error);
       return {
         transaction: false,
         budget: false,
+        savedFilter: false,
+        timeline: false,
       };
     }
   }
@@ -77,10 +88,10 @@ export class ServiceRegistry implements IServiceRegistry {
 export const serviceRegistry = ServiceRegistry.getInstance();
 
 // Export individual services for direct access
-export const {
-  transaction: transactionService,
-  budget: budgetService,
-} = serviceRegistry;
+export const registryTransactionService = serviceRegistry.transaction;
+export const registryBudgetService = serviceRegistry.budget;
+export const registrySavedFilterService = serviceRegistry.savedFilter;
+export const registryTimelineService = serviceRegistry.timeline;
 
 // Re-export service utilities
 export type { ServiceResponse, ServiceError, ServiceResult };

@@ -17,8 +17,9 @@ from app.models.user import User
 from app.schemas.transaction import TransactionCreate
 from app.services.enhanced_plaid_service import enhanced_plaid_service
 from app.services.transaction_service import TransactionService
-from app.websocket.manager import websocket_manager
+from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
+from app.core.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +46,78 @@ class TransactionSyncService:
         self.default_sync_days = 30  # Default sync period for new accounts
         self.batch_size = 100  # Process transactions in batches
         
-        # Track ongoing syncs to prevent duplicates
-        self.active_syncs: Set[str] = set()
+        # Lock configuration
+        self.lock_timeout_seconds = 300  # 5 minutes timeout for distributed locks
+    
+    async def _acquire_sync_lock(self, account_id: str) -> bool:
+        """
+        Acquire a distributed lock for account synchronization using Redis.
+        
+        Args:
+            account_id: The account ID to lock
+            
+        Returns:
+            bool: True if lock was acquired, False otherwise
+            
+        Raises:
+            Exception: If Redis connection fails
+        """
+        try:
+            conn = await redis_client.get_connection()
+            lock_key = f"sync-lock:{account_id}"
+            lock_value = f"worker-{asyncio.current_task().get_name() if asyncio.current_task() else 'unknown'}"
+            
+            # Use SET with NX (not exists) and EX (expiration) options
+            # This is atomic - either sets the key with expiration or fails
+            result = await conn.set(
+                lock_key, 
+                lock_value, 
+                nx=True,  # Only set if key doesn't exist
+                ex=self.lock_timeout_seconds  # Set expiration
+            )
+            
+            await conn.close()
+            
+            if result:
+                logger.info(f"Acquired sync lock for account {account_id}")
+                return True
+            else:
+                logger.warning(f"Failed to acquire sync lock for account {account_id} - already locked")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error acquiring sync lock for account {account_id}: {str(e)}")
+            raise Exception(f"Failed to acquire distributed lock: {str(e)}")
+    
+    async def _release_sync_lock(self, account_id: str) -> bool:
+        """
+        Release the distributed lock for account synchronization.
+        
+        Args:
+            account_id: The account ID to unlock
+            
+        Returns:
+            bool: True if lock was released, False if lock didn't exist
+        """
+        try:
+            conn = await redis_client.get_connection()
+            lock_key = f"sync-lock:{account_id}"
+            
+            # Delete the lock key
+            result = await conn.delete(lock_key)
+            await conn.close()
+            
+            if result:
+                logger.info(f"Released sync lock for account {account_id}")
+                return True
+            else:
+                logger.warning(f"Attempted to release non-existent lock for account {account_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error releasing sync lock for account {account_id}: {str(e)}")
+            # Don't raise here - we want to ensure cleanup continues
+            return False
     
     async def sync_account_transactions(
         self, 
@@ -57,10 +128,11 @@ class TransactionSyncService:
     ) -> SyncResult:
         """Sync transactions for a single account"""
         
-        if account_id in self.active_syncs:
+        # Attempt to acquire distributed lock
+        lock_acquired = await self._acquire_sync_lock(account_id)
+        if not lock_acquired:
             raise Exception(f"Account {account_id} is already being synced")
         
-        self.active_syncs.add(account_id)
         start_time = datetime.now(timezone.utc)
         
         try:
@@ -155,7 +227,8 @@ class TransactionSyncService:
             raise
             
         finally:
-            self.active_syncs.discard(account_id)
+            # Always release the distributed lock
+            await self._release_sync_lock(account_id)
     
     async def sync_user_transactions(
         self, 
@@ -248,6 +321,11 @@ class TransactionSyncService:
         """Process Plaid transactions for an account"""
         
         logger.info(f"🔄 DEBUG: Processing {len(plaid_transactions)} transactions for account {account.name}")
+        
+        # DEBUG: Log detailed transaction info if any exist
+        if plaid_transactions:
+            for i, tx in enumerate(plaid_transactions[:3]):  # Log first 3 transactions
+                logger.info(f"   📋 Transaction {i+1}: ID={tx.get('transaction_id', 'N/A')}, Amount=${tx.get('amount', 'N/A')}, Date={tx.get('date', 'N/A')}, Name='{tx.get('name', 'N/A')}'")
         
         result = SyncResult(
             account_id=str(account.id),
@@ -497,12 +575,36 @@ class TransactionSyncService:
             logger.error(f"Failed to send bulk sync notification: {e}")
     
     async def get_sync_status(self) -> Dict[str, Any]:
-        """Get current sync status"""
-        return {
-            'active_syncs': len(self.active_syncs),
-            'syncing_accounts': list(self.active_syncs),
-            'plaid_service_status': await self.plaid_service.get_sync_status()
-        }
+        """Get current sync status by querying Redis for active locks"""
+        try:
+            conn = await redis_client.get_connection()
+            
+            # Get all sync lock keys
+            lock_keys = await conn.keys("sync-lock:*")
+            
+            # Extract account IDs from lock keys
+            syncing_accounts = []
+            for key in lock_keys:
+                if key.startswith("sync-lock:"):
+                    account_id = key[10:]  # Remove "sync-lock:" prefix
+                    syncing_accounts.append(account_id)
+            
+            await conn.close()
+            
+            return {
+                'active_syncs': len(syncing_accounts),
+                'syncing_accounts': syncing_accounts,
+                'plaid_service_status': await self.plaid_service.get_sync_status()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting sync status from Redis: {str(e)}")
+            return {
+                'active_syncs': 0,
+                'syncing_accounts': [],
+                'error': f"Failed to get sync status: {str(e)}",
+                'plaid_service_status': await self.plaid_service.get_sync_status()
+            }
     
     async def schedule_automatic_sync(self, db: Session, user_id: Optional[str] = None):
         """Schedule automatic sync for accounts that need it"""
@@ -552,6 +654,101 @@ class TransactionSyncService:
             'users_affected': len(user_accounts),
             'message': f'Scheduled sync for {scheduled_count} accounts'
         }
+    
+    async def sync_transactions_for_item(self, db: Session, item_id: str, days: int = 30) -> Dict[str, Any]:
+        """
+        Syncs transactions for all accounts connected to a specific Plaid Item.
+        This method is specifically designed for webhook-triggered syncs.
+        """
+        from app.models.account import Account
+        
+        try:
+            # Find all accounts for this Plaid item
+            accounts_to_sync = db.query(Account).filter(
+                Account.plaid_item_id == item_id,
+                Account.is_active == True
+            ).all()
+            
+            if not accounts_to_sync:
+                logger.warning(f"Received webhook for unknown or inactive item_id: {item_id}")
+                return {
+                    'success': False,
+                    'error': f'No active accounts found for item_id: {item_id}',
+                    'accounts_synced': 0
+                }
+
+            user_id = accounts_to_sync[0].user_id
+            logger.info(f"Webhook-triggered sync for user {user_id}, item {item_id}, {len(accounts_to_sync)} accounts")
+            
+            # Mark all accounts as syncing
+            for account in accounts_to_sync:
+                account.sync_status = 'syncing'
+                db.add(account)
+            db.commit()
+            
+            # Use the existing user transaction sync method
+            result = await self.sync_user_transactions(
+                user_id=str(user_id), 
+                db=db, 
+                days=days
+            )
+            
+            # Add webhook-specific metadata
+            result['trigger'] = 'webhook'
+            result['item_id'] = item_id
+            result['webhook_sync_time'] = datetime.now(timezone.utc).isoformat()
+            
+            # Send WebSocket notification for real-time updates
+            await self._send_webhook_sync_notification(user_id, item_id, result)
+            
+            logger.info(f"Webhook sync completed for item {item_id}: "
+                       f"{result.get('total_new_transactions', 0)} new transactions")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Webhook-triggered sync failed for item {item_id}: {e}")
+            
+            # Update account statuses on failure
+            try:
+                accounts_to_sync = db.query(Account).filter(Account.plaid_item_id == item_id).all()
+                for account in accounts_to_sync:
+                    account.sync_status = 'error'
+                    account.last_sync_error = f"Webhook sync failed: {str(e)}"
+                    account.connection_health = 'failed'
+                    db.add(account)
+                db.commit()
+            except Exception as update_error:
+                logger.error(f"Failed to update account statuses after webhook sync failure: {update_error}")
+            
+            return {
+                'success': False,
+                'error': str(e),
+                'trigger': 'webhook',
+                'item_id': item_id,
+                'accounts_synced': 0
+            }
+    
+    async def _send_webhook_sync_notification(self, user_id: str, item_id: str, result: Dict[str, Any]):
+        """Send notification for webhook-triggered sync completion"""
+        try:
+            await websocket_manager.send_user_event(
+                str(user_id),
+                WebSocketEvent(
+                    type=EventType.WEBHOOK_SYNC_COMPLETE,
+                    data={
+                        'item_id': item_id,
+                        'total_new_transactions': result.get('total_new_transactions', 0),
+                        'total_updated_transactions': result.get('total_updated_transactions', 0),
+                        'accounts_synced': result.get('accounts_synced', 0),
+                        'sync_time': result.get('webhook_sync_time'),
+                        'success': result.get('success', True)
+                    }
+                )
+            )
+            logger.info(f"Sent webhook sync notification to user {user_id}")
+        except Exception as e:
+            logger.error(f"Failed to send webhook sync notification: {e}")
     
     def _convert_plaid_amount(self, raw_amount: float, account_type: str) -> int:
         """
