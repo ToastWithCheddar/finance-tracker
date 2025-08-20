@@ -13,7 +13,7 @@ from decimal import Decimal
 from app.services.transaction_service import TransactionService
 from app.schemas.transaction import TransactionCreate, TransactionUpdate, TransactionFilter, TransactionPagination
 from app.models.transaction import Transaction
-from app.core.exceptions import ValidationException, ResourceNotFoundException
+from fastapi import HTTPException
 
 
 class TestTransactionServiceCreateTransaction:

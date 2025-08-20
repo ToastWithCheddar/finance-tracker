@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, Suspense, lazy } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui';
@@ -14,6 +14,11 @@ import type {
   Transaction
 } from '../types/transaction';
 import type { TransactionFilters as TransactionFiltersType } from '../services/transactionService';
+import { ReceiptText, RefreshCcw, Settings } from 'lucide-react';
+
+// Lazy load tab components for better performance
+const RecurringTab = lazy(() => import('../components/transactions/RecurringTab').then(module => ({ default: module.RecurringTab })));
+const AutomationRulesTab = lazy(() => import('../components/transactions/AutomationRulesTab').then(module => ({ default: module.AutomationRulesTab })));
 
 // Define the shape of our grouped data
 interface GroupedTransactions {
@@ -23,10 +28,68 @@ interface GroupedTransactions {
   };
 }
 
+// Tab definitions
+type TransactionTab = 'all' | 'recurring' | 'automation';
+
+interface TabConfig {
+  id: TransactionTab;
+  label: string;
+  icon: React.ComponentType<any>;
+  description: string;
+}
+
 
 
 export function Transactions() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
+  
+  // Tab configuration
+  const tabs: TabConfig[] = [
+    {
+      id: 'all',
+      label: 'All Transactions',
+      icon: ReceiptText,
+      description: 'Browse, filter, and manage all your transactions'
+    },
+    {
+      id: 'recurring',
+      label: 'Recurring & Subscriptions',
+      icon: RefreshCcw,
+      description: 'Manage recurring payments and subscription tracking'
+    },
+    {
+      id: 'automation',
+      label: 'Automation Rules',
+      icon: Settings,
+      description: 'Configure categorization rules and templates'
+    }
+  ];
+
+  // Get initial tab from URL params or default to 'all'
+  const getInitialTab = (): TransactionTab => {
+    const tabParam = searchParams.get('tab') as TransactionTab;
+    return tabs.find(t => t.id === tabParam)?.id || 'all';
+  };
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<TransactionTab>(getInitialTab);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab: TransactionTab) => {
+    setActiveTab(tab);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('tab', tab);
+    setSearchParams(newParams);
+  };
+
+  // Sync tab state with URL on mount and URL changes
+  useEffect(() => {
+    const tabParam = searchParams.get('tab') as TransactionTab;
+    const validTab = tabs.find(t => t.id === tabParam)?.id || 'all';
+    if (validTab !== activeTab) {
+      setActiveTab(validTab);
+    }
+  }, [searchParams, tabs, activeTab]);
   
   // Get initial filters from URL params
   const getInitialFilters = (): TransactionFilter => {
@@ -291,117 +354,178 @@ export function Transactions() {
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8 glass-surface p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold">Transactions</h1>
-              <p className="text-[hsl(var(--text))/0.7] mt-2">Manage your income and expenses</p>
+              <p className="text-[hsl(var(--text))/0.7] mt-2">
+                {tabs.find(t => t.id === activeTab)?.description}
+              </p>
             </div>
             
-            <div className="flex space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => setIsImportOpen(true)}
-              >
-                Import CSV
-              </Button>
-              
-              <div className="relative" ref={exportDropdownRef}>
-                <Button 
+            {/* Tab-specific action buttons */}
+            {activeTab === 'all' && (
+              <div className="flex space-x-3">
+                <Button
                   variant="outline"
-                  disabled={isExporting}
-                  onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
-                  className="flex items-center"
+                  onClick={() => setIsImportOpen(true)}
                 >
-                  {isExporting ? 'Exporting...' : 'Export'}
-                  <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
+                  Import CSV
                 </Button>
                 
-                {isExportDropdownOpen && (
-                  <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-[hsl(var(--surface))] border border-[hsl(var(--border))] z-10">
-                    <div className="py-1">
-                      <button
-                        onClick={() => {
-                          handleExport('csv');
-                          setIsExportDropdownOpen(false);
-                        }}
-                        disabled={isExporting}
-                        className="flex items-center w-full px-4 py-2 text-sm text-left text-[hsl(var(--text))] hover:bg-[hsl(var(--border)/0.25)] disabled:opacity-50"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Export as CSV
-                      </button>
-                      <button
-                        onClick={() => {
-                          handleExport('json');
-                          setIsExportDropdownOpen(false);
-                        }}
-                        disabled={isExporting}
-                        className="flex items-center w-full px-4 py-2 text-sm text-left text-[hsl(var(--text))] hover:bg-[hsl(var(--border)/0.25)] disabled:opacity-50"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        Export as JSON
-                      </button>
+                <div className="relative" ref={exportDropdownRef}>
+                  <Button 
+                    variant="outline"
+                    disabled={isExporting}
+                    onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
+                    className="flex items-center"
+                  >
+                    {isExporting ? 'Exporting...' : 'Export'}
+                    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </Button>
+                  
+                  {isExportDropdownOpen && (
+                    <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-[hsl(var(--surface))] border border-[hsl(var(--border))] z-10">
+                      <div className="py-1">
+                        <button
+                          onClick={() => {
+                            handleExport('csv');
+                            setIsExportDropdownOpen(false);
+                          }}
+                          disabled={isExporting}
+                          className="flex items-center w-full px-4 py-2 text-sm text-left text-[hsl(var(--text))] hover:bg-[hsl(var(--border)/0.25)] disabled:opacity-50"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Export as CSV
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleExport('json');
+                            setIsExportDropdownOpen(false);
+                          }}
+                          disabled={isExporting}
+                          className="flex items-center w-full px-4 py-2 text-sm text-left text-[hsl(var(--text))] hover:bg-[hsl(var(--border)/0.25)] disabled:opacity-50"
+                        >
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Export as JSON
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
+                
+                <Button
+                  onClick={() => {
+                    setEditingTransaction(undefined);
+                    setIsFormOpen(true);
+                  }}
+                  className="bg-brand hover:brightness-110"
+                >
+                  Add Transaction
+                </Button>
               </div>
-              
-              <Button
-                onClick={() => {
-                  setEditingTransaction(undefined);
-                  setIsFormOpen(true);
-                }}
-                className="bg-brand hover:brightness-110"
-              >
-                Add Transaction
-              </Button>
+            )}
+          </div>
+
+          {/* Tab Navigation */}
+          <div className="border-t border-[hsl(var(--border))] pt-6">
+            <nav className="flex space-x-1">
+              {tabs.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => handleTabChange(tab.id)}
+                    className={`
+                      flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
+                      ${isActive
+                        ? 'bg-[hsl(var(--brand))] text-white shadow-md'
+                        : 'text-[hsl(var(--text))/0.7] hover:text-[hsl(var(--text))] hover:bg-[hsl(var(--border)/0.25)]'
+                      }
+                    `}
+                  >
+                    <Icon className="w-4 h-4 mr-2" />
+                    {tab.label}
+                  </button>
+                );
+              })}
+            </nav>
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === 'all' && (
+          <>
+            {/* Filters */}
+            <div className="mb-6">
+              <TransactionFilters
+                filters={filters}
+                onFiltersChange={handleFiltersChange}
+                onClearFilters={handleClearFilters}
+                categories={categories}
+              />
             </div>
-          </div>
-        </div>
 
-        {/* Filters */}
-        <div className="mb-6">
-          <TransactionFilters
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-            onClearFilters={handleClearFilters}
-            categories={categories}
-          />
-        </div>
+            {/* Loading State */}
+            {isLoading && (
+              <div className="flex items-center justify-center py-12">
+                <LoadingSpinner size="lg" />
+              </div>
+            )}
 
-        {/* Loading State */}
-        {isLoading && (
-          <div className="flex items-center justify-center py-12">
-            <LoadingSpinner size="lg" />
-          </div>
+            {/* Transaction List */}
+            {!isLoading && (
+              <div className="mb-8">
+                <TransactionList
+                  groupedTransactions={isGroupedResponse ? undefined : groupedTransactions}
+                  groups={isGroupedResponse ? groups : undefined}
+                  expandedGroups={expandedGroups}
+                  onToggleGroup={toggleGroup}
+                  stats={stats}
+                  isLoading={isBusy}
+                  onEdit={handleEditTransaction}
+                  onDelete={handleDeleteTransaction}
+                  onBulkDelete={handleBulkDelete}
+                  groupType={groupType as 'date' | 'category' | 'merchant' | 'none'}
+                />
+              </div>
+            )}
+          </>
         )}
 
-        {/* Transaction List */}
-        {!isLoading && (
+        {activeTab === 'recurring' && (
           <div className="mb-8">
-            <TransactionList
-              groupedTransactions={isGroupedResponse ? undefined : groupedTransactions}
-              groups={isGroupedResponse ? groups : undefined}
-              expandedGroups={expandedGroups}
-              onToggleGroup={toggleGroup}
-              stats={stats}
-              isLoading={isBusy}
-              onEdit={handleEditTransaction}
-              onDelete={handleDeleteTransaction}
-              onBulkDelete={handleBulkDelete}
-              groupType={groupType as 'date' | 'category' | 'merchant' | 'none'}
-            />
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <LoadingSpinner size="lg" />
+              </div>
+            }>
+              <RecurringTab />
+            </Suspense>
           </div>
         )}
 
-        {/* Pagination */}
-        {!isLoading && totalPages > 1 && (
+        {activeTab === 'automation' && (
+          <div className="mb-8">
+            <Suspense fallback={
+              <div className="flex items-center justify-center py-12">
+                <LoadingSpinner size="lg" />
+              </div>
+            }>
+              <AutomationRulesTab />
+            </Suspense>
+          </div>
+        )}
+
+        {/* Pagination - Only for All Transactions tab */}
+        {activeTab === 'all' && !isLoading && totalPages > 1 && (
           <div className="flex items-center justify-between">
             <div className="text-sm text-[hsl(var(--text))/0.75]">
               Showing {(currentPage - 1) * itemsPerPage + 1} to{' '}
@@ -454,25 +578,29 @@ export function Transactions() {
           </div>
         )}
 
-        {/* Modals */}
-        <TransactionForm
-          isOpen={isFormOpen}
-          onClose={() => {
-            setIsFormOpen(false);
-            setEditingTransaction(undefined);
-          }}
-          onSubmit={handleTransactionSubmit}
-          transaction={editingTransaction}
-          title={editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
-          // isLoading={isCreating || isUpdating}
-        />
+        {/* Modals - Only for All Transactions tab */}
+        {activeTab === 'all' && (
+          <>
+            <TransactionForm
+              isOpen={isFormOpen}
+              onClose={() => {
+                setIsFormOpen(false);
+                setEditingTransaction(undefined);
+              }}
+              onSubmit={handleTransactionSubmit}
+              transaction={editingTransaction}
+              title={editingTransaction ? 'Edit Transaction' : 'Add Transaction'}
+              // isLoading={isCreating || isUpdating}
+            />
 
-        <CSVImport
-          isOpen={isImportOpen}
-          onClose={() => setIsImportOpen(false)}
-          onImport={handleCSVImport}
-          // isLoading={isImporting}
-        />
+            <CSVImport
+              isOpen={isImportOpen}
+              onClose={() => setIsImportOpen(false)}
+              onImport={handleCSVImport}
+              // isLoading={isImporting}
+            />
+          </>
+        )}
       </div>
     </div>
   );

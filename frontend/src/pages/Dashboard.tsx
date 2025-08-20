@@ -1,18 +1,24 @@
+import { useState } from 'react';
 import { useDashboardAnalytics, useSpendingTrends } from '../hooks/useDashboard';
 import { useWebSocket } from '../hooks/useWebSocket';
 import { useNavigate } from 'react-router-dom';
+import { useCreateTransaction } from '../hooks/useTransactions';
 import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui';
 import { Alert, AlertDescription, AlertTitle } from '../components/ui/Alert';
 import { formatCurrency } from '../utils/currency';
-import { TrendingUp, ArrowRightLeft, BarChart, AlertCircle } from 'lucide-react';
+import { TrendingUp, ArrowRightLeft, BarChart, AlertCircle, Plus } from 'lucide-react';
 import { AccountsList } from '../components/accounts/AccountsList';
 import { SpendingTrendsChart } from '../components/dashboard/SpendingTrendsChart';
 import MonthlyComparisonChart from '../components/dashboard/MonthlyComparisonChart';
+import { NetWorthTrendChart } from '../components/dashboard/NetWorthTrendChart';
+import { CashFlowWaterfallChart } from '../components/dashboard/CashFlowWaterfallChart';
 import { RealtimeTransactionFeed } from '../components/dashboard/RealtimeTransactionFeed';
 import { NotificationPanel } from '../components/dashboard/NotificationPanel';
+import { TransactionForm } from '../components/transactions/TransactionForm';
 import { useNotifications, useRealtimeTransactions } from '../stores/realtimeStore';
+import type { CreateTransactionRequest, UpdateTransactionRequest } from '../types/transaction';
 
 const MetricCard = ({ title, value, icon: Icon }: { title: string; value: string; icon: React.ElementType }) => (
   <Card>
@@ -103,6 +109,17 @@ export function Dashboard() {
   const notifications = useNotifications();
   const realtimeTransactions = useRealtimeTransactions();
 
+  // Transaction form modal state
+  const [isTransactionFormOpen, setIsTransactionFormOpen] = useState(false);
+  const createTransactionMutation = useCreateTransaction();
+
+  // Handle transaction form submission
+  const handleCreateTransaction = async (transactionData: CreateTransactionRequest | UpdateTransactionRequest) => {
+    // Since this is always create mode, we can cast to CreateTransactionRequest
+    await createTransactionMutation.mutateAsync(transactionData as CreateTransactionRequest);
+    setIsTransactionFormOpen(false);
+  };
+
   if (isLoading) {
     return (
       <div className="p-8">
@@ -161,6 +178,12 @@ export function Dashboard() {
         <MonthlyComparisonChart data={trends} />
       </div>
 
+      {/* Net Worth and Cash Flow Analytics */}
+      <div className="grid gap-6 lg:grid-cols-2">
+        <NetWorthTrendChart />
+        <CashFlowWaterfallChart />
+      </div>
+
       {/* Live Feed and Notifications */}
       <div className="grid gap-6 lg:grid-cols-2">
         <RealtimeTransactionFeed transactions={realtimeTransactions} newCount={realtimeTransactions.filter(t => t.isNew).length} />
@@ -208,6 +231,24 @@ export function Dashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Floating Action Button */}
+      <button
+        onClick={() => setIsTransactionFormOpen(true)}
+        className="fixed bottom-6 right-6 bg-blue-600 hover:bg-blue-700 text-white rounded-full p-4 shadow-lg hover:shadow-xl transition-all duration-200 z-50"
+        title="Add new transaction"
+        aria-label="Add new transaction"
+      >
+        <Plus className="h-6 w-6" />
+      </button>
+
+      {/* Transaction Form Modal */}
+      <TransactionForm
+        isOpen={isTransactionFormOpen}
+        onClose={() => setIsTransactionFormOpen(false)}
+        onSubmit={handleCreateTransaction}
+        title="Add New Transaction"
+      />
     </div>
   );
 }

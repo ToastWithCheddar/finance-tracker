@@ -150,8 +150,3 @@ export const useThemeActions = () => useThemeStore(state => ({
   applyTheme: state.applyTheme,
 }));
 
-// Utility function to sync theme with user preferences
-export const syncThemeWithPreferences = (userTheme: string) => {
-  const validTheme = ['light', 'dark', 'auto'].includes(userTheme) ? userTheme as Theme : 'auto';
-  useThemeStore.getState().setTheme(validTheme);
-};

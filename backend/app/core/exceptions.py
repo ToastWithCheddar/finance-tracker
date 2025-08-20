@@ -1,303 +1,226 @@
 """
-Standardized exception handling for the Finance Tracker application
+Custom exception classes for the finance tracker application.
+
+These exceptions provide specific error types that can be caught and handled
+appropriately by the API layer while avoiding information leakage.
 """
-from typing import Any, Dict, Optional, List, Union
-from fastapi import HTTPException, status
-from pydantic import BaseModel, Field
-import logging
-import traceback
-from datetime import datetime, timezone
-from enum import Enum
 
-logger = logging.getLogger(__name__)
+from typing import Optional, Any, Dict
 
-class ErrorCode(str, Enum):
-    """Standardized error codes"""
-    # Authentication & Authorization
-    UNAUTHORIZED = "UNAUTHORIZED"
-    FORBIDDEN = "FORBIDDEN"
-    TOKEN_EXPIRED = "TOKEN_EXPIRED"
-    INVALID_CREDENTIALS = "INVALID_CREDENTIALS"
-    
-    # Validation Errors
-    VALIDATION_ERROR = "VALIDATION_ERROR"
-    INVALID_INPUT = "INVALID_INPUT"
-    MISSING_REQUIRED_FIELD = "MISSING_REQUIRED_FIELD"
-    INVALID_FORMAT = "INVALID_FORMAT"
-    
-    # Resource Errors
-    RESOURCE_NOT_FOUND = "RESOURCE_NOT_FOUND"
-    RESOURCE_ALREADY_EXISTS = "RESOURCE_ALREADY_EXISTS"
-    RESOURCE_CONFLICT = "RESOURCE_CONFLICT"
-    RESOURCE_LOCKED = "RESOURCE_LOCKED"
-    
-    # Business Logic Errors
-    INSUFFICIENT_FUNDS = "INSUFFICIENT_FUNDS"
-    BUDGET_EXCEEDED = "BUDGET_EXCEEDED"
-    GOAL_ALREADY_ACHIEVED = "GOAL_ALREADY_ACHIEVED"
-    CATEGORY_IN_USE = "CATEGORY_IN_USE"
-    ACCOUNT_SYNC_FAILED = "ACCOUNT_SYNC_FAILED"
-    
-    # External Service Errors
-    ML_SERVICE_UNAVAILABLE = "ML_SERVICE_UNAVAILABLE"
-    PLAID_SERVICE_ERROR = "PLAID_SERVICE_ERROR"
-    EMAIL_SERVICE_ERROR = "EMAIL_SERVICE_ERROR"
-    
-    # System Errors
-    INTERNAL_SERVER_ERROR = "INTERNAL_SERVER_ERROR"
-    DATABASE_ERROR = "DATABASE_ERROR"
-    CONFIGURATION_ERROR = "CONFIGURATION_ERROR"
-    RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
 
-class ErrorSeverity(str, Enum):
-    """Error severity levels"""
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-class ErrorDetail(BaseModel):
-    """Detailed error information"""
-    field: Optional[str] = Field(None, description="Field name if applicable")
-    message: str = Field(..., description="Error message")
-    code: Optional[str] = Field(None, description="Specific error code")
-    value: Optional[Any] = Field(None, description="Invalid value if applicable")
-
-class StandardErrorResponse(BaseModel):
-    """Standardized error response structure"""
-    error: ErrorCode = Field(..., description="Error code")
-    message: str = Field(..., description="Human-readable error message")
-    details: List[ErrorDetail] = Field(default_factory=list, description="Detailed error information")
-    request_id: Optional[str] = Field(None, description="Request ID for tracking")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    path: Optional[str] = Field(None, description="API path where error occurred")
-    method: Optional[str] = Field(None, description="HTTP method")
-    user_id: Optional[str] = Field(None, description="User ID if authenticated")
-    severity: ErrorSeverity = Field(ErrorSeverity.MEDIUM, description="Error severity level")
-    
-    class Config:
-        json_encoders = {
-            datetime: lambda v: v.isoformat()
-        }
-
-class BaseAppException(Exception):
-    """Base exception class for application-specific errors"""
+class FinanceTrackerException(Exception):
+    """Base exception for all finance tracker specific errors."""
     
     def __init__(
         self,
         message: str,
-        error_code: ErrorCode = ErrorCode.INTERNAL_SERVER_ERROR,
-        details: Optional[List[ErrorDetail]] = None,
-        severity: ErrorSeverity = ErrorSeverity.MEDIUM,
-        status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR,
-        user_id: Optional[str] = None,
-        context: Optional[Dict[str, Any]] = None
+        error_code: str,
+        status_code: int = 500,
+        details: Optional[Dict[str, Any]] = None
     ):
         self.message = message
         self.error_code = error_code
-        self.details = details or []
-        self.severity = severity
         self.status_code = status_code
-        self.user_id = user_id
-        self.context = context or {}
+        self.details = details or {}
         super().__init__(self.message)
-    
-    def to_response(self, request_id: Optional[str] = None, path: Optional[str] = None, method: Optional[str] = None) -> StandardErrorResponse:
-        """Convert exception to standardized error response"""
-        return StandardErrorResponse(
-            error=self.error_code,
-            message=self.message,
-            details=self.details,
-            request_id=request_id,
-            path=path,
-            method=method,
-            user_id=self.user_id,
-            severity=self.severity
-        )
-    
-    def log_error(self, request_id: Optional[str] = None):
-        """Log the error with appropriate level based on severity"""
-        log_data = {
-            "error_code": self.error_code,
-            "message": self.message,
-            "severity": self.severity,
-            "status_code": self.status_code,
-            "user_id": self.user_id,
-            "request_id": request_id,
-            "context": self.context
-        }
-        
-        if self.severity in [ErrorSeverity.CRITICAL, ErrorSeverity.HIGH]:
-            logger.error(f"Application error: {self.error_code}", extra=log_data, exc_info=True)
-        elif self.severity == ErrorSeverity.MEDIUM:
-            logger.warning(f"Application warning: {self.error_code}", extra=log_data)
-        else:
-            logger.info(f"Application info: {self.error_code}", extra=log_data)
 
-# Specific exception classes
-class ValidationException(BaseAppException):
-    """Validation error exception"""
-    def __init__(self, message: str, details: Optional[List[ErrorDetail]] = None, field: Optional[str] = None):
-        if field and not details:
-            details = [ErrorDetail(field=field, message=message)]
+
+class ValidationError(FinanceTrackerException):
+    """Raised when input validation fails."""
+    
+    def __init__(self, message: str = "Invalid input data", details: Optional[Dict[str, Any]] = None):
         super().__init__(
             message=message,
-            error_code=ErrorCode.VALIDATION_ERROR,
-            details=details,
-            severity=ErrorSeverity.LOW,
-            status_code=status.HTTP_400_BAD_REQUEST
+            error_code="VALIDATION_ERROR",
+            status_code=400,
+            details=details
         )
 
-class ResourceNotFoundException(BaseAppException):
-    """Resource not found exception"""
+
+class AuthenticationError(FinanceTrackerException):
+    """Raised when authentication fails."""
+    
+    def __init__(self, message: str = "Authentication failed"):
+        super().__init__(
+            message=message,
+            error_code="AUTHENTICATION_ERROR",
+            status_code=401
+        )
+
+
+class AuthorizationError(FinanceTrackerException):
+    """Raised when user is not authorized to access a resource."""
+    
+    def __init__(self, message: str = "Not authorized to access this resource"):
+        super().__init__(
+            message=message,
+            error_code="AUTHORIZATION_ERROR",
+            status_code=403
+        )
+
+
+class ResourceNotFoundError(FinanceTrackerException):
+    """Raised when a requested resource is not found."""
+    
     def __init__(self, resource_type: str, resource_id: Optional[str] = None):
         message = f"{resource_type} not found"
         if resource_id:
-            message += f" (ID: {resource_id})"
+            message += f" with ID: {resource_id}"
+        
         super().__init__(
             message=message,
-            error_code=ErrorCode.RESOURCE_NOT_FOUND,
-            severity=ErrorSeverity.LOW,
-            status_code=status.HTTP_404_NOT_FOUND
+            error_code="RESOURCE_NOT_FOUND",
+            status_code=404
         )
 
-class ResourceConflictException(BaseAppException):
-    """Resource conflict exception"""
-    def __init__(self, message: str, resource_type: Optional[str] = None):
+
+class AccountNotFoundError(ResourceNotFoundError):
+    """Raised when an account is not found."""
+    
+    def __init__(self, account_id: Optional[str] = None):
+        super().__init__("Account", account_id)
+
+
+class TransactionNotFoundError(ResourceNotFoundError):
+    """Raised when a transaction is not found."""
+    
+    def __init__(self, transaction_id: Optional[str] = None):
+        super().__init__("Transaction", transaction_id)
+
+
+class BudgetNotFoundError(ResourceNotFoundError):
+    """Raised when a budget is not found."""
+    
+    def __init__(self, budget_id: Optional[str] = None):
+        super().__init__("Budget", budget_id)
+
+
+class GoalNotFoundError(ResourceNotFoundError):
+    """Raised when a goal is not found."""
+    
+    def __init__(self, goal_id: Optional[str] = None):
+        super().__init__("Goal", goal_id)
+
+
+class CategoryNotFoundError(ResourceNotFoundError):
+    """Raised when a category is not found."""
+    
+    def __init__(self, category_id: Optional[str] = None):
+        super().__init__("Category", category_id)
+
+
+class CategorizationRuleNotFoundError(ResourceNotFoundError):
+    """Raised when a categorization rule is not found."""
+    
+    def __init__(self, rule_id: Optional[str] = None):
+        super().__init__("Categorization rule", rule_id)
+
+
+class DuplicateResourceError(FinanceTrackerException):
+    """Raised when attempting to create a resource that already exists."""
+    
+    def __init__(self, resource_type: str, message: Optional[str] = None):
+        if not message:
+            message = f"{resource_type} already exists"
+        
         super().__init__(
             message=message,
-            error_code=ErrorCode.RESOURCE_CONFLICT,
-            severity=ErrorSeverity.MEDIUM,
-            status_code=status.HTTP_409_CONFLICT,
-            context={"resource_type": resource_type} if resource_type else None
+            error_code="DUPLICATE_RESOURCE",
+            status_code=409
         )
 
-class AuthenticationException(BaseAppException):
-    """Authentication error exception"""
-    def __init__(self, message: str = "Authentication required"):
+
+class PlaidIntegrationError(FinanceTrackerException):
+    """Raised when Plaid API integration fails."""
+    
+    def __init__(self, message: str = "Plaid service unavailable", plaid_error_code: Optional[str] = None):
+        details = {}
+        if plaid_error_code:
+            details["plaid_error_code"] = plaid_error_code
+        
         super().__init__(
             message=message,
-            error_code=ErrorCode.UNAUTHORIZED,
-            severity=ErrorSeverity.MEDIUM,
-            status_code=status.HTTP_401_UNAUTHORIZED
+            error_code="PLAID_INTEGRATION_ERROR",
+            status_code=502,
+            details=details
         )
 
-class AuthorizationException(BaseAppException):
-    """Authorization error exception"""
-    def __init__(self, message: str = "Access denied", user_id: Optional[str] = None):
-        super().__init__(
-            message=message,
-            error_code=ErrorCode.FORBIDDEN,
-            severity=ErrorSeverity.HIGH,
-            status_code=status.HTTP_403_FORBIDDEN,
-            user_id=user_id
-        )
 
-class BusinessLogicException(BaseAppException):
-    """Business logic error exception"""
-    def __init__(self, message: str, error_code: ErrorCode, details: Optional[List[ErrorDetail]] = None):
-        super().__init__(
-            message=message,
-            error_code=error_code,
-            details=details,
-            severity=ErrorSeverity.MEDIUM,
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY
-        )
-
-class ExternalServiceException(BaseAppException):
-    """External service error exception"""
-    def __init__(self, service_name: str, message: str, error_code: ErrorCode):
+class ExternalServiceError(FinanceTrackerException):
+    """Raised when an external service is unavailable or returns an error."""
+    
+    def __init__(self, service_name: str, message: str = "External service unavailable"):
         super().__init__(
             message=f"{service_name}: {message}",
+            error_code="EXTERNAL_SERVICE_ERROR",
+            status_code=502
+        )
+
+
+class BusinessLogicError(FinanceTrackerException):
+    """Raised when business logic validation fails."""
+    
+    def __init__(self, message: str, error_code: str = "BUSINESS_LOGIC_ERROR"):
+        super().__init__(
+            message=message,
             error_code=error_code,
-            severity=ErrorSeverity.HIGH,
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            context={"service_name": service_name}
+            status_code=400
         )
 
-class DatabaseException(BaseAppException):
-    """Database error exception"""
-    def __init__(self, message: str, operation: Optional[str] = None):
+
+class InsufficientFundsError(BusinessLogicError):
+    """Raised when a transaction would result in insufficient funds."""
+    
+    def __init__(self, message: str = "Insufficient funds for this transaction"):
+        super().__init__(message, "INSUFFICIENT_FUNDS")
+
+
+class BudgetExceededError(BusinessLogicError):
+    """Raised when a transaction would exceed a budget limit."""
+    
+    def __init__(self, message: str = "Transaction would exceed budget limit"):
+        super().__init__(message, "BUDGET_EXCEEDED")
+
+
+class DataIntegrityError(FinanceTrackerException):
+    """Raised when data integrity constraints are violated."""
+    
+    def __init__(self, message: str = "Data integrity violation"):
         super().__init__(
             message=message,
-            error_code=ErrorCode.DATABASE_ERROR,
-            severity=ErrorSeverity.CRITICAL,
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            context={"operation": operation} if operation else None
+            error_code="DATA_INTEGRITY_ERROR",
+            status_code=422
         )
 
-class ConfigurationException(BaseAppException):
-    """Configuration error exception"""
-    def __init__(self, message: str, config_key: Optional[str] = None):
+
+class RateLimitError(FinanceTrackerException):
+    """Raised when rate limits are exceeded."""
+    
+    def __init__(self, message: str = "Rate limit exceeded"):
         super().__init__(
             message=message,
-            error_code=ErrorCode.CONFIGURATION_ERROR,
-            severity=ErrorSeverity.CRITICAL,
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            context={"config_key": config_key} if config_key else None
+            error_code="RATE_LIMIT_EXCEEDED",
+            status_code=429
         )
 
-class RateLimitException(BaseAppException):
-    """Rate limit exceeded exception"""
-    def __init__(self, message: str = "Rate limit exceeded", retry_after: Optional[int] = None):
+
+class ConfigurationError(FinanceTrackerException):
+    """Raised when there's a configuration issue."""
+    
+    def __init__(self, message: str = "Configuration error"):
         super().__init__(
             message=message,
-            error_code=ErrorCode.RATE_LIMIT_EXCEEDED,
-            severity=ErrorSeverity.MEDIUM,
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            context={"retry_after": retry_after} if retry_after else None
+            error_code="CONFIGURATION_ERROR",
+            status_code=500
         )
 
-# Utility functions for error handling
-def create_validation_error(field: str, message: str, value: Any = None) -> ErrorDetail:
-    """Create a validation error detail"""
-    return ErrorDetail(
-        field=field,
-        message=message,
-        code=ErrorCode.VALIDATION_ERROR,
-        value=value
-    )
 
-def create_http_exception(
-    app_exception: BaseAppException, 
-    request_id: Optional[str] = None,
-    path: Optional[str] = None,
-    method: Optional[str] = None
-) -> HTTPException:
-    """Convert application exception to FastAPI HTTPException"""
-    response = app_exception.to_response(request_id, path, method)
-    app_exception.log_error(request_id)
+class MLServiceError(FinanceTrackerException):
+    """Raised when ML service operations fail."""
     
-    return HTTPException(
-        status_code=app_exception.status_code,
-        detail=response.model_dump()
-    )
-
-def handle_database_error(error: Exception, operation: str) -> DatabaseException:
-    """Handle database errors with proper logging"""
-    error_message = str(error)
-    
-    # Log the original database error
-    logger.error(f"Database error during {operation}: {error_message}", exc_info=True)
-    
-    # Create user-friendly message
-    if "unique constraint" in error_message.lower():
-        return DatabaseException(
-            message="A record with these details already exists",
-            operation=operation
-        )
-    elif "foreign key" in error_message.lower():
-        return DatabaseException(
-            message="Cannot complete operation due to related data constraints",
-            operation=operation
-        )
-    elif "not null" in error_message.lower():
-        return DatabaseException(
-            message="Required information is missing",
-            operation=operation
-        )
-    else:
-        return DatabaseException(
-            message="Database operation failed",
-            operation=operation
+    def __init__(self, message: str = "Machine learning service unavailable"):
+        super().__init__(
+            message=message,
+            error_code="ML_SERVICE_ERROR",
+            status_code=503
         )

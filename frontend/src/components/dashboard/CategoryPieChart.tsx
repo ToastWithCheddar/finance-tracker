@@ -1,5 +1,6 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
+import { CHART_COLORS } from '../../utils/chartColors';
 import type { CategoryBreakdown } from '../../services/dashboardService';
 
 interface CategoryPieChartProps {
@@ -7,11 +8,6 @@ interface CategoryPieChartProps {
   title?: string;
 }
 
-// Color palette for categories
-const COLORS = [
-  '#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8',
-  '#82CA9D', '#FFC658', '#FF7C7C', '#8DD1E1', '#D084D0'
-];
 
 interface TooltipProps {
   active?: boolean;
@@ -90,7 +86,7 @@ export function CategoryPieChart({ data, title = "Spending by Category" }: Categ
                 dataKey="value"
               >
                 {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                 ))}
               </Pie>
               <Tooltip content={<CustomTooltip />} />

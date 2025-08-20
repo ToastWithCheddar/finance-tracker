@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { Toast as ToastComponent } from '../ui/Toast';
+import { useToast } from '../ui/Toast';
 
 interface MLModelPerformance {
   total_predictions: number;
@@ -38,8 +38,8 @@ export const MLModelDashboard: React.FC = () => {
   const [isAddingExample, setIsAddingExample] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   
-  // Toast state
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  // Toast hook
+  const toast = useToast();
 
   const categories = [
     'Food & Dining',
@@ -136,7 +136,11 @@ export const MLModelDashboard: React.FC = () => {
   };
 
   const showToast = (message: string, type: 'success' | 'error') => {
-    setToast({ message, type });
+    if (type === 'success') {
+      toast.success(message);
+    } else {
+      toast.error(message);
+    }
   };
 
   const getHealthStatusColor = (status: string) => {
@@ -317,14 +321,6 @@ export const MLModelDashboard: React.FC = () => {
           </div>
         </div>
       </Card>
-
-      {toast && (
-        <ToastComponent
-          message={toast.message}
-          type={toast.type}
-          onClose={() => setToast(null)}
-        />
-      )}
     </div>
   );
 };

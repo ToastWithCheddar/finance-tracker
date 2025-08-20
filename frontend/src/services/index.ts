@@ -8,12 +8,13 @@ export { TransactionService, transactionService } from './transactionService';
 export { BudgetService, budgetService } from './budgetService';
 export { GoalService } from './goalService';
 export { categoryService } from './categoryService';
-export { userPreferencesService } from './userPreferencesService';
 export { dashboardService } from './dashboardService';
 export { mlService } from './mlService';
 export { NotificationService } from './notificationService';
 export { timelineService } from './timelineService';
 export { savedFilterService } from './savedFilterService';
+export { plaidRecurringService } from './plaidRecurringService';
+export { categorizationRulesService } from './categorizationRulesService';
 
 // Service registry (now uses consolidated services)
 export {

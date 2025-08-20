@@ -212,7 +212,7 @@ class GoalService:
             and_(
                 Goal.auto_contribute == True,
                 Goal.status == GoalStatus.ACTIVE,
-                Goal.auto_contribution_amount > 0
+                Goal.auto_contribution_amount_cents > 0
             )
         ).all()
         
@@ -221,7 +221,7 @@ class GoalService:
                 # Check if contribution is due based on frequency
                 if self._is_contribution_due(goal, today):
                     contribution_data = GoalContributionCreate(
-                        amount=goal.auto_contribution_amount,
+                        amount=goal.auto_contribution_amount_cents,
                         note=f"Automatic contribution - {goal.contribution_frequency}"
                     )
                     

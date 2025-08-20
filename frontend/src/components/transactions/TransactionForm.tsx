@@ -1,8 +1,10 @@
-  import { useState } from 'react';
+  import { useState, useEffect } from 'react';
   import { Button } from '../ui/Button';
   import { Input } from '../ui/Input';
   import { Modal } from '../ui/Modal';
   import { CategorySelector } from '../categories/CategorySelector';
+  import { transactionService } from '../../services/transactionService';
+  import { useLiveMerchantRecognition, useMerchantActions } from '../../hooks/useMerchantEnrichment';
   import type { Transaction, CreateTransactionRequest, UpdateTransactionRequest } from '../../types/transaction';
   import type { Category } from '../../types/category';
 
@@ -21,10 +23,44 @@
     transaction,
     title = 'Add Transaction'
   }: TransactionFormProps) {
+    /**
+     * TODO: Migrate form state management to react-hook-form
+     * 
+     * Current state: This form uses manual useState management, which is inconsistent
+     * with other forms in the application (BudgetForm, LoginForm, RegisterForm) that
+     * use react-hook-form for better validation, error handling, and performance.
+     * 
+     * Migration benefits:
+     * - Consistent form patterns across the application
+     * - Better validation with built-in error handling
+     * - Reduced re-renders and improved performance
+     * - Type-safe form handling with better TypeScript integration
+     * - Built-in support for form reset, dirty state, and submission states
+     * 
+     * Migration steps:
+     * 1. Import useForm from 'react-hook-form'
+     * 2. Replace useState with useForm hook:
+     *    const { register, handleSubmit, formState: { errors }, reset, setValue } = useForm<CreateTransactionRequest>()
+     * 3. Replace manual onChange handlers with register() calls
+     * 4. Use handleSubmit wrapper for form submission
+     * 5. Replace manual error state with formState.errors
+     * 6. Use setValue for programmatic form updates (merchant recognition)
+     * 7. Use reset() for form cleanup on close
+     * 
+     * Example pattern (see BudgetForm.tsx for reference):
+     * const form = useForm<CreateTransactionRequest>({
+     *   defaultValues: {
+     *     accountId: transaction?.accountId || '',
+     *     amountCents: transaction?.amountCents || 0,
+     *     // ... other defaults
+     *   }
+     * });
+     */
     const [formData, setFormData] = useState<CreateTransactionRequest>({
       accountId: transaction?.accountId || '',
       amountCents: transaction?.amountCents || 0,
       description: transaction?.description || '',
+      merchant: transaction?.merchant || '',
       transactionDate: transaction?.transactionDate?.split('T')[0] || new Date().toISOString().split('T')[0],
       transaction_type: 'expense',
       amount: transaction ? (transaction.amountCents / 100) : 0,
@@ -33,9 +69,13 @@
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
-      const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [needsCategoryConfirmation, setNeedsCategoryConfirmation] = useState(false);
   const [suggestedCategoryId, setSuggestedCategoryId] = useState<string | undefined>();
+  
+  // Use the new merchant recognition hooks
+  const liveMerchantRecognition = useLiveMerchantRecognition();
+  const merchantActions = useMerchantActions();
  
    const validateForm = (): boolean => {
      const newErrors: Record<string, string> = {};
@@ -84,6 +124,7 @@
           amount: 0,
           category_id: undefined,
           description: '',
+          merchant: '',
           transactionDate: new Date().toISOString().split('T')[0],
           transaction_date: new Date().toISOString().split('T')[0],
           transaction_type: 'expense',
@@ -91,6 +132,8 @@
         setErrors({});
         setNeedsCategoryConfirmation(false);
         setSuggestedCategoryId(undefined);
+        liveMerchantRecognition.reset();
+        merchantActions.resetRecognition();
       } catch (error) {
         console.error('Failed to submit transaction:', error);
         
@@ -150,6 +193,45 @@
         setErrors(prev => ({ ...prev, category_id: '' }));
       }
     };
+
+    const handleRecognizeMerchant = async () => {
+      if (!formData.description?.trim()) {
+        setErrors(prev => ({ ...prev, description: 'Please enter a description first' }));
+        return;
+      }
+
+      try {
+        await merchantActions.recognizeFromDescriptionAsync({ description: formData.description });
+        
+        if (merchantActions.recognitionResult?.recognized_merchant && 
+            merchantActions.recognitionResult.confidence_score >= 0.6) {
+          setFormData(prev => ({ 
+            ...prev, 
+            merchant: merchantActions.recognitionResult?.recognized_merchant || '' 
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to recognize merchant:', error);
+        setErrors(prev => ({ ...prev, merchant: 'Failed to recognize merchant. Please try again.' }));
+      }
+    };
+
+    // Auto-recognize merchant when description changes (debounced)
+    useEffect(() => {
+      if (!formData.description?.trim() || formData.description.length < 3) {
+        return;
+      }
+
+      const timeoutId = setTimeout(async () => {
+        const result = await liveMerchantRecognition.recognizeFromDescription(formData.description);
+        if (result?.recognized_merchant && result.confidence_score >= 0.8) {
+          // Only auto-fill with high confidence
+          setFormData(prev => ({ ...prev, merchant: result.recognized_merchant || '' }));
+        }
+      }, 500); // 500ms debounce
+
+      return () => clearTimeout(timeoutId);
+    }, [formData.description, liveMerchantRecognition]);
 
 
 
@@ -288,6 +370,83 @@
                 {formData.description?.length || 0}/200
               </p>
             </div>
+          </div>
+
+          {/* Merchant */}
+          <div>
+            <label className="block text-sm font-medium text-[hsl(var(--text))] mb-2">
+              Merchant (Optional)
+            </label>
+            <div className="flex space-x-2">
+              <Input
+                type="text"
+                value={formData.merchant || ''}
+                onChange={(e) => handleInputChange('merchant', e.target.value)}
+                placeholder="Enter merchant name..."
+                className={errors.merchant ? 'border-red-300 focus:border-red-500 focus:ring-red-500' : ''}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleRecognizeMerchant}
+                disabled={merchantActions.isRecognizing || !formData.description?.trim()}
+                className="shrink-0"
+              >
+                {merchantActions.isRecognizing ? '🔄' : '🔍'} Recognize
+              </Button>
+            </div>
+            {(merchantActions.recognitionResult || liveMerchantRecognition.lastResult) && (
+              <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded text-sm">
+                {(() => {
+                  const result = merchantActions.recognitionResult || liveMerchantRecognition.lastResult;
+                  return result?.recognized_merchant ? (
+                    <div className="space-y-1">
+                      <p>
+                        <span className="font-medium">Recognized:</span> {result.recognized_merchant}
+                        <span className="text-gray-500 ml-2">
+                          ({Math.round(result.confidence_score * 100)}% confidence)
+                        </span>
+                      </p>
+                      {result.method_used && (
+                        <p className="text-xs text-gray-500">
+                          Method: {result.method_used}
+                        </p>
+                      )}
+                      {result.suggestions && result.suggestions.length > 0 && (
+                        <div className="mt-1">
+                          <p className="text-xs text-gray-600 mb-1">Other suggestions:</p>
+                          <div className="flex flex-wrap gap-1">
+                            {result.suggestions.slice(0, 3).map((suggestion, index) => (
+                              <button
+                                key={index}
+                                type="button"
+                                onClick={() => setFormData(prev => ({ ...prev, merchant: suggestion }))}
+                                className="px-2 py-0.5 text-xs bg-gray-100 hover:bg-gray-200 rounded border"
+                              >
+                                {suggestion}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-gray-600">No merchant recognized from description</p>
+                  );
+                })()}
+              </div>
+            )}
+            {liveMerchantRecognition.isRecognizing && (
+              <div className="mt-2 p-2 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
+                <span className="inline-flex items-center">
+                  <span className="animate-spin mr-2">🔄</span>
+                  Auto-recognizing merchant...
+                </span>
+              </div>
+            )}
+            {errors.merchant && (
+              <p className="mt-1 text-sm text-red-600">{errors.merchant}</p>
+            )}
           </div>
 
           {/* Date */}

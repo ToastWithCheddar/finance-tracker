@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { AvatarUpload } from './AvatarUpload';
 import { userService, type UserProfile, type UserUpdateData } from '../../services/userService';
+import { useErrorToast } from '../ui/Toast';
 
 interface EditProfileModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export function EditProfileModal({ isOpen, onClose, profile, onSave }: EditProfi
   const [isLoading, setIsLoading] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const showError = useErrorToast();
 
   // Reset form when profile changes or modal opens
   useEffect(() => {
@@ -80,7 +82,7 @@ export function EditProfileModal({ isOpen, onClose, profile, onSave }: EditProfi
       setFormData(prev => ({ ...prev, avatar_url: result.avatar_url }));
     } catch (error) {
       console.error('Avatar upload failed:', error);
-      alert('Failed to upload avatar. Please try again.');
+      showError('Failed to upload avatar. Please try again.');
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -93,7 +95,7 @@ export function EditProfileModal({ isOpen, onClose, profile, onSave }: EditProfi
       setFormData(prev => ({ ...prev, avatar_url: '' }));
     } catch (error) {
       console.error('Avatar removal failed:', error);
-      alert('Failed to remove avatar. Please try again.');
+      showError('Failed to remove avatar. Please try again.');
     } finally {
       setIsUploadingAvatar(false);
     }
@@ -118,7 +120,7 @@ export function EditProfileModal({ isOpen, onClose, profile, onSave }: EditProfi
       onClose();
     } catch (error) {
       console.error('Profile update failed:', error);
-      alert('Failed to update profile. Please try again.');
+      showError('Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);
     }

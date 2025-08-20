@@ -146,3 +146,25 @@ export const getAmountColor = (amount: number): {
     };
   }
 };
+
+// Chart color palettes for data visualization
+export const CHART_COLORS = [
+  '#3b82f6', // blue
+  '#10b981', // green  
+  '#f59e0b', // yellow
+  '#8b5cf6', // purple
+  '#ef4444', // red
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+  '#f97316', // orange
+  '#ec4899', // pink
+  '#6366f1'  // indigo
+];
+
+export const FREQUENCY_COLORS = {
+  'WEEKLY': '#3b82f6',
+  'BIWEEKLY': '#10b981', 
+  'MONTHLY': '#f59e0b',
+  'QUARTERLY': '#8b5cf6',
+  'ANNUALLY': '#ef4444'
+} as const;

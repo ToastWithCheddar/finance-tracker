@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { queryClient } from '../services/queryClient';
 import type { Transaction } from '../types/transaction';
 import type { MilestoneAlert } from '../types/goals';
+import type { ActivityEvent } from '../types/activity';
 import type { 
   TypedWebSocketMessage, 
   TransactionPayload,
@@ -19,7 +20,14 @@ import {
   isBudgetAlert,
   isGoalProgress,
   isNotification,
-  isValidWebSocketMessage
+  isValidWebSocketMessage,
+  isPlaidRecurringSync,
+  isPlaidRecurringUpdate,
+  isRecurringTransactionAction,
+  isCategorizationRuleAction,
+  isRuleApplication,
+  isRuleEffectivenessUpdate,
+  isUserActivity
 } from '../types/websocket';
 
 /*****************************
@@ -38,19 +46,6 @@ export interface RealtimeNotification {
   isNew?: boolean;
 }
 
-export interface RealtimeInsight {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  priority: number;
-  is_read: boolean;
-  extra_payload?: Record<string, any>;
-  created_at: string;
-  updated_at?: string;
-  transaction_id?: string;
-  isNew?: boolean;
-}
 
 export interface RealtimeTransaction extends Transaction {
   /** Whether the transaction is newly arrived (for UI highlight) */
@@ -89,8 +84,17 @@ interface RealtimeState {
   /* Budget alerts */
   budgetAlerts: Array<{ message: string; category?: string; amount?: number }>;
 
-  /* AI Insights */
-  insights: RealtimeInsight[];
+
+  /* Recurring Transactions */
+  recurringUpdates: Array<{ type: string; data: Record<string, unknown>; timestamp?: string }>;
+  
+  /* Categorization Rules */
+  ruleUpdates: Array<{ type: string; rule_id: string; data: Record<string, unknown>; timestamp?: string }>;
+  ruleApplications: Array<{ rule_id: string; rule_name: string; transaction_id: string; confidence_score: number; timestamp?: string }>;
+  ruleEffectivenessUpdates: Array<{ rule_id: string; data: Record<string, unknown>; timestamp?: string }>;
+
+  /* Activity Feed */
+  recentActivities: ActivityEvent[];
 
   /* ====== Actions ====== */
   // Connection actions
@@ -123,10 +127,24 @@ interface RealtimeState {
   addBudgetAlert: (alert: { message: string; category?: string; amount?: number }) => void;
   clearBudgetAlerts: () => void;
 
-  // Insight actions
-  addInsight: (insight: RealtimeInsight) => void;
-  markInsightRead: (id: string) => void;
-  clearInsights: () => void;
+
+  // Recurring transaction actions
+  addRecurringUpdate: (update: { type: string; data: Record<string, unknown> }) => void;
+  clearRecurringUpdates: () => void;
+
+  // Categorization rule actions
+  addRuleUpdate: (update: { type: string; rule_id: string; data: Record<string, unknown> }) => void;
+  addRuleApplication: (application: { rule_id: string; rule_name: string; transaction_id: string; confidence_score: number }) => void;
+  addRuleEffectivenessUpdate: (update: { rule_id: string; data: Record<string, unknown> }) => void;
+  clearRuleUpdates: () => void;
+  clearRuleApplications: () => void;
+  clearRuleEffectivenessUpdates: () => void;
+
+  // Activity actions
+  addActivity: (activity: ActivityEvent) => void;
+  markActivitySeen: (activityId: string) => void;
+  clearOldActivities: (keepLatest?: number) => void;
+  clearActivities: () => void;
 
   // WebSocket helpers
   handleWebSocketMessage: (message: Record<string, unknown>) => void;
@@ -155,7 +173,13 @@ export const useRealtimeStore = create<RealtimeState>()(
 
     notifications: [],
     budgetAlerts: [],
-    insights: [],
+    
+    recurringUpdates: [],
+    ruleUpdates: [],
+    ruleApplications: [],
+    ruleEffectivenessUpdates: [],
+    
+    recentActivities: [],
 
     /***** Connection actions *****/
     updateConnectionStatus: (status, reconnectAttempts = 0) => {
@@ -326,36 +350,106 @@ export const useRealtimeStore = create<RealtimeState>()(
       set({ budgetAlerts: [] });
     },
 
-    /***** Insight actions *****/
-    addInsight: (insight) => {
+
+    /***** Recurring transaction actions *****/
+    addRecurringUpdate: (update) => {
       set((state) => ({
-        insights: [
-          { ...insight, isNew: true },
-          ...state.insights.slice(0, 49), // keep max 50
+        recurringUpdates: [
+          ...state.recurringUpdates,
+          {
+            ...update,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      }));
+    },
+
+    clearRecurringUpdates: () => {
+      set({ recurringUpdates: [] });
+    },
+
+    /***** Categorization rule actions *****/
+    addRuleUpdate: (update) => {
+      set((state) => ({
+        ruleUpdates: [
+          ...state.ruleUpdates,
+          {
+            ...update,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      }));
+    },
+
+    addRuleApplication: (application) => {
+      set((state) => ({
+        ruleApplications: [
+          ...state.ruleApplications,
+          {
+            ...application,
+            timestamp: new Date().toISOString(),
+          },
         ],
       }));
 
-      // Also add as notification for high priority insights
-      if (insight.priority === 1) {
-        get().addNotification({
-          type: 'info',
-          title: 'New Insight',
-          message: insight.title,
-          priority: 'high',
-        });
-      }
+      // Show notification for rule application
+      get().addNotification({
+        type: 'info',
+        title: 'Rule Applied',
+        message: `"${application.rule_name}" categorized a transaction with ${Math.round(application.confidence_score * 100)}% confidence`,
+      });
     },
 
-    markInsightRead: (id) => {
+    addRuleEffectivenessUpdate: (update) => {
       set((state) => ({
-        insights: state.insights.map((insight) =>
-          insight.id === id ? { ...insight, is_read: true, isNew: false } : insight,
+        ruleEffectivenessUpdates: [
+          ...state.ruleEffectivenessUpdates,
+          {
+            ...update,
+            timestamp: new Date().toISOString(),
+          },
+        ],
+      }));
+    },
+
+    clearRuleUpdates: () => {
+      set({ ruleUpdates: [] });
+    },
+
+    clearRuleApplications: () => {
+      set({ ruleApplications: [] });
+    },
+
+    clearRuleEffectivenessUpdates: () => {
+      set({ ruleEffectivenessUpdates: [] });
+    },
+
+    /***** Activity actions *****/
+    addActivity: (activity) => {
+      set((state) => ({
+        recentActivities: [
+          { ...activity, isNew: true },
+          ...state.recentActivities.slice(0, 49), // keep max 50
+        ],
+      }));
+    },
+
+    markActivitySeen: (activityId) => {
+      set((state) => ({
+        recentActivities: state.recentActivities.map((activity) =>
+          activity.id === activityId ? { ...activity, isNew: false } : activity,
         ),
       }));
     },
 
-    clearInsights: () => {
-      set({ insights: [] });
+    clearOldActivities: (keepLatest = 20) => {
+      set((state) => ({
+        recentActivities: state.recentActivities.slice(0, keepLatest),
+      }));
+    },
+
+    clearActivities: () => {
+      set({ recentActivities: [] });
     },
 
     /***** WebSocket helpers *****/
@@ -388,7 +482,7 @@ export const useRealtimeStore = create<RealtimeState>()(
           const payload = typedMessage.payload;
           const transactionData: RealtimeTransaction = {
             id: payload.id,
-            userId: typedMessage.user_id,
+            userId: typedMessage.user_id || '',
             accountId: payload.account_id,
             categoryId: payload.category_id,
             amountCents: payload.amount_cents,
@@ -413,7 +507,7 @@ export const useRealtimeStore = create<RealtimeState>()(
           const payload = typedMessage.payload as TransactionPayload;
           const realtimeTransaction: RealtimeTransaction = {
             id: payload.id,
-            userId: typedMessage.user_id,
+            userId: typedMessage.user_id || '',
             accountId: payload.account_id,
             categoryId: payload.category_id,
             amountCents: payload.amount_cents,
@@ -476,22 +570,9 @@ export const useRealtimeStore = create<RealtimeState>()(
             action_url: payload.action_url,
           });
           
-        } else if (typedMessage.type === 'AI_INSIGHT_GENERATED') {
-          const payload = typedMessage.payload as any;
-          const insight: RealtimeInsight = {
-            id: payload.insight_id,
-            type: payload.insight_type,
-            title: payload.title,
-            description: payload.description,
-            priority: payload.priority === 'high' ? 1 : payload.priority === 'medium' ? 2 : 3,
-            is_read: false,
-            extra_payload: payload.data,
-            created_at: payload.generated_at || new Date().toISOString(),
-            transaction_id: payload.transaction_id,
-            isNew: true,
-          };
-          
-          get().addInsight(insight);
+        } else if (typedMessage.type === MessageType.AI_INSIGHT_GENERATED) {
+          // AI Insights feature has been removed - ignore these messages
+          console.log('[RealtimeStore] AI Insight message ignored (feature removed)');
           
         } else if (typedMessage.type === MessageType.WEBHOOK_SYNC_COMPLETE) {
           const payload = typedMessage.payload as WebhookSyncPayload;
@@ -545,6 +626,101 @@ export const useRealtimeStore = create<RealtimeState>()(
           // Handle ping - could send pong response
           console.log('[RealtimeStore] Ping received');
           
+        } else if (isPlaidRecurringSync(typedMessage)) {
+          const payload = typedMessage.payload as any;
+          
+          if (payload.new_subscriptions > 0) {
+            toast.info(`Plaid sync complete! ${payload.new_subscriptions} new subscription(s) detected.`);
+          } else if (payload.updated_subscriptions > 0) {
+            toast.info(`Plaid sync complete! ${payload.updated_subscriptions} subscription(s) updated.`);
+          }
+
+          get().addRecurringUpdate({ type: 'sync_complete', data: payload });
+
+          // Invalidate recurring data queries
+          queryClient.invalidateQueries({ queryKey: ['plaid-recurring'] });
+          queryClient.invalidateQueries({ queryKey: ['plaid-recurring-insights'] });
+          
+        } else if (isPlaidRecurringUpdate(typedMessage)) {
+          const payload = typedMessage.payload as any;
+          
+          get().addRecurringUpdate({ type: 'recurring_updated', data: payload });
+          
+          // Invalidate recurring data queries
+          queryClient.invalidateQueries({ queryKey: ['plaid-recurring'] });
+          
+        } else if (isRecurringTransactionAction(typedMessage)) {
+          const payload = typedMessage.payload as any;
+          
+          const actionText = payload.action === 'muted' ? 'muted' : 
+                           payload.action === 'unmuted' ? 'unmuted' :
+                           payload.action === 'linked' ? 'linked to transaction' : 'unlinked';
+          
+          toast.success(`Recurring transaction "${payload.merchant_name}" ${actionText}.`);
+          
+          get().addRecurringUpdate({ type: payload.action, data: payload });
+          
+          // Invalidate recurring data queries
+          queryClient.invalidateQueries({ queryKey: ['plaid-recurring'] });
+          
+        } else if (isCategorizationRuleAction(typedMessage)) {
+          const payload = typedMessage.payload as any;
+          
+          const actionText = payload.action === 'created' ? 'created' :
+                           payload.action === 'updated' ? 'updated' :
+                           payload.action === 'deleted' ? 'deleted' :
+                           payload.action === 'activated' ? 'activated' : 'deactivated';
+          
+          toast.success(`Categorization rule "${payload.rule_name}" ${actionText}.`);
+          
+          get().addRuleUpdate({ type: payload.action, rule_id: payload.rule_id, data: payload });
+          
+          // Invalidate rule queries
+          queryClient.invalidateQueries({ queryKey: ['categorization-rules'] });
+          queryClient.invalidateQueries({ queryKey: ['rule-templates'] });
+          
+        } else if (isRuleApplication(typedMessage)) {
+          const payload = typedMessage.payload as any;
+          
+          get().addRuleApplication({
+            rule_id: payload.rule_id,
+            rule_name: payload.rule_name,
+            transaction_id: payload.transaction_id,
+            confidence_score: payload.confidence_score,
+          });
+          
+          // Invalidate transaction and rule effectiveness queries
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
+          queryClient.invalidateQueries({ queryKey: ['rule-effectiveness', payload.rule_id] });
+          
+        } else if (isRuleEffectivenessUpdate(typedMessage)) {
+          const payload = typedMessage.payload as any;
+          
+          get().addRuleEffectivenessUpdate({ rule_id: payload.rule_id, data: payload });
+          
+          // Invalidate rule effectiveness queries
+          queryClient.invalidateQueries({ queryKey: ['rule-effectiveness', payload.rule_id] });
+          
+        } else if (isUserActivity(typedMessage)) {
+          const payload = typedMessage.payload as any;
+          
+          const activity: ActivityEvent = {
+            id: payload.id,
+            type: payload.type,
+            title: payload.title,
+            description: payload.description,
+            timestamp: payload.created_at,
+            table_name: payload.table_name,
+            record_id: payload.record_id,
+            metadata: payload.metadata,
+            isNew: true,
+          };
+          
+          get().addActivity(activity);
+          
+          // Invalidate activity feed queries
+          queryClient.invalidateQueries({ queryKey: ['activity-feed'] });
+          
         } else {
           console.warn('[RealtimeStore] Unhandled WebSocket message type:', typedMessage.type);
         }
@@ -588,6 +764,37 @@ export const useRealtimeStats = () =>
     transactionCount: state.recentTransactions.length,
     newTransactionCount: state.recentTransactions.filter((t) => t.isNew).length,
     notificationCount: state.notifications.length,
+  }));
+
+export const useRecurringUpdates = () =>
+  useRealtimeStore((state) => state.recurringUpdates);
+
+export const useRuleUpdates = () =>
+  useRealtimeStore((state) => state.ruleUpdates);
+
+export const useRuleApplications = () =>
+  useRealtimeStore((state) => state.ruleApplications);
+
+export const useRuleEffectivenessUpdates = () =>
+  useRealtimeStore((state) => state.ruleEffectivenessUpdates);
+
+export const useRealtimeAutomationStats = () =>
+  useRealtimeStore((state) => ({
+    ruleUpdateCount: state.ruleUpdates.length,
+    ruleApplicationCount: state.ruleApplications.length,
+    recurringUpdateCount: state.recurringUpdates.length,
+  }));
+
+export const useRealtimeActivities = () =>
+  useRealtimeStore((state) => state.recentActivities);
+
+export const useNewActivitiesCount = () =>
+  useRealtimeStore((state) => state.recentActivities.filter((a) => a.isNew).length);
+
+export const useActivityStats = () =>
+  useRealtimeStore((state) => ({
+    totalActivities: state.recentActivities.length,
+    newActivities: state.recentActivities.filter((a) => a.isNew).length,
   }));
 
 /*****************************

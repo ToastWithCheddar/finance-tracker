@@ -72,6 +72,9 @@ export function TransactionFilters({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [currentSavedFilter, setCurrentSavedFilter] = useState<SavedFilter | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; filter?: SavedFilter }>({
+    isOpen: false
+  });
   
   // Saved filters hooks
   const { data: savedFilters, isLoading: isLoadingSavedFilters } = useSavedFilters();
@@ -120,12 +123,17 @@ export function TransactionFilters({
   };
 
   const handleDeleteSavedFilter = (savedFilter: SavedFilter) => {
-    if (window.confirm(`Delete saved filter "${savedFilter.name}"?`)) {
-      savedFilterOperations.delete(savedFilter.id);
-      if (currentSavedFilter?.id === savedFilter.id) {
+    setDeleteConfirm({ isOpen: true, filter: savedFilter });
+  };
+
+  const handleDeleteConfirm = () => {
+    if (deleteConfirm.filter) {
+      savedFilterOperations.delete(deleteConfirm.filter.id);
+      if (currentSavedFilter?.id === deleteConfirm.filter.id) {
         setCurrentSavedFilter(null);
       }
     }
+    setDeleteConfirm({ isOpen: false });
   };
 
   const hasActiveFilters = Object.values(filters).some(value => 
@@ -148,11 +156,17 @@ export function TransactionFilters({
               </div>
               <Input
                 type="text"
-                placeholder="Search transactions..."
+                placeholder="Search description, merchant, category, notes..."
                 value={filters.search || ''}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
-                className="pl-10"
+                className="pl-10 pr-10"
+                title="Search across transaction description, merchant, category names, and notes"
               />
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <span className="text-gray-400 text-xs" title="Smart search across all transaction fields">
+                  💡
+                </span>
+              </div>
             </div>
           </div>
           
@@ -429,6 +443,63 @@ export function TransactionFilters({
               >
                 💸 Expenses Only
               </Button>
+
+              {/* New Smart Preset Buttons */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onFiltersChange({
+                    ...filters,
+                    amountMinCents: 10000, // $100 in cents
+                    transaction_type: 'expense'
+                  });
+                  // Clear current saved filter since filters changed
+                  if (currentSavedFilter) {
+                    setCurrentSavedFilter(null);
+                  }
+                }}
+              >
+                💳 Large Expenses
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const today = new Date();
+                  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+                  onFiltersChange({
+                    ...filters,
+                    dateFrom: startOfMonth.toISOString().split('T')[0],
+                    dateTo: today.toISOString().split('T')[0],
+                    search: 'dining food restaurant'
+                  });
+                  // Clear current saved filter since filters changed
+                  if (currentSavedFilter) {
+                    setCurrentSavedFilter(null);
+                  }
+                }}
+              >
+                🍽️ This Month's Dining
+              </Button>
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  onFiltersChange({
+                    ...filters,
+                    categoryId: '__uncategorized__' // Special value to indicate null categories
+                  });
+                  // Clear current saved filter since filters changed
+                  if (currentSavedFilter) {
+                    setCurrentSavedFilter(null);
+                  }
+                }}
+              >
+                📝 Uncategorized
+              </Button>
             </div>
           </div>
         )}
@@ -507,6 +578,38 @@ export function TransactionFilters({
             </div>
           </div>
         )}
+
+        {/* Delete Filter Confirmation Modal */}
+        <Modal
+          isOpen={deleteConfirm.isOpen}
+          onClose={() => setDeleteConfirm({ isOpen: false })}
+          title="Delete Saved Filter"
+        >
+          <div className="space-y-4">
+            <p>
+              Are you sure you want to delete the saved filter "<strong>{deleteConfirm.filter?.name}</strong>"?
+            </p>
+            <p className="text-sm text-[hsl(var(--text))/0.75]">
+              This action cannot be undone. You will need to recreate the filter if you need it again.
+            </p>
+            
+            <div className="flex justify-end space-x-3">
+              <Button
+                variant="outline"
+                onClick={() => setDeleteConfirm({ isOpen: false })}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleDeleteConfirm}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Delete Filter
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* Save Filter Modal */}
         <SaveFilterModal

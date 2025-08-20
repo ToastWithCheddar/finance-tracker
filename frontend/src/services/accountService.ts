@@ -49,6 +49,43 @@ export interface AccountUpdate {
   is_active?: boolean;
 }
 
+export interface ReconciliationResult {
+  account_id: string;
+  account_name: string;
+  recorded_balance: number;
+  calculated_balance: number;
+  discrepancy: number;
+  discrepancy_cents: number;
+  is_reconciled: boolean;
+  reconciliation_threshold: number;
+  transaction_count: number;
+  reconciliation_date: string;
+  suggestions: string[];
+}
+
+export interface ConnectionStatus {
+  total_connections: number;
+  active_connections: number;
+  failed_connections: number;
+  needs_reauth: number;
+  accounts: AccountConnection[];
+}
+
+export interface AccountConnection {
+  account_id: string;
+  account_name: string;
+  institution_name: string;
+  health_status: string;
+  last_sync: string | null;
+  sync_error?: string | null;
+  balance_cents: number;
+}
+
+export interface ReconciliationAdjustment {
+  adjustment_cents: number;
+  description: string;
+}
+
 export class AccountService extends BaseService {
   protected baseEndpoint = '/accounts';
 
@@ -167,6 +204,118 @@ export class AccountService extends BaseService {
       }
       
       throw new Error('Failed to delete account');
+    }
+  }
+
+  // Reconciliation methods
+  async performReconciliation(
+    accountId: string,
+    options?: { context?: ErrorContext }
+  ): Promise<ReconciliationResult> {
+    try {
+      return await this.post<ReconciliationResult>(
+        `/${accountId}/reconcile`,
+        {},
+        { context: options?.context }
+      );
+    } catch (error: unknown) {
+      if ((error as { code?: string })?.code === 'UNAUTHORIZED' || (error as { code?: string })?.code === 'FORBIDDEN') {
+        throw new Error('Authentication required to perform reconciliation. Please log in again.');
+      }
+      
+      if (error instanceof Error) {
+        throw error;
+      }
+      
+      throw new Error('Failed to perform account reconciliation');
+    }
+  }
+
+  async createReconciliationAdjustment(
+    accountId: string,
+    adjustmentData: ReconciliationAdjustment,
+    options?: { context?: ErrorContext }
+  ): Promise<void> {
+    try {
+      await this.post<Record<string, unknown>>(
+        `/${accountId}/reconciliation-entry`,
+        adjustmentData as unknown as Record<string, unknown>,
+        { context: options?.context }
+      );
+    } catch (error: unknown) {
+      if ((error as { code?: string })?.code === 'UNAUTHORIZED' || (error as { code?: string })?.code === 'FORBIDDEN') {
+        throw new Error('Authentication required to create reconciliation adjustment. Please log in again.');
+      }
+      
+      if (error instanceof Error) {
+        throw error;
+      }
+      
+      throw new Error('Failed to create reconciliation adjustment');
+    }
+  }
+
+  // Sync status methods
+  async getConnectionStatus(options?: { context?: ErrorContext }): Promise<ConnectionStatus> {
+    try {
+      return await this.get<ConnectionStatus>(
+        '/connection-status',
+        undefined,
+        { context: options?.context }
+      );
+    } catch (error: unknown) {
+      if ((error as { code?: string })?.code === 'UNAUTHORIZED' || (error as { code?: string })?.code === 'FORBIDDEN') {
+        throw new Error('Authentication required to view connection status. Please log in again.');
+      }
+      
+      if (error instanceof Error) {
+        throw error;
+      }
+      
+      throw new Error('Failed to fetch connection status');
+    }
+  }
+
+  async syncAllBalances(options?: { context?: ErrorContext }): Promise<void> {
+    try {
+      await this.post<Record<string, unknown>>(
+        '/sync-balances',
+        {},
+        { context: options?.context }
+      );
+    } catch (error: unknown) {
+      if ((error as { code?: string })?.code === 'UNAUTHORIZED' || (error as { code?: string })?.code === 'FORBIDDEN') {
+        throw new Error('Authentication required to sync balances. Please log in again.');
+      }
+      
+      if (error instanceof Error) {
+        throw error;
+      }
+      
+      throw new Error('Failed to sync balances');
+    }
+  }
+
+  async syncAccountBalance(
+    accountId: string,
+    options?: { context?: ErrorContext }
+  ): Promise<void> {
+    try {
+      await this.post<Record<string, unknown>>(
+        '/sync-balances',
+        { account_ids: [accountId] },
+        { context: options?.context }
+      );
+    } catch (error: unknown) {
+      if ((error as { code?: string })?.code === 'UNAUTHORIZED' || (error as { code?: string })?.code === 'FORBIDDEN') {
+        throw new Error('Authentication required to sync account balance. Please log in again.');
+      }
+      
+      if (error instanceof Error) {
+        throw error;
+      }
+      
+      throw new Error('Failed to sync account balance');
     }
   }
   

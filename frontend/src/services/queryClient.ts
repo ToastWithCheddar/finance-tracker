@@ -109,9 +109,5 @@ export const queryKeys = {
     options: () => [...queryKeys.goals.all, 'options'] as const,
   },
 
-  // User Preferences
-  userPreferences: {
-    all: ['user-preferences'] as const,
-    current: () => [...queryKeys.userPreferences.all, 'current'] as const,
-  },
+  
 } as const;

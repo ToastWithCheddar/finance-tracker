@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
-from typing import Optional
+# No imports needed from typing for this file after modernization
 from uuid import UUID
 
 class BaseSchema(BaseModel):
@@ -12,7 +12,7 @@ class BaseSchema(BaseModel):
 
 class TimestampedSchema(BaseSchema):
     created_at: datetime
-    updated_at: Optional[datetime] = None
+    updated_at: datetime | None = None
 
 class IdentifiedSchema(BaseSchema):
     id: UUID

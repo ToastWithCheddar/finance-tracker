@@ -13,7 +13,7 @@ import asyncio
 
 from app.models.account import Account
 from app.models.user import User
-from app.services.enhanced_plaid_service import enhanced_plaid_service
+from app.services import plaid_service
 from app.services.transaction_sync_service import transaction_sync_service
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
@@ -58,7 +58,7 @@ class AccountSyncMonitor:
     """Monitor and track account synchronization status"""
     
     def __init__(self):
-        self.plaid_service = enhanced_plaid_service
+        self.plaid_service = plaid_service
         self.sync_service = transaction_sync_service
         
         # Health check thresholds

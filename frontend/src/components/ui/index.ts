@@ -8,14 +8,19 @@ export { Card, CardHeader, CardTitle, CardContent } from './Card';
 export type { CardProps } from './Card';
 
 export { Modal } from './Modal';
+export type { ModalProps } from './Modal';
 
 export { LoadingSpinner, LoadingPage, LoadingOverlay } from './LoadingSpinner';
 
 export { ToastProvider, useToast, useSuccessToast, useErrorToast, useWarningToast, useInfoToast } from './Toast';
-export type { Toast, ToastType } from './Toast';
+export type { ToastType } from './Toast';
 
 export { ThemeToggle } from './ThemeToggle';
 
-export { DevModeIndicator } from './DevModeIndicator';
-
 export { Alert, AlertTitle, AlertDescription } from './Alert';
+
+export { MetricCard } from './MetricCard';
+export type { MetricCardProps } from './MetricCard';
+
+export { ConfirmationModal } from './ConfirmationModal';
+export type { ConfirmationModalProps } from './ConfirmationModal';

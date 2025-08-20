@@ -1,4 +1,5 @@
 import { apiClient } from './api';
+import type { ActivityEvent, ActivityFeedOptions, ActivityResponse } from '../types/activity';
 
 export interface UserUpdateData {
   first_name?: string;
@@ -120,6 +121,28 @@ export class UserService {
    */
   async revokeAllSessions(): Promise<{ message: string }> {
     return apiClient.post<{ message: string }>('/users/me/sessions/revoke-all');
+  }
+
+  /**
+   * Get user activity feed
+   */
+  async getActivityFeed(options: ActivityFeedOptions = {}): Promise<ActivityResponse> {
+    const params = new URLSearchParams();
+    
+    if (options.limit) {
+      params.append('limit', options.limit.toString());
+    }
+    if (options.table_name) {
+      params.append('table_name', options.table_name);
+    }
+    if (options.since) {
+      params.append('since', options.since);
+    }
+
+    const queryString = params.toString();
+    const url = `/users/me/activity${queryString ? `?${queryString}` : ''}`;
+    
+    return apiClient.get<ActivityResponse>(url);
   }
 }
 

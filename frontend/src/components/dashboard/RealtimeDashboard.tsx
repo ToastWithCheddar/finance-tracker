@@ -24,7 +24,8 @@ import {
   useBudgetAlerts,
   useRealtimeStats
 } from '../../stores/realtimeStore';
-import { formatCurrency, formatRelativeTime } from '../../utils';
+import { useAuthUser } from '../../stores/authStore';
+import { formatCurrency, formatRelativeTime, getTimeBasedGreeting } from '../../utils';
 import RealtimeTransactionFeed from './RealtimeTransactionFeed';
 import { NotificationPanel } from './NotificationPanel';
 // Removed: import type { BudgetAlert } from '../../types/realtime';
@@ -196,6 +197,9 @@ export const RealtimeDashboard: React.FC = () => {
   const stats = useRealtimeStats();
   const { refreshDashboard } = useWebSocket();
   
+  // User data for personalized greeting
+  const user = useAuthUser();
+  
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [updatingStats, setUpdatingStats] = useState<Record<string, boolean>>({});
 
@@ -305,7 +309,9 @@ export const RealtimeDashboard: React.FC = () => {
       {/* Header with connection status */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <h1 className="text-3xl font-bold text-gray-900">
+            {getTimeBasedGreeting()}, {user?.displayName || 'there'}!
+          </h1>
           <div className="flex items-center space-x-4 mt-2">
             <p className="text-gray-600">
               Real-time financial overview

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Edit2, Mail, Calendar, MapPin, Globe, DollarSign, CheckCircle, XCircle } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { formatDate, getUserInitials, getDisplayName } from '../../utils';
 import type { UserProfile } from '../../services/userService';
 
 interface ProfileInfoProps {
@@ -12,36 +13,6 @@ interface ProfileInfoProps {
 
 export function ProfileInfo({ profile, onEdit, className = '' }: ProfileInfoProps) {
   const [imageError, setImageError] = useState(false);
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    });
-  };
-
-  const getInitials = (firstName?: string, lastName?: string, displayName?: string) => {
-    if (displayName) {
-      return displayName.charAt(0).toUpperCase();
-    }
-    if (firstName && lastName) {
-      return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-    }
-    if (firstName) {
-      return firstName.charAt(0).toUpperCase();
-    }
-    return profile.email.charAt(0).toUpperCase();
-  };
-
-  const getDisplayName = () => {
-    if (profile.display_name) return profile.display_name;
-    if (profile.first_name && profile.last_name) {
-      return `${profile.first_name} ${profile.last_name}`;
-    }
-    if (profile.first_name) return profile.first_name;
-    return 'User';
-  };
 
   return (
     <Card className={className}>
@@ -71,7 +42,7 @@ export function ProfileInfo({ profile, onEdit, className = '' }: ProfileInfoProp
                   onError={() => setImageError(true)}
                 />
               ) : (
-                getInitials(profile.first_name, profile.last_name, profile.display_name)
+                getUserInitials(profile)
               )}
             </div>
             <div className="text-center md:text-left">
@@ -92,7 +63,7 @@ export function ProfileInfo({ profile, onEdit, className = '' }: ProfileInfoProp
           <div className="flex-1 space-y-4">
             <div>
               <h3 className="text-lg font-medium text-[hsl(var(--text))]">
-                {getDisplayName()}
+                {getDisplayName(profile)}
               </h3>
               {profile.display_name && (profile.first_name || profile.last_name) && (
                 <p className="text-sm text-[hsl(var(--text))] opacity-70">

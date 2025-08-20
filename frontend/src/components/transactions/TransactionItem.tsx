@@ -2,8 +2,10 @@ import { useState } from 'react';
 import type { Transaction } from '../../types/transaction';
 import { Card, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { formatCurrency, formatDate } from '../../utils';
-import { ChevronDown, Pencil, Trash2, Building, Tag, FileText, Calendar, CreditCard } from 'lucide-react';
+import { Input } from '../ui/Input';
+import { useMerchantCorrectionManager } from '../../hooks/useMerchantCorrection';
+import { formatCurrency, formatDate, getTransactionStatusVisuals } from '../../utils';
+import { ChevronDown, Pencil, Trash2, Building, Tag, FileText, Calendar, CreditCard, Check, X, Clock, CheckCheck, Circle } from 'lucide-react';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -23,6 +25,9 @@ export function TransactionItem({
   onSelect
 }: TransactionItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
+  
+  // Use the new merchant correction hook
+  const merchantCorrection = useMerchantCorrectionManager(transaction.merchant || '');
 
   const isIncome = transaction.amountCents > 0;
   const amountColor = isIncome ? 'text-green-600' : 'text-gray-900 dark:text-gray-100';
@@ -31,9 +36,20 @@ export function TransactionItem({
     return isIncome ? null : null;
   };
 
+  // Get status visuals
+  const statusVisuals = transaction.status ? getTransactionStatusVisuals(transaction.status) : null;
+  
+  // Map icon names to actual icon components
+  const getStatusIcon = (iconName: string) => {
+    const iconMap = { Clock, Check, CheckCheck, Circle };
+    const IconComponent = iconMap[iconName as keyof typeof iconMap];
+    return IconComponent ? <IconComponent className="h-3 w-3" /> : <Circle className="h-3 w-3" />;
+  };
+
   const formatAccountInfo = () => {
     return `${transaction.accountName} (${transaction.accountType})`;
   };
+
 
   return (
     <Card className="hover:shadow-md transition-shadow duration-200">
@@ -55,17 +71,30 @@ export function TransactionItem({
             }`} />
             
             <div className="min-w-0 flex-1">
-              <div className="flex items-center space-x-2">
-                <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
-                  {transaction.description || 'No description'}
-                </p>
-                {transaction.merchant && (
-                  <span className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                    @ {transaction.merchant}
-                  </span>
+              <div className="flex flex-col">
+                <div className="flex items-center space-x-2">
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 truncate">
+                    {transaction.merchant || transaction.description || 'No description'}
+                  </p>
+                  {statusVisuals && (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${statusVisuals.colorClass}`}>
+                      {getStatusIcon(statusVisuals.iconName)}
+                      {statusVisuals.label}
+                    </span>
+                  )}
+                </div>
+                {transaction.merchant && transaction.description && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                    {transaction.description}
+                  </p>
+                )}
+                {!transaction.merchant && !transaction.description && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                    No description available
+                  </p>
                 )}
               </div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {formatDate(transaction.transactionDate)}
               </p>
             </div>
@@ -134,11 +163,84 @@ export function TransactionItem({
               </div>
 
               {/* Merchant Information */}
-              {transaction.merchant && (
+              <div className="col-span-full">
+                <div className="flex items-start text-sm text-gray-600 dark:text-gray-400">
+                  <Building className="h-4 w-4 mr-2 mt-0.5 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <strong className="mr-2">Merchant:</strong>
+                    {merchantCorrection.isCorrectingMerchant ? (
+                      <div className="flex items-center space-x-2 mt-1">
+                        <Input
+                          type="text"
+                          value={merchantCorrection.merchantCorrection}
+                          onChange={(e) => merchantCorrection.updateCorrection(e.target.value)}
+                          placeholder="Enter correct merchant name..."
+                          className="flex-1 h-8 text-sm"
+                          disabled={merchantCorrection.isSavingCorrection}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              merchantCorrection.saveCorrection(transaction.id);
+                            } else if (e.key === 'Escape') {
+                              e.preventDefault();
+                              merchantCorrection.cancelCorrection();
+                            }
+                          }}
+                        />
+                        <Button
+                          size="sm"
+                          onClick={() => merchantCorrection.saveCorrection(transaction.id)}
+                          disabled={!merchantCorrection.canSave}
+                          className="h-8 px-2"
+                        >
+                          {merchantCorrection.isSavingCorrection ? (
+                            <span className="animate-spin">🔄</span>
+                          ) : (
+                            <Check className="h-3 w-3" />
+                          )}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={merchantCorrection.cancelCorrection}
+                          disabled={merchantCorrection.isSavingCorrection}
+                          className="h-8 px-2"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between">
+                        <span className="truncate">
+                          {transaction.merchant || (
+                            <span className="text-gray-400 italic">No merchant identified</span>
+                          )}
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => merchantCorrection.startCorrection(transaction.merchant || '')}
+                          className="ml-2 h-6 px-2 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-900/20"
+                        >
+                          {transaction.merchant ? 'Correct' : 'Add'}
+                        </Button>
+                      </div>
+                    )}
+                    {merchantCorrection.correctionError && (
+                      <p className="text-xs text-red-600 mt-1">{merchantCorrection.correctionError}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Transaction Status */}
+              {transaction.status && (
                 <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                  <Building className="h-4 w-4 mr-2 text-gray-400 dark:text-gray-500" />
-                  <strong className="mr-2">Merchant:</strong>
-                  <span className="truncate">{transaction.merchant}</span>
+                  {getStatusIcon(statusVisuals?.iconName || 'Circle')}
+                  <strong className="ml-2 mr-2">Status:</strong>
+                  <span className={`px-2 py-0.5 text-xs font-medium rounded-full ${statusVisuals?.colorClass || 'bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-200'}`}>
+                    {statusVisuals?.label || transaction.status}
+                  </span>
                 </div>
               )}
 

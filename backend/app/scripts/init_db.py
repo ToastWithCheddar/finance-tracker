@@ -17,8 +17,8 @@ def init_database():
     
     # Import all models to ensure they're registered with Base
     from app.models import (
-        User, UserPreferences, Category, Account, Transaction, 
-        Budget, Goal, Insight, MLModelPerformance
+        User, Category, Account, Transaction, 
+        Budget, Goal, MLModelPerformance
     )
     
     # Create all tables

@@ -46,13 +46,10 @@ import { ErrorCodes } from '../types';
 import { secureStorage } from './secureStorage';
 import { csrfService } from './csrf';
 import { envValidator } from '../utils/envValidation';
-import { mockApiClient } from './mockApiClient';
 
 class ApiClient {
   private baseURL: string;
   private defaultHeaders: Record<string, string>;
-  private useMockData: boolean;
-  private uiOnlyMode: boolean;
 
   constructor(baseURL?: string) {
     const config = envValidator.getConfig();
@@ -60,14 +57,6 @@ class ApiClient {
     this.defaultHeaders = {
       'Content-Type': 'application/json',
     };
-    
-    // Check if we should use mock data
-    this.useMockData = import.meta.env.VITE_USE_MOCK_DATA === 'true';
-    this.uiOnlyMode = import.meta.env.VITE_UI_ONLY_MODE === 'true';
-    
-    if (this.useMockData || this.uiOnlyMode) {
-      console.log('🎭 API Client using mock data for UI development');
-    }
   }
 
   private getAuthToken(): string | null {
@@ -242,15 +231,6 @@ class ApiClient {
     data?: Record<string, unknown>,
     options?: RequestOptions
   ): Promise<T> {
-    // Use mock API client if in mock mode
-    if (this.useMockData || this.uiOnlyMode) {
-      return mockApiClient.request<T>(endpoint, {
-        method,
-        body: data ? JSON.stringify(data) : undefined,
-        headers: this.getHeaders(options?.headers)
-      });
-    }
-    
     let retried = false;
 
     while (true) {

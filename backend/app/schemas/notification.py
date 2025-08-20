@@ -14,7 +14,7 @@ class NotificationBase(BaseModel):
     type: NotificationType = Field(..., description="Notification type")
     priority: NotificationPriority = Field(NotificationPriority.MEDIUM, description="Notification priority")
     action_url: Optional[str] = Field(None, max_length=512, description="Optional action URL")
-    extra_data: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class NotificationCreate(NotificationBase):
@@ -36,7 +36,7 @@ class NotificationResponse(BaseResponseSchema):
     priority: NotificationPriority = Field(..., description="Notification priority")
     is_read: bool = Field(..., description="Read status")
     action_url: Optional[str] = Field(None, description="Optional action URL")
-    extra_data: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
 
 class NotificationFilter(BaseModel):

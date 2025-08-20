@@ -16,7 +16,11 @@ from datetime import datetime, timezone
 from app.config import settings
 from app.database import engine, check_database_health, create_database
 from app.models import Base
-from app.routes import auth, user, health, categories, transaction, recurring, budget, mock, accounts, analytics, insights, webhooks, notifications, ml, annotations, saved_filters, websockets
+from app.routes import auth, users, health, categories, transactions, budget, analytics, webhooks, notifications, ml, saved_filters, websockets, categorization_rules, merchants
+from app.routes import accounts_basic, accounts_plaid, accounts_sync, accounts_reconciliation
+from app.routes import recurring_plaid
+from app.core.exceptions import FinanceTrackerException
+from app.schemas.error import ErrorResponse, ValidationErrorResponse
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -47,13 +51,11 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Finance Tracker API...")
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Debug: {settings.DEBUG}")
-    logger.info(f"Mock Data Mode: {settings.USE_MOCK_DATA}")
-    logger.info(f"UI Only Mode: {settings.UI_ONLY_MODE}")
     logger.info(f"Database Enabled: {settings.ENABLE_DATABASE}")
     
-    # Skip database setup if disabled or in mock mode
-    if not settings.ENABLE_DATABASE or settings.UI_ONLY_MODE:
-        logger.info("⚠️ Database setup skipped (disabled or mock mode)")
+    # Skip database setup if disabled
+    if not settings.ENABLE_DATABASE:
+        logger.info("⚠️ Database setup skipped (disabled)")
     else:
         # Create database if it does not exist
         create_database()
@@ -78,6 +80,14 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Default data initialized")
         except Exception as e:
             logger.warning(f"⚠️ Default data initialization failed: {e}")
+    
+    # Initialize financial health service with configuration
+    try:
+        from app.services.financial_health_service import get_financial_health_service
+        health_service = get_financial_health_service(settings.financial_health_config)
+        logger.info("✅ Financial health service initialized with configuration")
+    except Exception as e:
+        logger.warning(f"⚠️ Financial health service initialization failed: {e}")
     
     logger.info("🎉 Finance Tracker API started successfully!")
     
@@ -168,43 +178,146 @@ async def add_security_headers(request: Request, call_next):
     return response
 
 # Exception handlers
+@app.exception_handler(FinanceTrackerException)
+async def finance_tracker_exception_handler(request: Request, exc: FinanceTrackerException):
+    """Handler for custom finance tracker exceptions"""
+    # Log the full exception details internally
+    logger.error(
+        f"Finance Tracker Exception: {exc.error_code} - {exc.message} - Path: {request.url.path}",
+        extra={
+            "error_code": exc.error_code,
+            "status_code": exc.status_code,
+            "details": exc.details,
+            "path": str(request.url.path)
+        },
+        exc_info=True
+    )
+    
+    # Get request ID from headers if available
+    request_id = getattr(request.state, 'request_id', None)
+    if not request_id and hasattr(request, 'headers'):
+        request_id = request.headers.get('X-Request-ID')
+    
+    # Return safe error response to client
+    error_response = ErrorResponse(
+        message=exc.message,
+        error_code=exc.error_code,
+        status_code=exc.status_code,
+        timestamp=datetime.now(timezone.utc),
+        path=str(request.url.path),
+        request_id=request_id,
+        details=exc.details if not _is_sensitive_details(exc.details) else {}
+    )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response.model_dump()
+    )
+
 @app.exception_handler(HTTPException)
 async def custom_http_exception_handler(request: Request, exc: HTTPException):
     """Custom HTTP exception handler"""
+    # Log HTTP exceptions
     logger.error(f"HTTP {exc.status_code}: {exc.detail} - Path: {request.url.path}")
-    return await http_exception_handler(request, exc)
+    
+    # Return standardized response
+    request_id = getattr(request.state, 'request_id', None) or request.headers.get('X-Request-ID')
+    
+    error_response = ErrorResponse(
+        message=exc.detail if isinstance(exc.detail, str) else "HTTP error occurred",
+        error_code=f"HTTP_{exc.status_code}",
+        status_code=exc.status_code,
+        timestamp=datetime.now(timezone.utc),
+        path=str(request.url.path),
+        request_id=request_id
+    )
+    
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=error_response.model_dump()
+    )
 
 @app.exception_handler(RequestValidationError)
 async def custom_validation_exception_handler(request: Request, exc: RequestValidationError):
     """Custom validation exception handler"""
-    logger.error(f"Validation error: {exc.errors()} - Path: {request.url.path}")
+    # Log validation errors with details
+    logger.error(
+        f"Validation error: {exc.errors()} - Path: {request.url.path}",
+        extra={"validation_errors": exc.errors(), "path": str(request.url.path)}
+    )
+    
+    request_id = getattr(request.state, 'request_id', None) or request.headers.get('X-Request-ID')
+    
+    # Transform validation errors to safe format
+    validation_errors = []
+    for error in exc.errors():
+        field = ".".join(str(loc) for loc in error.get("loc", []))
+        validation_errors.append({
+            "field": field if field else None,
+            "message": error.get("msg", "Validation error"),
+            "code": error.get("type", "validation_error")
+        })
+    
+    error_response = ValidationErrorResponse(
+        message="Validation failed",
+        error_code="VALIDATION_ERROR",
+        status_code=422,
+        timestamp=datetime.now(timezone.utc),
+        path=str(request.url.path),
+        request_id=request_id,
+        validation_errors=validation_errors
+    )
+    
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={
-            "error": True,
-            "message": "Validation error",
-            "status_code": 422,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "path": str(request.url.path),
-            "details": exc.errors(),
-        }
+        status_code=422,
+        content=error_response.model_dump()
     )
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
-    """General exception handler"""
-    logger.error(f"Unhandled exception: {exc}", exc_info=True)
-    
-    return JSONResponse(
-        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "error": True,
-            "message": str(exc),  # Always show detailed errors in development
-            "status_code": 500,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "path": str(request.url.path),
+    """General exception handler for unhandled exceptions"""
+    # Log full exception details internally
+    logger.error(
+        f"Unhandled exception: {type(exc).__name__}: {str(exc)} - Path: {request.url.path}",
+        exc_info=True,
+        extra={
+            "exception_type": type(exc).__name__,
+            "path": str(request.url.path)
         }
     )
+    
+    request_id = getattr(request.state, 'request_id', None) or request.headers.get('X-Request-ID')
+    
+    # Return generic error message to client (never expose internal details)
+    error_response = ErrorResponse(
+        message="An internal server error occurred. Please try again later.",
+        error_code="INTERNAL_SERVER_ERROR",
+        status_code=500,
+        timestamp=datetime.now(timezone.utc),
+        path=str(request.url.path),
+        request_id=request_id
+    )
+    
+    return JSONResponse(
+        status_code=500,
+        content=error_response.model_dump()
+    )
+
+def _is_sensitive_details(details: dict) -> bool:
+    """Check if error details contain sensitive information that should not be exposed."""
+    if not details:
+        return False
+    
+    sensitive_keys = {
+        'password', 'token', 'secret', 'key', 'auth', 'credential', 
+        'database', 'connection', 'stacktrace', 'traceback', 'exception'
+    }
+    
+    for key in details.keys():
+        if any(sensitive in key.lower() for sensitive in sensitive_keys):
+            return True
+    
+    return False
 
 # Root endpoint
 @app.get("/", tags=["Root"])
@@ -241,7 +354,7 @@ app.include_router(
 )
 
 app.include_router(
-    user.router,
+    users.router,
     prefix="/api/users",
     tags=["Users"],
     responses={
@@ -262,7 +375,7 @@ app.include_router(
 )
 
 app.include_router(
-    transaction.router,
+    transactions.router,
     prefix="/api/transactions",
     tags=["Transactions"],
     responses={
@@ -273,7 +386,8 @@ app.include_router(
 )
 
 app.include_router(
-    recurring.router,
+    recurring_plaid.router,
+    prefix="/api/recurring",
     tags=["Recurring Transactions"],
     responses={
         401: {"description": "Unauthorized"},
@@ -293,10 +407,44 @@ app.include_router(
     }
 )
 
+
 app.include_router(
-    accounts.router,
+    accounts_basic.router,
     prefix="/api/accounts",
-    tags=["Accounts & Plaid Integration"],
+    tags=["Accounts - Basic Operations"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
+    accounts_plaid.router,
+    prefix="/api/accounts",
+    tags=["Accounts - Plaid Integration"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
+    accounts_sync.router,
+    prefix="/api/accounts",
+    tags=["Accounts - Synchronization"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
+    accounts_reconciliation.router,
+    prefix="/api/accounts",
+    tags=["Accounts - Reconciliation & Health"],
     responses={
         401: {"description": "Unauthorized"},
         404: {"description": "Not Found"},
@@ -315,16 +463,6 @@ app.include_router(
     }
 )
 
-app.include_router(
-    insights.router,
-    prefix="/api/insights",
-    tags=["AI Insights"],
-    responses={
-        401: {"description": "Unauthorized"},
-        404: {"description": "Not Found"},
-        422: {"description": "Validation Error"},
-    }
-)
 
 app.include_router(
     webhooks.router,
@@ -356,9 +494,23 @@ app.include_router(
     }
 )
 
+
 app.include_router(
-    annotations.router,
-    tags=["Timeline Annotations"],
+    saved_filters.router,
+    prefix="/api",
+    tags=["Saved Filters"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+
+app.include_router(
+    categorization_rules.router,
+    prefix="/api",
+    tags=["Categorization Rules"],
     responses={
         401: {"description": "Unauthorized"},
         404: {"description": "Not Found"},
@@ -367,9 +519,9 @@ app.include_router(
 )
 
 app.include_router(
-    saved_filters.router,
-    prefix="/api/saved-filters",
-    tags=["Saved Filters"],
+    merchants.router,
+    prefix="/api",
+    tags=["Merchant Recognition"],
     responses={
         401: {"description": "Unauthorized"},
         404: {"description": "Not Found"},
@@ -383,15 +535,6 @@ app.include_router(
     tags=["Realtime"],
 )
 
-# Mock API routes (for UI development)
-app.include_router(
-    mock.router,
-    prefix="/api/mock",
-    tags=["Mock API (Development)"],
-    responses={
-        404: {"description": "Mock mode disabled"},
-    }
-)
 
 # API versioning (future use)
 @app.get("/api", tags=["API Info"])
@@ -410,11 +553,11 @@ async def api_base():
             "budgets": "/api/budgets",
             "accounts": "/api/accounts",
             "analytics": "/api/analytics",
-            "insights": "/api/insights",
             "webhooks": "/api/webhooks",
             "notifications": "/api/notifications",
-            "annotations": "/api/annotations",
             "saved_filters": "/api/saved-filters",
+            "categorization_rules": "/api/categorization-rules",
+            "merchants": "/api/merchants",
             "ml": "/api/ml",
             "health": "/health",
             "docs": "/docs" if settings.DEBUG else None,

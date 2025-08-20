@@ -79,6 +79,23 @@ export interface SpendingHeatmapData {
   value: number;
 }
 
+export interface NetWorthDataPoint {
+  date: string;
+  net_worth_cents: number;
+  net_worth: number;
+}
+
+export interface CashFlowData {
+  start_balance_cents: number;
+  total_income_cents: number;
+  total_expenses_cents: number;
+  end_balance_cents: number;
+  start_balance: number;
+  total_income: number;
+  total_expenses: number;
+  end_balance: number;
+}
+
 export class DashboardService extends BaseService {
   protected baseEndpoint = '/analytics';
 
@@ -143,6 +160,32 @@ export class DashboardService extends BaseService {
       return response.data;
     }
     throw new Error('Failed to fetch spending heatmap data or data is invalid.');
+  }
+
+  async getNetWorthTrend(period: string = '90d', options?: { context?: ErrorContext }): Promise<NetWorthDataPoint[]> {
+    const response = await this.get<{ success: boolean; data: NetWorthDataPoint[]; message?: string }>(
+      '/net-worth-trend',
+      { period },
+      { context: options?.context, useCache: true, cacheTtl: 5 * 60 * 1000 } // Cache for 5 mins
+    );
+
+    if (response && response.success && response.data) {
+      return response.data;
+    }
+    throw new Error(response?.message || 'Failed to fetch net worth trend data or data is invalid.');
+  }
+
+  async getCashFlowWaterfall(params: { start_date: string; end_date: string }, options?: { context?: ErrorContext }): Promise<CashFlowData> {
+    const response = await this.get<{ success: boolean; data: CashFlowData }>(
+      '/cash-flow-waterfall',
+      { start_date: params.start_date, end_date: params.end_date },
+      { context: options?.context, useCache: true, cacheTtl: 10 * 60 * 1000 } // Cache for 10 mins
+    );
+
+    if (response && response.success && response.data) {
+      return response.data;
+    }
+    throw new Error('Failed to fetch cash flow waterfall data or data is invalid.');
   }
 }
 

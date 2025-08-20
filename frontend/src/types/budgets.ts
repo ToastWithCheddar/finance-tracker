@@ -13,6 +13,7 @@ export interface Budget {
     created_at: string;
     updated_at: string;
     usage?: BudgetUsage;
+    has_custom_alerts?: boolean;
   }
   
   export interface BudgetUsage {
@@ -89,4 +90,83 @@ export interface Budget {
     budgets: Budget[];
     summary: BudgetSummary;
     alerts: BudgetAlert[];
+  }
+
+  // Budget Alert Settings interfaces
+  export interface BudgetAlertSettings {
+    id: string;
+    budget_id: string;
+    user_id: string;
+    alerts_enabled: boolean;
+    alert_thresholds: number[];
+    email_alerts: boolean;
+    push_alerts: boolean;
+    in_app_alerts: boolean;
+    alert_frequency: 'immediate' | 'daily' | 'weekly';
+    suppress_repeated_alerts: boolean;
+    end_of_period_warning: boolean;
+    end_warning_days: number;
+    smart_pacing_alerts: boolean;
+    milestone_celebration: boolean;
+    custom_alert_messages?: Record<string, any>;
+    created_at: string;
+    updated_at: string;
+  }
+
+  export interface CreateBudgetAlertSettingsRequest {
+    alerts_enabled?: boolean;
+    alert_thresholds?: number[];
+    email_alerts?: boolean;
+    push_alerts?: boolean;
+    in_app_alerts?: boolean;
+    alert_frequency?: 'immediate' | 'daily' | 'weekly';
+    suppress_repeated_alerts?: boolean;
+    end_of_period_warning?: boolean;
+    end_warning_days?: number;
+    smart_pacing_alerts?: boolean;
+    milestone_celebration?: boolean;
+    custom_alert_messages?: Record<string, any>;
+  }
+
+  export type UpdateBudgetAlertSettingsRequest = Partial<CreateBudgetAlertSettingsRequest>;
+
+  export interface BudgetAlertPreview {
+    threshold: number;
+    message: string;
+    priority: string;
+    channels: string[];
+  }
+
+  export interface BudgetAlertTest {
+    budget_id: string;
+    test_threshold: number;
+    test_amount_cents: number;
+  }
+
+  // Budget Calendar interfaces
+  export interface BudgetCalendarDay {
+    date: string;
+    daily_spending_limit_cents: number;
+    actual_spending_cents: number;
+    percentage_used: number;
+    is_over_limit: boolean;
+    transactions_count: number;
+  }
+
+  export interface BudgetCalendarResponse {
+    budget_id: string;
+    budget_name: string;
+    month: string; // YYYY-MM format
+    period_start: string;
+    period_end: string;
+    daily_data: BudgetCalendarDay[];
+    summary: {
+      total_spending_cents: number;
+      total_limit_cents: number;
+      days_in_month: number;
+      days_with_budget: number;
+      days_over_limit: number;
+      average_daily_spending_cents: number;
+      month_progress_percentage: number;
+    };
   }

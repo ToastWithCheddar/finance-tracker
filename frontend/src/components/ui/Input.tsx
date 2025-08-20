@@ -2,12 +2,21 @@ import { forwardRef } from 'react';
 import type { InputHTMLAttributes } from 'react';
 import { cn } from '../../utils';
 
+/**
+ * Props for the Input component
+ */
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+  /** Label text to display above the input */
   label?: string;
+  /** Error message to display below the input */
   error?: string;
+  /** Helper text to display below the input when no error is present */
   helperText?: string;
 }
 
+/**
+ * A customizable input field component with support for labels, error messages, and helper text
+ */
 const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, label, error, helperText, ...props }, ref) => {
     return (

@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Bell, CheckCheck, Wifi, WifiOff, User, LogOut, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useConnectionStatus, useNotifications, useUnreadNotificationsCount } from '../../stores/realtimeStore';
+import { useConnectionStatus, useNotifications, useUnreadNotificationsCount, useRealtimeStore } from '../../stores/realtimeStore';
 import { useAuthStore, useAuthUser } from '../../stores/authStore';
+import { useDropdown } from '../../hooks/useDropdown';
 
 export function ConnectionStatusChip() {
   const { status } = useConnectionStatus();
@@ -35,21 +36,41 @@ export function DateChip() {
 export function NotificationsBell() {
   const unread = useUnreadNotificationsCount();
   const notifications = useNotifications();
-  const [open, setOpen] = useState(false);
+  const markAllNotificationsRead = useRealtimeStore((state) => state.markAllNotificationsRead);
+  
+  const { isOpen, toggle, close, triggerRef } = useDropdown({
+    containerSelector: '.notifications-bell',
+  });
+
+  const handleMarkAllRead = () => {
+    markAllNotificationsRead();
+    // Close the dropdown after marking all as read
+    close();
+  };
 
   return (
-    <div className="relative">
-      <button onClick={() => setOpen(!open)} className="relative p-2 rounded-full border border-border bg-[hsl(var(--surface))]">
+    <div className="relative notifications-bell">
+      <button 
+        ref={triggerRef}
+        onClick={toggle} 
+        className="relative p-2 rounded-full border border-border bg-[hsl(var(--surface))]"
+      >
         <Bell className="h-4 w-4" />
         {unread > 0 && (
           <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-[10px] text-white grid place-items-center">{unread}</span>
         )}
       </button>
-      {open && (
+      {isOpen && (
         <div className="absolute right-0 mt-2 w-80 rounded-md border border-border bg-[hsl(var(--surface))] shadow-lg z-50">
           <div className="flex items-center justify-between px-3 py-2 border-b border-border">
             <div className="text-sm font-medium">Notifications</div>
-            <button className="text-xs inline-flex items-center gap-1 opacity-80 hover:opacity-100"><CheckCheck className="h-3 w-3" /> Mark all read</button>
+            <button 
+              onClick={handleMarkAllRead}
+              className="text-xs inline-flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity"
+              disabled={unread === 0}
+            >
+              <CheckCheck className="h-3 w-3" /> Mark all read
+            </button>
           </div>
           <div className="max-h-80 overflow-y-auto">
             {notifications.length === 0 ? (
@@ -68,19 +89,22 @@ export function NotificationsBell() {
 }
 
 export function ProfileMenu() {
-  const [open, setOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
   const navigate = useNavigate();
   const { logout } = useAuthStore();
   const user = useAuthUser();
 
+  const { isOpen, toggle, close, triggerRef } = useDropdown({
+    containerSelector: '.profile-menu',
+  });
+
   const handleProfileClick = () => {
-    setOpen(false);
+    close();
     navigate('/profile');
   };
 
   const handleLogout = () => {
-    setOpen(false);
+    close();
     logout();
   };
 
@@ -99,22 +123,11 @@ export function ProfileMenu() {
     return 'User';
   };
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (open && !(event.target as Element).closest('.profile-menu')) {
-        setOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [open]);
-
   return (
     <div className="relative profile-menu">
       <button 
-        onClick={() => setOpen(!open)} 
+        ref={triggerRef}
+        onClick={toggle} 
         className="flex items-center gap-2 px-2 py-1.5 rounded-md border border-border bg-[hsl(var(--surface))] hover:bg-[hsl(var(--border)/0.25)] transition-colors"
         title={`${getDisplayName()} - Click to open profile menu`}
       >
@@ -130,9 +143,9 @@ export function ProfileMenu() {
             getInitials()
           )}
         </div>
-        <ChevronDown className={`h-4 w-4 opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`h-4 w-4 opacity-70 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
-      {open && (
+      {isOpen && (
         <div className="absolute right-0 mt-2 w-64 rounded-md border border-border bg-[hsl(var(--surface))] shadow-lg z-50">
           {/* User Info Header */}
           <div className="px-3 py-3 border-b border-border">

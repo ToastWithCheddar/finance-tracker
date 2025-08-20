@@ -7,7 +7,8 @@ import { TransactionItem } from './TransactionItem';
 import { formatCurrency, formatGroupDate, getCategoryColor, getAmountColor } from '../../utils';
 import type { Transaction, TransactionStats, TransactionGroup, TransactionGroupedResponse } from '../../types/transaction';
 
-// Define the shape of our grouped data (legacy date-only format)
+// Legacy grouped data format - kept for backward compatibility
+// This interface supports parent components that haven't migrated to TransactionGroup[] yet
 interface GroupedTransactions {
   [date: string]: {
     transactions: Transaction[];
@@ -15,22 +16,23 @@ interface GroupedTransactions {
   };
 }
 
-// New interface for dynamic grouping
-interface DynamicTransactionListProps {
-  groups: TransactionGroup[];
-  expandedGroups: Set<string>;
-  onToggleGroup: (key: string) => void;
-  stats?: TransactionStats;
-  isLoading?: boolean;
-  onEdit: (transaction: Transaction) => void;
-  onDelete: (transactionId: string) => void;
-  onBulkDelete: (transactionIds: string[]) => void;
-  groupType?: 'date' | 'category' | 'merchant' | 'none';
-}
-
-// Legacy interface for backward compatibility
 interface TransactionListProps {
+  /**
+   * @deprecated Use 'groups' prop instead. This legacy prop is maintained for backward compatibility.
+   * Legacy grouped data format - will be removed in a future version.
+   * 
+   * Migration path:
+   * 1. Replace 'groupedTransactions' prop with 'groups' prop
+   * 2. Update parent components to use TransactionGroup[] format
+   * 3. Use the new format which provides better type safety and performance
+   * 
+   * @see groups - The new preferred format
+   */
   groupedTransactions?: GroupedTransactions;
+  /**
+   * Preferred format for grouped transaction data.
+   * Provides better type safety, performance, and consistency across the application.
+   */
   groups?: TransactionGroup[];
   expandedGroups: Set<string>;
   onToggleGroup: (key: string) => void;
@@ -59,7 +61,22 @@ export function TransactionList({
     isOpen: false
   });
   
-  // Convert legacy format to new format if needed
+  // Deprecation warning for legacy prop usage
+  if (process.env.NODE_ENV === 'development' && groupedTransactions && !groups) {
+    console.warn(
+      '⚠️  TransactionList: The "groupedTransactions" prop is deprecated. ' +
+      'Please migrate to the "groups" prop for better type safety and performance. ' +
+      'See component documentation for migration guide.'
+    );
+  }
+  
+  /**
+   * Legacy format conversion for backward compatibility
+   * TODO: Remove this conversion once all parent components migrate to 'groups' prop
+   * 
+   * This conversion maintains backward compatibility while parent components
+   * are gradually updated to use the new TransactionGroup[] format.
+   */
   const normalizedGroups: TransactionGroup[] = groups || 
     Object.entries(groupedTransactions || {}).map(([key, group]) => ({
       key,

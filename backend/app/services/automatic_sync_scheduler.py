@@ -10,11 +10,13 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from dataclasses import dataclass
 from enum import Enum
+from cachetools import TTLCache
 
 from app.database import get_db
+from app.config import settings
 from app.models.account import Account
 from app.models.user import User
-from app.services.enhanced_plaid_service import enhanced_plaid_service
+from app.services import plaid_service
 from app.services.transaction_sync_service import transaction_sync_service
 from app.services.account_sync_monitor import account_sync_monitor
 from app.services.enhanced_reconciliation_service import enhanced_reconciliation_service
@@ -46,7 +48,7 @@ class AutomaticSyncScheduler:
     """Service for managing automatic account synchronization"""
     
     def __init__(self):
-        self.plaid_service = enhanced_plaid_service
+        self.plaid_service = plaid_service
         self.sync_service = transaction_sync_service
         self.monitor = account_sync_monitor
         self.reconciliation_service = enhanced_reconciliation_service
@@ -59,8 +61,11 @@ class AutomaticSyncScheduler:
             SyncFrequency.MONTHLY: timedelta(days=30)
         }
         
-        # Active sync jobs
-        self.sync_jobs: Dict[str, SyncJob] = {}
+        # Active sync jobs with TTL cache to prevent memory leaks
+        self.sync_jobs: TTLCache[str, SyncJob] = TTLCache(
+            maxsize=settings.SYNC_JOBS_CACHE_MAX_SIZE,
+            ttl=settings.SYNC_JOBS_CACHE_TTL
+        )
         self.is_running = False
         self.scheduler_task = None
         
@@ -134,7 +139,7 @@ class AutomaticSyncScheduler:
             
             # Get all Plaid-connected accounts
             accounts = db.query(Account).filter(
-                Account.plaid_access_token.isnot(None),
+                Account.plaid_access_token_encrypted.isnot(None),
                 Account.is_active == True
             ).all()
             
@@ -519,6 +524,27 @@ class AutomaticSyncScheduler:
         return {
             'success': True,
             'message': f'Sync frequency updated to {frequency}'
+        }
+    
+    def clear_sync_jobs_cache(self) -> Dict[str, Any]:
+        """Clear the sync jobs cache"""
+        jobs_cleared = len(self.sync_jobs)
+        self.sync_jobs.clear()
+        logger.info(f"Cleared {jobs_cleared} sync jobs from cache")
+        return {
+            'success': True,
+            'jobs_cleared': jobs_cleared,
+            'message': f'Cleared {jobs_cleared} sync jobs from cache'
+        }
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics for monitoring"""
+        return {
+            'cache_size': len(self.sync_jobs),
+            'cache_max_size': self.sync_jobs.maxsize,
+            'cache_ttl_seconds': self.sync_jobs.ttl,
+            'active_jobs': len([job for job in self.sync_jobs.values() if job.enabled]),
+            'failed_jobs': len([job for job in self.sync_jobs.values() if not job.enabled])
         }
 
 # Global scheduler instance

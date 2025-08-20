@@ -1,26 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
-import { CheckCircle, AlertTriangle, XCircle, Calculator, DollarSign, TrendingUp } from 'lucide-react';
+import React, { useState, useCallback } from 'react';
+import { Calculator, DollarSign, TrendingUp } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
-import { apiClient } from '../../services/api';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useWebSocket, type WebSocketMessage } from '../../hooks/useWebSocket';
+import { CurrencyUtils } from '../../utils/currency';
+import { getReconciliationStatusIcon, getReconciliationStatusColor } from '../../utils/account';
+import { useAccountReconciliation, type ReconciliationResult } from '../../hooks/useAccountReconciliation';
 
-interface ReconciliationResult {
-  account_id: string;
-  account_name: string;
-  recorded_balance: number;
-  calculated_balance: number;
-  discrepancy: number;
-  discrepancy_cents: number;
-  is_reconciled: boolean;
-  reconciliation_threshold: number;
-  transaction_count: number;
-  reconciliation_date: string;
-  suggestions: string[];
-}
 
 interface AccountReconciliationProps {
   accountId: string;
@@ -29,12 +18,19 @@ interface AccountReconciliationProps {
 
 export function AccountReconciliation({ accountId, onReconciliationComplete }: AccountReconciliationProps) {
   const [reconciliation, setReconciliation] = useState<ReconciliationResult | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    performReconciliation,
+    isPerformingReconciliation,
+    reconciliationError,
+    createAdjustment,
+    isCreatingAdjustment,
+    adjustmentError,
+    resetReconciliationError,
+    resetAdjustmentError
+  } = useAccountReconciliation();
   const [showAdjustmentModal, setShowAdjustmentModal] = useState(false);
   const [adjustmentAmount, setAdjustmentAmount] = useState('');
   const [adjustmentDescription, setAdjustmentDescription] = useState('');
-  const [submittingAdjustment, setSubmittingAdjustment] = useState(false);
 
   // Listen for real-time reconciliation updates
   useWebSocket({
@@ -46,88 +42,52 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
     }
   });
 
-  const performReconciliation = useCallback(async () => {
+  const handlePerformReconciliation = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
-      
-      const response = await apiClient.post<{ success: boolean; data: ReconciliationResult }>(
-        `/api/accounts/${accountId}/reconcile`
-      );
-      
-      if (response.success) {
-        setReconciliation(response.data);
-        onReconciliationComplete?.();
-      }
+      resetReconciliationError();
+      const result = await performReconciliation(accountId);
+      setReconciliation(result);
+      onReconciliationComplete?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to reconcile account');
-    } finally {
-      setLoading(false);
+      // Error is handled by the hook
+      console.error('Reconciliation failed:', err);
     }
-  }, [accountId, onReconciliationComplete]);
+  }, [accountId, performReconciliation, resetReconciliationError, onReconciliationComplete]);
 
   const handleCreateAdjustment = async () => {
     if (!adjustmentAmount || !adjustmentDescription.trim()) return;
 
     try {
-      setSubmittingAdjustment(true);
+      resetAdjustmentError();
       
       const adjustmentCents = Math.round(parseFloat(adjustmentAmount) * 100);
       
-      const response = await apiClient.post<{ success: boolean; data: Record<string, unknown> }>(
-        `/api/accounts/${accountId}/reconciliation-entry`,
-        {
+      await createAdjustment({
+        accountId,
+        adjustmentData: {
           adjustment_cents: adjustmentCents,
           description: adjustmentDescription
         }
-      );
+      });
       
-      if (response.success) {
-        setShowAdjustmentModal(false);
-        setAdjustmentAmount('');
-        setAdjustmentDescription('');
-        // Re-run reconciliation to get updated status
-        await performReconciliation();
-      }
+      setShowAdjustmentModal(false);
+      setAdjustmentAmount('');
+      setAdjustmentDescription('');
+      // Re-run reconciliation to get updated status
+      await handlePerformReconciliation();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create adjustment');
-    } finally {
-      setSubmittingAdjustment(false);
+      // Error is handled by the hook
+      console.error('Adjustment creation failed:', err);
     }
   };
 
-  const getStatusIcon = (isReconciled: boolean, discrepancy: number) => {
-    if (isReconciled) {
-      return <CheckCircle className="h-6 w-6 text-green-500" />;
-    } else if (Math.abs(discrepancy) < 10) {
-      return <AlertTriangle className="h-6 w-6 text-yellow-500" />;
-    } else {
-      return <XCircle className="h-6 w-6 text-red-500" />;
-    }
-  };
 
-  const getStatusColor = (isReconciled: boolean, discrepancy: number) => {
-    if (isReconciled) {
-      return 'text-green-600 bg-green-50 border-green-200';
-    } else if (Math.abs(discrepancy) < 10) {
-      return 'text-yellow-600 bg-yellow-50 border-yellow-200';
-    } else {
-      return 'text-red-600 bg-red-50 border-red-200';
-    }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
-
-  useEffect(() => {
+  // Auto-perform reconciliation when account changes
+  React.useEffect(() => {
     if (accountId) {
-      performReconciliation();
+      handlePerformReconciliation();
     }
-  }, [accountId, performReconciliation]);
+  }, [accountId, handlePerformReconciliation]);
 
   return (
     <div className="space-y-4">
@@ -138,22 +98,24 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
             <h3 className="text-lg font-semibold text-gray-900">Account Reconciliation</h3>
           </div>
           <Button
-            onClick={performReconciliation}
-            disabled={loading}
+            onClick={handlePerformReconciliation}
+            disabled={isPerformingReconciliation}
             variant="outline"
             size="sm"
           >
-            {loading ? <LoadingSpinner size="sm" /> : 'Reconcile'}
+            {isPerformingReconciliation ? <LoadingSpinner size="sm" /> : 'Reconcile'}
           </Button>
         </div>
 
-        {error && (
+        {(reconciliationError || adjustmentError) && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600 text-sm">{error}</p>
+            <p className="text-red-600 text-sm">
+              {reconciliationError?.message || adjustmentError?.message}
+            </p>
           </div>
         )}
 
-        {loading && !reconciliation && (
+        {isPerformingReconciliation && !reconciliation && (
           <div className="flex items-center justify-center py-8">
             <LoadingSpinner size="md" />
             <span className="ml-2 text-gray-600">Reconciling account...</span>
@@ -163,9 +125,9 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
         {reconciliation && (
           <div className="space-y-4">
             {/* Status Overview */}
-            <div className={`p-4 rounded-lg border ${getStatusColor(reconciliation.is_reconciled, reconciliation.discrepancy)}`}>
+            <div className={`p-4 rounded-lg border ${getReconciliationStatusColor(reconciliation.is_reconciled, reconciliation.discrepancy)}`}>
               <div className="flex items-center space-x-3">
-                {getStatusIcon(reconciliation.is_reconciled, reconciliation.discrepancy)}
+                {getReconciliationStatusIcon(reconciliation.is_reconciled, reconciliation.discrepancy)}
                 <div>
                   <h4 className="font-medium">
                     {reconciliation.is_reconciled ? 'Account Reconciled' : 'Discrepancy Detected'}
@@ -173,7 +135,7 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
                   <p className="text-sm opacity-75">
                     {reconciliation.is_reconciled 
                       ? 'Your account balance matches the calculated balance from transactions'
-                      : `Discrepancy of ${formatCurrency(Math.abs(reconciliation.discrepancy))} detected`
+                      : `Discrepancy of ${CurrencyUtils.formatDollars(Math.abs(reconciliation.discrepancy))} detected`
                     }
                   </p>
                 </div>
@@ -185,7 +147,7 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
               <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <DollarSign className="h-6 w-6 text-gray-600 mx-auto mb-2" />
                 <div className="text-lg font-semibold text-gray-900">
-                  {formatCurrency(reconciliation.recorded_balance)}
+                  {CurrencyUtils.formatDollars(reconciliation.recorded_balance)}
                 </div>
                 <div className="text-sm text-gray-600">Recorded Balance</div>
               </div>
@@ -193,7 +155,7 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
               <div className="text-center p-4 bg-gray-50 rounded-lg">
                 <Calculator className="h-6 w-6 text-gray-600 mx-auto mb-2" />
                 <div className="text-lg font-semibold text-gray-900">
-                  {formatCurrency(reconciliation.calculated_balance)}
+                  {CurrencyUtils.formatDollars(reconciliation.calculated_balance)}
                 </div>
                 <div className="text-sm text-gray-600">Calculated Balance</div>
               </div>
@@ -205,7 +167,7 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
                   reconciliation.discrepancy > 0 ? 'text-green-600' : 'text-red-600'
                 }`}>
                   {reconciliation.discrepancy === 0 ? '—' : 
-                   (reconciliation.discrepancy > 0 ? '+' : '') + formatCurrency(reconciliation.discrepancy)
+                   (reconciliation.discrepancy > 0 ? '+' : '') + CurrencyUtils.formatDollars(reconciliation.discrepancy)
                   }
                 </div>
                 <div className="text-sm text-gray-600">Discrepancy</div>
@@ -307,11 +269,11 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
             </Button>
             <Button
               onClick={handleCreateAdjustment}
-              disabled={!adjustmentAmount || !adjustmentDescription.trim() || submittingAdjustment}
+              disabled={!adjustmentAmount || !adjustmentDescription.trim() || isCreatingAdjustment}
               variant="primary"
               className="flex-1"
             >
-              {submittingAdjustment ? <LoadingSpinner size="sm" /> : 'Create Adjustment'}
+              {isCreatingAdjustment ? <LoadingSpinner size="sm" /> : 'Create Adjustment'}
             </Button>
           </div>
         </div>

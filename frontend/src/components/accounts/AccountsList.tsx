@@ -4,20 +4,10 @@ import { usePlaidActions } from '../../hooks/usePlaid';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { 
-  Building2, 
-  RefreshCw,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  PiggyBank,
-  TrendingUp,
-  Wallet,
-  Banknote,
-  CreditCard
-} from 'lucide-react';
-import { accountService } from '../../services/accountService';
-import { PlaidLink } from '../plaid/PlaidLink';
+import { Building2, RefreshCw } from 'lucide-react';
+import { AccountTotals } from './AccountTotals';
+import { AccountListItem } from './AccountListItem';
+import { AddAccountModal } from './AddAccountModal';
 
 interface AccountsListProps {
   className?: string;
@@ -48,48 +38,16 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
     };
   }, [accounts, selectedTab]);
 
-  // Calculate totals
-  const totals = useMemo(() => {
-    return displayAccounts.reduce(
-      (acc, account) => {
-        acc.total += account.balance_cents;
-        if (account.balance_cents > 0) acc.assets += account.balance_cents;
-        else acc.liabilities += Math.abs(account.balance_cents);
-        return acc;
-      },
-      { total: 0, assets: 0, liabilities: 0 }
-    );
-  }, [displayAccounts]);
 
   // Modal handlers
   const openModal = () => setShowModal(true);
   const closeModal = () => setShowModal(false);
 
-  const handlePlaidSuccess = () => {
-    closeModal();
+  const handleAccountAdded = () => {
     refetch();
   };
 
-  // Account icon helper
-  const getAccountIcon = (accountType: string) => {
-    switch (accountType) {
-      case 'checking': return <Banknote className="h-5 w-5 text-blue-600" />;
-      case 'savings': return <PiggyBank className="h-5 w-5 text-green-600" />;
-      case 'credit_card': return <CreditCard className="h-5 w-5 text-red-600" />;
-      case 'investment': return <TrendingUp className="h-5 w-5 text-purple-600" />;
-      default: return <Wallet className="h-5 w-5 text-gray-600" />;
-    }
-  };
 
-  // Health icon helper
-  const getHealthIcon = (health?: string) => {
-    switch (health) {
-      case 'healthy': return <CheckCircle className="h-4 w-4 text-green-500" />;
-      case 'warning': return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
-      case 'failed': return <AlertTriangle className="h-4 w-4 text-red-500" />;
-      default: return <Clock className="h-4 w-4 text-gray-400" />;
-    }
-  };
 
   if (isLoading) {
     return (
@@ -161,17 +119,11 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
         </CardContent>
 
         {/* Modal */}
-        {showModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Connect Bank Account</h3>
-              <PlaidLink onSuccess={handlePlaidSuccess} onError={closeModal} />
-              <Button onClick={closeModal} variant="ghost" size="sm" className="mt-4 w-full">
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
+        <AddAccountModal
+          isOpen={showModal}
+          onClose={closeModal}
+          onSuccess={handleAccountAdded}
+        />
       </Card>
     );
   }
@@ -225,78 +177,12 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
       
       <CardContent>
         {/* Totals */}
-        <div className="grid grid-cols-3 gap-4 mb-6 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-          <div className="text-center">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Net Worth</p>
-            <p className={`font-semibold ${totals.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {accountService.formatBalance(totals.total)}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Assets</p>
-            <p className="font-semibold text-green-600">
-              {accountService.formatBalance(totals.assets)}
-            </p>
-          </div>
-          <div className="text-center">
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Liabilities</p>
-            <p className="font-semibold text-red-600">
-              {accountService.formatBalance(totals.liabilities)}
-            </p>
-          </div>
-        </div>
+        <AccountTotals accounts={displayAccounts} className="mb-6" />
 
         {/* Accounts List */}
         <div className="space-y-3">
           {displayAccounts.map((account) => (
-            <div
-              key={account.id}
-              className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 rounded-lg hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center space-x-3">
-                <div className="flex-shrink-0">
-                  {getAccountIcon(account.account_type)}
-                </div>
-                
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center space-x-2">
-                    <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                      {account.name}
-                    </p>
-                    {account.plaid_account_id && getHealthIcon(account.connection_health)}
-                  </div>
-                  
-                  <div className="flex items-center space-x-2 mt-1">
-                    <p className="text-sm text-gray-500 dark:text-gray-400">
-                      {accountService.getAccountTypeLabel(account.account_type)}
-                    </p>
-                    
-                    {account.plaid_account_id && (
-                      <>
-                        <span className="text-gray-300">•</span>
-                        <p className={`text-xs ${accountService.getConnectionHealthColor(account.connection_health)}`}>
-                          {accountService.getConnectionHealthLabel(account.connection_health)}
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="text-right">
-                <p className={`font-semibold ${account.balance_cents >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {accountService.formatBalance(account.balance_cents)}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {account.currency}
-                </p>
-                {account.last_sync_at && (
-                  <p className="text-xs text-gray-400">
-                    Synced {new Date(account.last_sync_at).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-            </div>
+            <AccountListItem key={account.id} account={account} />
           ))}
         </div>
 
@@ -338,17 +224,11 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
       </CardContent>
 
       {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Connect Bank Account</h3>
-            <PlaidLink onSuccess={handlePlaidSuccess} onError={closeModal} />
-            <Button onClick={closeModal} variant="ghost" size="sm" className="mt-4 w-full">
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
+      <AddAccountModal
+        isOpen={showModal}
+        onClose={closeModal}
+        onSuccess={handleAccountAdded}
+      />
     </Card>
   );
 }

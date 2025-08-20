@@ -35,15 +35,6 @@ export function TickerSummary({ className = '' }: TickerSummaryProps) {
 
   return (
     <div className={`relative mx-2 w-64 sm:w-80 md:w-[420px] ${className}`}>
-      {/* Local keyframes for marquee */}
-      <style>
-        {`
-        @keyframes ticker {
-          0% { transform: translateX(0%); }
-          100% { transform: translateX(-50%); }
-        }
-      `}
-      </style>
       <div className="flex items-stretch rounded-md border border-border bg-[hsl(var(--surface)/0.8)] h-9 overflow-hidden">
         {/* Left: scrolling ticker */}
         <div className="relative flex-1 h-full overflow-hidden">

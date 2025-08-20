@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { PencilIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon } from 'lucide-react';
-import { Card, CardContent } from '../ui/Card';
+import { PencilIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon, Bell, Settings, Calendar } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
+import { Modal } from '../ui/Modal';
 import { budgetService } from '../../services/budgetService';
 import type { Budget } from '../../types/budgets';
 
@@ -9,19 +10,28 @@ interface BudgetCardProps {
   budget: Budget;
   onEdit: (budget: Budget) => void;
   onDelete: (budgetId: string) => void;
+  onOpenAlertSettings: () => void;
+  onOpenCalendar: () => void;
   isLoading?: boolean;
 }
 
-export function BudgetCard({ budget, onEdit, onDelete, isLoading = false }: BudgetCardProps) {
+export function BudgetCard({ 
+  budget, 
+  onEdit, 
+  onDelete, 
+  onOpenAlertSettings, 
+  onOpenCalendar, 
+  isLoading = false 
+}: BudgetCardProps) {
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
 
   const handleDelete = () => {
-    if (showConfirmDelete) {
-      onDelete(budget.id);
-      setShowConfirmDelete(false);
-    } else {
-      setShowConfirmDelete(true);
-    }
+    setShowConfirmDelete(true);
+  };
+
+  const handleConfirmDelete = () => {
+    onDelete(budget.id);
+    setShowConfirmDelete(false);
   };
 
   const handleCancelDelete = () => {
@@ -99,6 +109,12 @@ export function BudgetCard({ budget, onEdit, onDelete, isLoading = false }: Budg
               <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusBgColor} ${statusColor}`}>
                 {status.replace('-', ' ')}
               </span>
+              {budget.has_custom_alerts && (
+                <div className="flex items-center gap-1 px-2 py-1 bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 rounded-full text-xs font-medium">
+                  <Bell className="h-3 w-3" />
+                  Custom
+                </div>
+              )}
             </div>
           </div>
           
@@ -106,32 +122,43 @@ export function BudgetCard({ budget, onEdit, onDelete, isLoading = false }: Budg
             <Button
               variant="ghost"
               size="sm"
+              onClick={onOpenCalendar}
+              disabled={isLoading}
+              className="h-8 w-8 p-0"
+              title="Calendar View"
+            >
+              <Calendar className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onOpenAlertSettings}
+              disabled={isLoading}
+              className="h-8 w-8 p-0"
+              title="Alert Settings"
+            >
+              <Bell className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => onEdit(budget)}
               disabled={isLoading}
               className="h-8 w-8 p-0"
+              title="Edit Budget"
             >
               <PencilIcon className="h-4 w-4" />
             </Button>
             <Button
               variant="ghost"
               size="sm"
-              onClick={showConfirmDelete ? handleCancelDelete : handleDelete}
+              onClick={handleDelete}
               disabled={isLoading}
-              className={`h-8 w-8 p-0 ${showConfirmDelete ? 'text-gray-500' : 'text-red-600 hover:text-red-700'}`}
+              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+              title="Delete Budget"
             >
-              {showConfirmDelete ? '✕' : <TrashIcon className="h-4 w-4" />}
+              <TrashIcon className="h-4 w-4" />
             </Button>
-            {showConfirmDelete && (
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={handleDelete}
-                disabled={isLoading}
-                className="h-8 bg-red-600 hover:bg-red-700 text-white"
-              >
-                Confirm
-              </Button>
-            )}
           </div>
         </div>
 
@@ -244,6 +271,50 @@ export function BudgetCard({ budget, onEdit, onDelete, isLoading = false }: Budg
             </div>
           </div>
         )}
+
+        {/* Delete Confirmation Modal */}
+        <Modal 
+          isOpen={showConfirmDelete} 
+          onClose={handleCancelDelete} 
+          size="sm"
+        >
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-red-100 dark:bg-red-800 rounded-lg">
+                  <AlertTriangleIcon className="h-5 w-5 text-red-600 dark:text-red-400" />
+                </div>
+                <div>
+                  <CardTitle>Delete Budget</CardTitle>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    This action cannot be undone
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-gray-700 dark:text-gray-300">
+                Are you sure you want to delete the budget "{budget.name}"? This will permanently remove all budget data and settings.
+              </p>
+              <div className="flex items-center justify-end gap-3 pt-4">
+                <Button
+                  variant="ghost"
+                  onClick={handleCancelDelete}
+                  disabled={isLoading}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={handleConfirmDelete}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Deleting...' : 'Delete Budget'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </Modal>
       </CardContent>
     </Card>
   );

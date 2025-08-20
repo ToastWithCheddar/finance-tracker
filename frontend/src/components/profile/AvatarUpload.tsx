@@ -1,6 +1,8 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Upload, X, Camera, Trash2 } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { useErrorToast } from '../ui/Toast';
+import { ConfirmationModal } from '../ui/ConfirmationModal';
 
 interface AvatarUploadProps {
   currentAvatarUrl?: string;
@@ -20,18 +22,29 @@ export function AvatarUpload({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [imageError, setImageError] = useState(false);
+  const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const showError = useErrorToast();
+
+  // Cleanup function to revoke object URL when component unmounts or previewUrl changes
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleFileSelect = async (file: File) => {
     // Validate file type
     if (!file.type.startsWith('image/')) {
-      alert('Please select an image file');
+      showError('Please select an image file');
       return;
     }
 
     // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
-      alert('Image must be less than 5MB');
+      showError('Image must be less than 5MB');
       return;
     }
 
@@ -77,15 +90,19 @@ export function AvatarUpload({
     setIsDragging(false);
   };
 
-  const handleRemove = async () => {
-    if (confirm('Are you sure you want to remove your profile picture?')) {
-      try {
-        await onRemove();
-        setPreviewUrl(null);
-        setImageError(false);
-      } catch (error) {
-        console.error('Remove failed:', error);
-      }
+  const handleRemove = () => {
+    setShowRemoveConfirm(true);
+  };
+
+  const confirmRemove = async () => {
+    try {
+      await onRemove();
+      setPreviewUrl(null);
+      setImageError(false);
+      setShowRemoveConfirm(false);
+    } catch (error) {
+      console.error('Remove failed:', error);
+      setShowRemoveConfirm(false);
     }
   };
 
@@ -187,6 +204,17 @@ export function AvatarUpload({
           </div>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={showRemoveConfirm}
+        onClose={() => setShowRemoveConfirm(false)}
+        onConfirm={confirmRemove}
+        title="Remove Profile Picture"
+        message="Are you sure you want to remove your profile picture?"
+        confirmText="Remove"
+        variant="danger"
+        isLoading={isUploading}
+      />
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
 import { useAddContribution, useUpdateGoal, useGoalProgress, useMilestoneTracking } from '../../hooks/useGoals';
+import { useAccounts } from '../../hooks/useAccounts';
 import { goalService } from '../../services/goalService';
 import { formatCurrency, formatRelativeTime } from '../../utils';
 import type { Goal, GoalContributionCreate, GoalUpdate, GoalStatus } from '../../types/goals';
@@ -23,6 +24,7 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
 
   const addContribution = useAddContribution();
   const updateGoal = useUpdateGoal();
+  const { data: accounts } = useAccounts();
   const { currentProgress, isCompleted, remainingAmount, daysRemaining, monthlyRequired, progressColor } = useGoalProgress(goal);
   const { nextMilestone, progressToNextMilestone } = useMilestoneTracking(goal);
 
@@ -80,6 +82,25 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
     }
   };
 
+  // Get source account details for auto-contribution display
+  const getSourceAccountDetails = () => {
+    if (!goal.auto_contribution_source || !accounts) return null;
+    return accounts.find(account => account.id === goal.auto_contribution_source);
+  };
+
+  const sourceAccount = getSourceAccountDetails();
+
+  // Auto-contribution tooltip content
+  const getAutoContributionTooltip = () => {
+    if (!goal.auto_contribute || !goal.auto_contribution_amount_cents) return '';
+    
+    const frequency = goal.contribution_frequency || 'monthly';
+    const amount = formatCurrency(goal.auto_contribution_amount_cents);
+    const accountName = sourceAccount ? sourceAccount.name : 'Selected Account';
+    
+    return `Auto-saving ${amount} ${frequency} from ${accountName}`;
+  };
+
   if (compact) {
     return (
       <Card className="p-4 hover:shadow-md transition-shadow">
@@ -87,6 +108,14 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
           <div className="flex items-center space-x-2">
             <span className="text-xl">{typeInfo.icon}</span>
             <h3 className="font-semibold text-lg truncate text-[hsl(var(--text))]">{goal.name}</h3>
+            {goal.auto_contribute && (
+              <span 
+                className="text-green-600 text-sm" 
+                title={getAutoContributionTooltip()}
+              >
+                ⚡
+              </span>
+            )}
           </div>
           <span className={`px-2 py-1 rounded-full text-xs border ${getPriorityBadgeColor()}`}>
             {priorityInfo.label}
@@ -130,6 +159,15 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
           </div>
           
           <div className="flex items-center space-x-2">
+            {goal.auto_contribute && (
+              <span 
+                className="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800 border border-green-200 flex items-center space-x-1" 
+                title={getAutoContributionTooltip()}
+              >
+                <span>⚡</span>
+                <span>Auto-Save</span>
+              </span>
+            )}
             <span className={`px-3 py-1 rounded-full text-sm border ${getPriorityBadgeColor()}`}>
               {priorityInfo.label}
             </span>

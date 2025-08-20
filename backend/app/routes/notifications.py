@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import uuid
+import logging
 
 from ..database import get_db
 from ..auth.dependencies import get_current_user
@@ -13,6 +14,13 @@ from ..schemas.notification import (
     NotificationFilter, BulkMarkReadRequest, BulkMarkReadResponse,
     NotificationUpdate
 )
+from ..core.exceptions import (
+    DataIntegrityError,
+    ResourceNotFoundError,
+    ValidationError
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -37,14 +45,13 @@ def get_notifications(
             type_filter=type_filter
         )
         
-        # Get total count for pagination
-        total_count = len(NotificationService.get_notifications(
+        # Get total count for pagination using efficient count query
+        total_count = NotificationService.get_notifications_count(
             db=db,
             user_id=current_user.id,
-            skip=0,
-            limit=10000,  # Large number to get all
+            unread_only=unread_only,
             type_filter=type_filter
-        ))
+        )
         
         unread_count = NotificationService.get_unread_count(
             db=db,
@@ -60,7 +67,8 @@ def get_notifications(
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch notifications: {str(e)}")
+        logger.error(f"Failed to fetch notifications for user {current_user.id}: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to retrieve notifications")
 
 
 @router.get("/stats", response_model=NotificationStatsResponse)
@@ -70,40 +78,22 @@ def get_notification_stats(
 ):
     """Get notification statistics for the current user"""
     try:
-        all_notifications = NotificationService.get_notifications(
-            db=db,
-            user_id=current_user.id,
-            skip=0,
-            limit=10000  # Large number to get all
-        )
-        
-        unread_count = NotificationService.get_unread_count(
+        # Use efficient SQL aggregation instead of loading all notifications
+        stats = NotificationService.get_notification_stats_efficient(
             db=db,
             user_id=current_user.id
         )
         
-        # Count by type
-        by_type = {}
-        by_priority = {}
-        
-        for notification in all_notifications:
-            # Count by type
-            type_key = notification.type.value
-            by_type[type_key] = by_type.get(type_key, 0) + 1
-            
-            # Count by priority
-            priority_key = notification.priority.value
-            by_priority[priority_key] = by_priority.get(priority_key, 0) + 1
-        
         return NotificationStatsResponse(
-            total_count=len(all_notifications),
-            unread_count=unread_count,
-            by_type=by_type,
-            by_priority=by_priority
+            total_count=stats["total_count"],
+            unread_count=stats["unread_count"],
+            by_type=stats["by_type"],
+            by_priority=stats["by_priority"]
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch notification stats: {str(e)}")
+        logger.error(f"Failed to fetch notification stats for user {current_user.id}: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to retrieve notification statistics")
 
 
 @router.patch("/{notification_id}", response_model=NotificationResponse)
@@ -135,14 +125,15 @@ def update_notification(
                     db.refresh(notification)
         
         if not notification:
-            raise HTTPException(status_code=404, detail="Notification not found")
+            raise ResourceNotFoundError("Notification", str(notification_id))
         
         return NotificationResponse.model_validate(notification)
         
-    except HTTPException:
+    except ResourceNotFoundError:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update notification: {str(e)}")
+        logger.error(f"Failed to update notification {notification_id}: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to update notification")
 
 
 @router.delete("/{notification_id}")
@@ -160,14 +151,15 @@ def dismiss_notification(
         )
         
         if not success:
-            raise HTTPException(status_code=404, detail="Notification not found")
+            raise ResourceNotFoundError("Notification", str(notification_id))
         
         return {"success": True, "message": "Notification dismissed successfully"}
         
-    except HTTPException:
+    except ResourceNotFoundError:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to dismiss notification: {str(e)}")
+        logger.error(f"Failed to dismiss notification {notification_id}: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to dismiss notification")
 
 
 @router.post("/mark-all-read", response_model=BulkMarkReadResponse)
@@ -188,7 +180,8 @@ def mark_all_notifications_read(
         )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to mark notifications as read: {str(e)}")
+        logger.error(f"Failed to mark notifications as read for user {current_user.id}: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to mark notifications as read")
 
 
 @router.get("/{notification_id}", response_model=NotificationResponse)
@@ -205,11 +198,12 @@ def get_notification(
         ).first()
         
         if not notification:
-            raise HTTPException(status_code=404, detail="Notification not found")
+            raise ResourceNotFoundError("Notification", str(notification_id))
         
         return NotificationResponse.model_validate(notification)
         
-    except HTTPException:
+    except ResourceNotFoundError:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch notification: {str(e)}")
+        logger.error(f"Failed to fetch notification {notification_id}: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to retrieve notification")

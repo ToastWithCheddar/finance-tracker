@@ -50,6 +50,22 @@ export const MessageType = {
   WEBHOOK_SYNC_COMPLETE: 'webhook_sync_complete',
   TRANSACTION_SYNC_COMPLETE: 'transaction_sync_complete',
   BULK_SYNC_COMPLETE: 'bulk_sync_complete',
+  
+  // Plaid recurring transactions
+  PLAID_RECURRING_SYNCED: 'plaid_recurring_synced',
+  PLAID_RECURRING_UPDATED: 'plaid_recurring_updated',
+  RECURRING_TRANSACTION_MUTED: 'recurring_transaction_muted',
+  RECURRING_TRANSACTION_LINKED: 'recurring_transaction_linked',
+  
+  // Categorization rules
+  CATEGORIZATION_RULE_CREATED: 'categorization_rule_created',
+  CATEGORIZATION_RULE_UPDATED: 'categorization_rule_updated',
+  CATEGORIZATION_RULE_DELETED: 'categorization_rule_deleted',
+  CATEGORIZATION_RULE_APPLIED: 'categorization_rule_applied',
+  RULE_EFFECTIVENESS_UPDATED: 'rule_effectiveness_updated',
+  
+  // User activity events
+  USER_ACTIVITY_CREATED: 'user_activity_created',
 } as const;
 
 export type MessageType = typeof MessageType[keyof typeof MessageType];
@@ -257,6 +273,80 @@ export interface BulkSyncPayload {
   sync_time: string; // ISO datetime string
 }
 
+export interface PlaidRecurringSyncPayload {
+  account_id: string;
+  account_name: string;
+  recurring_transactions_count: number;
+  new_subscriptions: number;
+  updated_subscriptions: number;
+  synced_at: string; // ISO datetime string
+}
+
+export interface PlaidRecurringUpdatePayload {
+  stream_id: string;
+  account_id: string;
+  merchant_name: string;
+  description: string;
+  amount_cents: number;
+  frequency: string;
+  status: 'active' | 'inactive' | 'muted';
+  is_active: boolean;
+  confidence: number;
+  updated_at: string; // ISO datetime string
+}
+
+export interface RecurringTransactionActionPayload {
+  stream_id: string;
+  account_id: string;
+  merchant_name: string;
+  action: 'muted' | 'unmuted' | 'linked' | 'unlinked';
+  transaction_id?: string; // for linking actions
+  performed_at: string; // ISO datetime string
+}
+
+export interface CategorizationRuleActionPayload {
+  rule_id: string;
+  rule_name: string;
+  action: 'created' | 'updated' | 'deleted' | 'activated' | 'deactivated';
+  priority?: number;
+  conditions?: Record<string, any>;
+  actions?: Record<string, any>;
+  performed_at: string; // ISO datetime string
+}
+
+export interface RuleApplicationPayload {
+  rule_id: string;
+  rule_name: string;
+  transaction_id: string;
+  transaction_description: string;
+  old_category_id?: string;
+  new_category_id: string;
+  confidence_score: number;
+  applied_at: string; // ISO datetime string
+}
+
+export interface RuleEffectivenessPayload {
+  rule_id: string;
+  rule_name: string;
+  times_applied: number;
+  success_rate: number;
+  avg_confidence_score: number;
+  total_transactions_affected: number;
+  last_applied_at?: string; // ISO datetime string
+  updated_at: string; // ISO datetime string
+}
+
+export interface UserActivityPayload {
+  id: string;
+  type: string;
+  title: string;
+  description: string;
+  table_name?: string;
+  record_id?: string;
+  metadata?: Record<string, any>;
+  created_at: string; // ISO datetime string
+}
+
 // Union type for all possible payloads
 export type PayloadType = 
   | DashboardUpdatePayload
@@ -275,7 +365,14 @@ export type PayloadType =
   | BatchUpdatePayload
   | WebhookSyncPayload
   | TransactionSyncPayload
-  | BulkSyncPayload;
+  | BulkSyncPayload
+  | PlaidRecurringSyncPayload
+  | PlaidRecurringUpdatePayload
+  | RecurringTransactionActionPayload
+  | CategorizationRuleActionPayload
+  | RuleApplicationPayload
+  | RuleEffectivenessPayload
+  | UserActivityPayload;
 
 // Typed WebSocket Messages
 export interface TypedWebSocketMessage extends WebSocketMessage {
@@ -327,6 +424,37 @@ export function isGoalProgress(message: WebSocketMessage): message is GoalProgre
 
 export function isNotification(message: WebSocketMessage): message is NotificationMessage {
   return message.type === MessageType.NOTIFICATION;
+}
+
+export function isPlaidRecurringSync(message: WebSocketMessage): boolean {
+  return message.type === MessageType.PLAID_RECURRING_SYNCED;
+}
+
+export function isPlaidRecurringUpdate(message: WebSocketMessage): boolean {
+  return message.type === MessageType.PLAID_RECURRING_UPDATED;
+}
+
+export function isRecurringTransactionAction(message: WebSocketMessage): boolean {
+  return message.type === MessageType.RECURRING_TRANSACTION_MUTED || 
+         message.type === MessageType.RECURRING_TRANSACTION_LINKED;
+}
+
+export function isCategorizationRuleAction(message: WebSocketMessage): boolean {
+  return message.type === MessageType.CATEGORIZATION_RULE_CREATED ||
+         message.type === MessageType.CATEGORIZATION_RULE_UPDATED ||
+         message.type === MessageType.CATEGORIZATION_RULE_DELETED;
+}
+
+export function isRuleApplication(message: WebSocketMessage): boolean {
+  return message.type === MessageType.CATEGORIZATION_RULE_APPLIED;
+}
+
+export function isRuleEffectivenessUpdate(message: WebSocketMessage): boolean {
+  return message.type === MessageType.RULE_EFFECTIVENESS_UPDATED;
+}
+
+export function isUserActivity(message: WebSocketMessage): boolean {
+  return message.type === MessageType.USER_ACTIVITY_CREATED;
 }
 
 // WebSocket connection status

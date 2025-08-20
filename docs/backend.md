@@ -16,11 +16,11 @@ The backend's business logic is encapsulated within a well-structured service la
 
 #### **Integration Services**
 
--   **`plaid_service.py` and `enhanced_plaid_service.py`**: These services are responsible for interacting with the Plaid API. They handle tasks like creating Plaid Link tokens, exchanging public tokens for access tokens, and fetching account and transaction data from Plaid. The `enhanced_plaid_service.py` likely provides a higher-level abstraction over the base `plaid_service.py`.
+-   **`plaid_orchestration_service.py` and related services**: The Plaid integration is now modularized into focused services: `plaid_client_service.py` (API communication), `plaid_account_service.py` (account management), `plaid_transaction_service.py` (transaction sync), and `plaid_webhook_service.py` (webhooks/recurring). The `plaid_orchestration_service.py` coordinates these services and maintains backward compatibility.
 -   **`transaction_sync_service.py`**: This service is responsible for synchronizing transactions from Plaid into the application's database. It handles duplicate detection and ensures that the transaction data is consistent.
 -   **`account_sync_monitor.py`**: This service monitors the status of account synchronization with Plaid, providing insights into the health of the connections.
 -   **`automatic_sync_scheduler.py`**: This service manages the scheduling of automatic account synchronization with Plaid, ensuring that the user's data is kept up-to-date.
--   **`ml_client.py`**: This service acts as a client for the machine learning service. It provides a simple interface for categorizing transactions and submitting feedback to the ML model.
+-   **`ml_service.py`**: This service acts as a client for the machine learning service. It provides a simple interface for categorizing transactions and submitting feedback to the ML model.
 
 #### **Analytics and Insights Services**
 
@@ -29,9 +29,9 @@ The backend's business logic is encapsulated within a well-structured service la
 
 #### **Utility Services**
 
--   **`reconciliation_service.py` and `enhanced_reconciliation_service.py`**: These services handle the business logic for reconciling account balances.
+-   **`reconciliation_service.py`**: This unified service handles comprehensive account balance reconciliation with intelligent discrepancy detection and resolution (merged from basic and enhanced versions).
 -   **`transaction_import_service.py`**: This service is responsible for importing transactions from external sources, such as CSV files.
--   **`user_preferences_service.py`**: This service manages user-specific preferences.
+
 -   **`validation_service.py`**: This service likely provides various validation functions that are used throughout the application.
 -   **`monitoring_service.py`**: This service is likely used for monitoring the health and performance of the application.
 -   **`mock_data_service.py`**: This service provides mock data for the UI, which is used by the `mock.py` router for frontend development.
@@ -166,10 +166,10 @@ The `transaction.router` is one of the most extensive routers in the application
 
 ##### `user.router`
 
-This router is responsible for managing user profiles and preferences.
+This router is responsible for managing user profiles.
 
 -   **Profile Management**: Allows users to get and update their profile information.
--   **Preferences**: Includes endpoints for managing user-specific preferences.
+
 -   **Search**: Provides an endpoint for searching for users.
 
 ##### `websockets.py`

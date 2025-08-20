@@ -1,16 +1,17 @@
 """
 ML service integration routes for transaction categorization
 """
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import Dict, Any
 from uuid import UUID
+import logging
 
 from ..database import get_db
 from ..auth.dependencies import get_current_user, get_db_with_user_context
 from ..models.user import User
 from ..services.transaction_service import TransactionService
-from ..services.ml_client import get_ml_client
+from ..services.ml_service import get_ml_client
 from ..schemas.ml import (
     MLCategorizationRequest,
     MLCategorizationResponse,
@@ -22,6 +23,13 @@ from ..schemas.ml import (
     MLModelExportResponse,
     MLBatchCategorizationRequest
 )
+from ..core.exceptions import (
+    MLServiceError,
+    ValidationError,
+    DataIntegrityError
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/ml", tags=["ml"])
 
@@ -41,7 +49,7 @@ async def categorize_transaction(
             description=request.description,
             amount_cents=request.amount_cents,
             merchant=request.merchant,
-            user_id=str(current_user.id)
+            user_id=current_user.id
         )
         
         if response.success:
@@ -51,20 +59,11 @@ async def categorize_transaction(
                 "duration_ms": response.request_duration_ms
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "error": response.error.error,
-                    "message": response.error.message,
-                    "details": response.error.details
-                }
-            )
+            raise MLServiceError(f"ML service error: {response.error.message}")
             
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Categorization failed: {str(e)}"
-        )
+        logger.error(f"ML categorization failed: {e}", exc_info=True)
+        raise MLServiceError("Unable to categorize transaction")
 
 @router.post("/feedback")
 async def submit_feedback(
@@ -90,16 +89,11 @@ async def submit_feedback(
                 "message": "Feedback submitted successfully"
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to submit feedback. Transaction not found or already processed."
-            )
+            raise ValidationError("Failed to submit feedback. Transaction not found or already processed.")
             
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Feedback submission failed: {str(e)}"
-        )
+        logger.error(f"ML feedback submission failed: {e}", exc_info=True)
+        raise MLServiceError("Unable to submit feedback")
 
 @router.get("/health", response_model=Dict[str, Any])
 async def ml_service_health():
@@ -172,10 +166,8 @@ async def get_ml_stats(
         }
         
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get ML stats: {str(e)}"
-        )
+        logger.error(f"Failed to get ML stats: {e}", exc_info=True)
+        raise MLServiceError("Unable to retrieve ML statistics")
 
 @router.post("/batch-categorize", response_model=Dict[str, Any])
 async def batch_categorize_transactions(
@@ -191,7 +183,7 @@ async def batch_categorize_transactions(
     try:
         response = await ml_client.batch_categorize(
             transactions=request.transactions,
-            user_id=str(current_user.id)
+            user_id=current_user.id
         )
         
         if response.success:
@@ -201,22 +193,13 @@ async def batch_categorize_transactions(
                 "duration_ms": response.request_duration_ms
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "error": response.error.error,
-                    "message": response.error.message,
-                    "details": response.error.details
-                }
-            )
+            raise MLServiceError(f"ML service error: {response.error.message}")
             
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Batch categorization failed: {str(e)}"
-        )
+        logger.error(f"ML batch categorization failed: {e}", exc_info=True)
+        raise MLServiceError("Unable to perform batch categorization")
 
-@router.post("/add-example", status_code=status.HTTP_201_CREATED)
+@router.post("/add-example", status_code=201)
 async def add_ml_example(
     request: MCategoryExampleRequest,
     db: Session = Depends(get_db_with_user_context),
@@ -231,7 +214,7 @@ async def add_ml_example(
         response = await ml_client.add_training_example(
             category=request.category,
             example=request.example,
-            user_id=str(current_user.id)
+            user_id=current_user.id
         )
         
         if response.success:
@@ -242,20 +225,11 @@ async def add_ml_example(
                 "duration_ms": response.request_duration_ms
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "error": response.error.error,
-                    "message": response.error.message,
-                    "details": response.error.details
-                }
-            )
+            raise MLServiceError(f"ML service error: {response.error.message}")
             
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to add example: {str(e)}"
-        )
+        logger.error(f"Failed to add ML example: {e}", exc_info=True)
+        raise MLServiceError("Unable to add training example")
 
 @router.post("/export-model", response_model=Dict[str, Any])
 async def export_model(
@@ -277,20 +251,11 @@ async def export_model(
                 "duration_ms": response.request_duration_ms
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "error": response.error.error,
-                    "message": response.error.message,
-                    "details": response.error.details
-                }
-            )
+            raise MLServiceError(f"ML service error: {response.error.message}")
             
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to export model: {str(e)}"
-        )
+        logger.error(f"Failed to export ML model: {e}", exc_info=True)
+        raise MLServiceError("Unable to export model")
 
 @router.get("/performance", response_model=Dict[str, Any])
 async def get_ml_performance(
@@ -312,17 +277,8 @@ async def get_ml_performance(
                 "duration_ms": response.request_duration_ms
             }
         else:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={
-                    "error": response.error.error,
-                    "message": response.error.message,
-                    "details": response.error.details
-                }
-            )
+            raise MLServiceError(f"ML service error: {response.error.message}")
             
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get performance metrics: {str(e)}"
-        )
+        logger.error(f"Failed to get ML performance metrics: {e}", exc_info=True)
+        raise MLServiceError("Unable to retrieve performance metrics")

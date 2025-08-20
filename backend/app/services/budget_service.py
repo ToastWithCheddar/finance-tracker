@@ -12,7 +12,7 @@ from ..models.insight import Insight
 from ..schemas.budget import (
     BudgetCreate, BudgetUpdate, BudgetResponse, BudgetUsage, 
     BudgetAlert, BudgetSummary, BudgetProgress, BudgetFilter,
-    BudgetPeriod
+    BudgetPeriod, BudgetCalendarDay, BudgetCalendarResponse
 )
 from .notification_service import NotificationService
 
@@ -70,6 +70,76 @@ class BudgetService:
                 )
         
         return query.offset(skip).limit(limit).all()
+    
+    @staticmethod
+    def get_budgets_with_usage(
+        db: Session, 
+        user_id: uuid.UUID, 
+        filters: Optional[BudgetFilter] = None,
+        skip: int = 0,
+        limit: int = 100,
+        current_date: Optional[date] = None
+    ) -> List[Tuple[Budget, BudgetUsage]]:
+        """Get budgets with their usage data calculated efficiently to avoid N+1 queries
+        
+        Returns:
+            List of tuples containing (Budget object, BudgetUsage object)
+        """
+        # First get the basic budgets with eager loading
+        budgets = BudgetService.get_budgets(db, user_id, filters, skip, limit)
+        
+        if not budgets:
+            return []
+        
+        # Extract budget IDs for the aggregated query
+        budget_ids = [budget.id for budget in budgets]
+        
+        # Get optimized spending data for just these budgets
+        # Note: only_active is handled by the initial get_budgets call, so we don't filter here
+        budget_data = BudgetService._get_budget_spending_data(
+            db=db, 
+            user_id=user_id, 
+            current_date=current_date,
+            budget_ids=budget_ids,
+            only_active=False  # Don't filter here since get_budgets already applied filters
+        )
+        
+        # Create a lookup dictionary for O(1) access
+        usage_lookup = {data['budget_id']: data for data in budget_data}
+        
+        # Combine budget objects with their usage data
+        results = []
+        for budget in budgets:
+            usage_data = usage_lookup.get(budget.id)
+            if usage_data:
+                # Create BudgetUsage object from the optimized data
+                usage = BudgetUsage(
+                    budget_id=str(usage_data['budget_id']),
+                    spent_cents=usage_data['spent_cents'],
+                    remaining_cents=usage_data['remaining_cents'],
+                    percentage_used=usage_data['percentage_used'],
+                    is_over_budget=usage_data['is_over_budget'],
+                    days_remaining=usage_data['days_remaining']
+                )
+            else:
+                # Fallback to zero usage if no data found
+                usage = BudgetUsage(
+                    budget_id=str(budget.id),
+                    spent_cents=0,
+                    remaining_cents=budget.amount_cents,
+                    percentage_used=0.0,
+                    is_over_budget=False,
+                    days_remaining=None
+                )
+            
+            # Apply over_budget filter if specified
+            if filters and filters.over_budget is not None:
+                if usage.is_over_budget != filters.over_budget:
+                    continue
+            
+            results.append((budget, usage))
+        
+        return results
     
     @staticmethod
     def update_budget(
@@ -150,12 +220,26 @@ class BudgetService:
         )
     
     @staticmethod
-    def _get_budget_spending_data(db: Session, user_id: uuid.UUID, current_date: Optional[date] = None) -> List[Dict[str, Any]]:
-        """Get all budget spending data optimized to avoid N+1 pattern using a single aggregated query"""
+    def _get_budget_spending_data(
+        db: Session, 
+        user_id: uuid.UUID, 
+        current_date: Optional[date] = None,
+        budget_ids: Optional[List[uuid.UUID]] = None,
+        only_active: bool = True
+    ) -> List[Dict[str, Any]]:
+        """Get budget spending data optimized to avoid N+1 pattern using a single aggregated query
+        
+        Args:
+            db: Database session
+            user_id: User UUID
+            current_date: Date for calculations (defaults to today)
+            budget_ids: Optional list of specific budget IDs to fetch
+            only_active: Whether to filter only active budgets (defaults to True)
+        """
         if not current_date:
             current_date = date.today()
             
-        # First, get all active budgets with their metadata
+        # First, get budgets with their metadata
         budgets_query = (
             db.query(
                 Budget.id,
@@ -164,16 +248,19 @@ class BudgetService:
                 Budget.period,
                 Budget.start_date,
                 Budget.end_date,
-                Budget.alert_threshold,
                 Budget.category_id,
                 Category.name.label('category_name')
             )
             .outerjoin(Category, Category.id == Budget.category_id)
-            .filter(
-                Budget.user_id == user_id,
-                Budget.is_active == True
-            )
+            .filter(Budget.user_id == user_id)
         )
+        
+        # Apply filtering
+        if only_active:
+            budgets_query = budgets_query.filter(Budget.is_active == True)
+        
+        if budget_ids:
+            budgets_query = budgets_query.filter(Budget.id.in_(budget_ids))
         
         budget_results = budgets_query.all()
         
@@ -200,7 +287,6 @@ class BudgetService:
                 'amount_cents': result.amount_cents,
                 'category_id': result.category_id,
                 'category_name': result.category_name,
-                'alert_threshold': result.alert_threshold,
                 'period_start': period_start,
                 'period_end': period_end
             }
@@ -295,38 +381,41 @@ class BudgetService:
         budget_data = BudgetService._get_budget_spending_data(db, user_id)
         
         for data in budget_data:
-            # Check for alerts
-            alert_threshold_percentage = data['alert_threshold'] * 100
+            # Check for alerts using hard-coded thresholds (90% warning, 100% exceeded)
             
-            if data['percentage_used'] >= alert_threshold_percentage:
-                alert_type = "exceeded" if data['is_over_budget'] else "warning"
-                
-                # Create a budget-like object for message generation
-                budget_obj = Budget(
-                    id=data['budget_id'],
-                    name=data['budget_name'],
-                    amount_cents=data['amount_cents']
-                )
-                usage_obj = BudgetUsage(
-                    budget_id=str(data['budget_id']),
-                    spent_cents=data['spent_cents'],
-                    remaining_cents=data['remaining_cents'],
-                    percentage_used=data['percentage_used'],
-                    is_over_budget=data['is_over_budget'],
-                    days_remaining=data['days_remaining']
-                )
-                
-                message = BudgetService._generate_alert_message(budget_obj, usage_obj, alert_type)
-                
-                alerts.append(BudgetAlert(
-                    budget_id=str(data['budget_id']),
-                    budget_name=data['budget_name'],
-                    category_name=data['category_name'],
-                    alert_type=alert_type,
-                    message=message,
-                    percentage_used=data['percentage_used'],
-                    amount_over=max(0, data['spent_cents'] - data['amount_cents']) if data['is_over_budget'] else None
-                ))
+            if data['percentage_used'] >= 100:
+                alert_type = "exceeded"
+            elif data['percentage_used'] >= 90:
+                alert_type = "warning"
+            else:
+                continue  # No alert needed for this budget
+            
+            # Create a budget-like object for message generation
+            budget_obj = Budget(
+                id=data['budget_id'],
+                name=data['budget_name'],
+                amount_cents=data['amount_cents']
+            )
+            usage_obj = BudgetUsage(
+                budget_id=str(data['budget_id']),
+                spent_cents=data['spent_cents'],
+                remaining_cents=data['remaining_cents'],
+                percentage_used=data['percentage_used'],
+                is_over_budget=data['is_over_budget'],
+                days_remaining=data['days_remaining']
+            )
+            
+            message = BudgetService._generate_alert_message(budget_obj, usage_obj, alert_type)
+            
+            alerts.append(BudgetAlert(
+                budget_id=str(data['budget_id']),
+                budget_name=data['budget_name'],
+                category_name=data['category_name'],
+                alert_type=alert_type,
+                message=message,
+                percentage_used=data['percentage_used'],
+                amount_over=max(0, data['spent_cents'] - data['amount_cents']) if data['is_over_budget'] else None
+            ))
             
             # Check for near end of period alerts
             if data['days_remaining'] and data['days_remaining'] <= 3 and data['percentage_used'] < 50:
@@ -350,8 +439,8 @@ class BudgetService:
         budget_data = BudgetService._get_budget_spending_data(db, user_id)
         
         for data in budget_data:
-            # Only create notifications for significant alerts (>= 80% or over budget)
-            if data['percentage_used'] >= 80:
+            # Only create notifications for significant alerts (>= 90% or over budget)
+            if data['percentage_used'] >= 90:
                 try:
                     notification = await NotificationService.create_budget_alert(
                         db=db,
@@ -573,3 +662,143 @@ class BudgetService:
             return f"Budget '{budget.name}' is {usage.percentage_used:.1f}% used. You've spent ${spent_dollars:.2f} of ${amount_dollars:.2f}"
         
         return f"Budget alert for '{budget.name}'"
+    
+    @staticmethod
+    def get_budget_calendar(
+        db: Session, 
+        budget_id: uuid.UUID, 
+        user_id: uuid.UUID,
+        month: str  # YYYY-MM format
+    ) -> Optional[BudgetCalendarResponse]:
+        """Get budget calendar data for a specific month"""
+        budget = BudgetService.get_budget(db, budget_id, user_id)
+        if not budget:
+            return None
+        
+        try:
+            # Parse month
+            year, month_num = map(int, month.split('-'))
+            month_start = date(year, month_num, 1)
+            
+            # Calculate month end
+            if month_num == 12:
+                month_end = date(year + 1, 1, 1) - timedelta(days=1)
+            else:
+                month_end = date(year, month_num + 1, 1) - timedelta(days=1)
+            
+        except (ValueError, IndexError):
+            raise ValueError("Invalid month format. Use YYYY-MM")
+        
+        # Get budget period boundaries that overlap with requested month
+        budget_period_start, budget_period_end = BudgetService._get_period_boundaries(budget, month_start)
+        
+        # Calculate daily spending limit
+        total_days_in_period = (budget_period_end - budget_period_start).days + 1
+        daily_limit_cents = budget.amount_cents // total_days_in_period
+        
+        # Get daily spending data for the month
+        daily_data = []
+        current_date = month_start
+        
+        while current_date <= month_end:
+            # Check if this date is within the budget period
+            if budget_period_start <= current_date <= budget_period_end:
+                # Get spending for this day
+                day_spending = BudgetService._get_daily_spending(
+                    db, budget, current_date
+                )
+                
+                percentage_used = (day_spending / daily_limit_cents * 100) if daily_limit_cents > 0 else 0
+                
+                # Get transaction count for this day
+                transaction_count = BudgetService._get_daily_transaction_count(
+                    db, budget, current_date
+                )
+                
+                daily_data.append(BudgetCalendarDay(
+                    date=current_date,
+                    daily_spending_limit_cents=daily_limit_cents,
+                    actual_spending_cents=day_spending,
+                    percentage_used=round(percentage_used, 2),
+                    is_over_limit=day_spending > daily_limit_cents,
+                    transactions_count=transaction_count
+                ))
+            else:
+                # Day is outside budget period
+                daily_data.append(BudgetCalendarDay(
+                    date=current_date,
+                    daily_spending_limit_cents=0,
+                    actual_spending_cents=0,
+                    percentage_used=0.0,
+                    is_over_limit=False,
+                    transactions_count=0
+                ))
+            
+            current_date += timedelta(days=1)
+        
+        # Calculate summary statistics
+        total_days_with_limit = sum(1 for day in daily_data if day.daily_spending_limit_cents > 0)
+        total_spending = sum(day.actual_spending_cents for day in daily_data)
+        total_limit = sum(day.daily_spending_limit_cents for day in daily_data)
+        days_over_limit = sum(1 for day in daily_data if day.is_over_limit)
+        avg_daily_spending = total_spending / max(total_days_with_limit, 1)
+        
+        summary = {
+            "total_spending_cents": total_spending,
+            "total_limit_cents": total_limit,
+            "days_in_month": len(daily_data),
+            "days_with_budget": total_days_with_limit,
+            "days_over_limit": days_over_limit,
+            "average_daily_spending_cents": round(avg_daily_spending),
+            "month_progress_percentage": round((total_spending / total_limit * 100) if total_limit > 0 else 0, 2)
+        }
+        
+        return BudgetCalendarResponse(
+            budget_id=str(budget.id),
+            budget_name=budget.name,
+            month=month,
+            period_start=budget_period_start,
+            period_end=budget_period_end,
+            daily_data=daily_data,
+            summary=summary
+        )
+    
+    @staticmethod
+    def _get_daily_spending(
+        db: Session, 
+        budget: Budget, 
+        target_date: date
+    ) -> int:
+        """Get total spending for a specific day"""
+        query = db.query(func.coalesce(func.sum(func.abs(Transaction.amount_cents)), 0))
+        query = query.filter(
+            Transaction.user_id == budget.user_id,
+            Transaction.transaction_date == target_date,
+            Transaction.amount_cents < 0  # Only expenses
+        )
+        
+        # Filter by category if budget is category-specific
+        if budget.category_id:
+            query = query.filter(Transaction.category_id == budget.category_id)
+        
+        return query.scalar() or 0
+    
+    @staticmethod
+    def _get_daily_transaction_count(
+        db: Session, 
+        budget: Budget, 
+        target_date: date
+    ) -> int:
+        """Get transaction count for a specific day"""
+        query = db.query(func.count(Transaction.id))
+        query = query.filter(
+            Transaction.user_id == budget.user_id,
+            Transaction.transaction_date == target_date,
+            Transaction.amount_cents < 0  # Only expenses
+        )
+        
+        # Filter by category if budget is category-specific
+        if budget.category_id:
+            query = query.filter(Transaction.category_id == budget.category_id)
+        
+        return query.scalar() or 0

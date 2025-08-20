@@ -122,24 +122,7 @@ Common error codes include:
 *   **Response**: `UserProfile` schema
 *   **Errors**: `401` (Unauthorized), `404` (User not found)
 
-**`GET /users/me/preferences`**
-*   **Description**: Retrieves the preferences of the currently authenticated user.
-*   **Authentication**: Required
-*   **Response**: `UserPreferences` schema
-*   **Errors**: `401` (Unauthorized)
 
-**`PUT /users/me/preferences`**
-*   **Description**: Updates the preferences of the currently authenticated user.
-*   **Authentication**: Required
-*   **Request Body**: `UserPreferencesUpdate` schema
-*   **Response**: `UserPreferences` schema
-*   **Errors**: `401` (Unauthorized), `422` (Validation Error)
-
-**`POST /users/me/preferences/reset`**
-*   **Description**: Resets user preferences to default values.
-*   **Authentication**: Required
-*   **Response**: `UserPreferences` schema
-*   **Errors**: `401` (Unauthorized)
 
 **`GET /users/me/profile`**
 *   **Description**: Retrieves the current user's public profile information.
@@ -709,30 +692,7 @@ This section provides a reference for the Pydantic schemas used in the API.
 *   `timezone` (string, optional): New timezone.
 *   `currency` (string, optional): New preferred currency.
 
-**`UserPreferences`**
-*   `currency` (string): User's preferred currency (e.g., "USD").
-*   `date_format` (string): Preferred date format (e.g., "MM/DD/YYYY").
-*   `number_format` (string): Preferred number format locale (e.g., "en-US").
-*   `theme` (string): UI theme ("light", "dark", "auto").
-*   `email_notifications` (boolean): Enable/disable email notifications.
-*   `push_notifications` (boolean): Enable/disable push notifications.
-*   `transaction_reminders` (boolean): Enable/disable transaction reminders.
-*   `budget_alerts` (boolean): Enable/disable budget alerts.
-*   `weekly_reports` (boolean): Enable/disable weekly reports.
-*   `monthly_reports` (boolean): Enable/disable monthly reports.
-*   `data_sharing` (boolean): Enable/disable anonymous data sharing.
-*   `analytics_tracking` (boolean): Enable/disable analytics tracking.
-*   `default_account_type` (string): Default account type for new transactions.
-*   `budget_warning_threshold` (float): Percentage threshold for budget warnings (0.0-1.0).
-*   `low_balance_threshold` (float): Balance threshold for low balance alerts.
-*   `auto_backup` (boolean): Enable/disable automatic data backup.
-*   `backup_frequency` (string): Frequency of automatic backups ("daily", "weekly", "monthly").
-*   `startup_page` (string): Default page to load on startup.
-*   `items_per_page` (integer): Number of items to display per page in lists.
-*   `auto_categorize` (boolean): Enable/disable automatic transaction categorization.
 
-**`UserPreferencesUpdate`**
-*   (Partial `UserPreferences` schema)
 
 ### Account Schemas
 

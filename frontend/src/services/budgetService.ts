@@ -11,7 +11,8 @@ import type {
   BudgetAlert, 
   BudgetUsage, 
   UpdateBudgetRequest,
-  CreateBudgetRequest
+  CreateBudgetRequest,
+  BudgetCalendarResponse
 } from '../types/budgets';
 
 // Enhanced types from standardized service
@@ -121,6 +122,11 @@ class BudgetService extends BaseService {
 
   async getBudgetAlerts(): Promise<BudgetAlert[]> {
     return apiClient.get<BudgetAlert[]>('/budgets/analytics/alerts');
+  }
+
+  async getBudgetCalendar(budgetId: string, month: string): Promise<BudgetCalendarResponse> {
+    const params = { month };
+    return apiClient.get<BudgetCalendarResponse>(`/budgets/${budgetId}/calendar`, params);
   }
 
   // Helper methods

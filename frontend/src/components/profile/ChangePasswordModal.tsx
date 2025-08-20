@@ -4,6 +4,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { userService } from '../../services/userService';
+import { useSuccessToast } from '../ui/Toast';
 
 interface ChangePasswordModalProps {
   isOpen: boolean;
@@ -38,6 +39,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
   const [isLoading, setIsLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showValidation, setShowValidation] = useState(false);
+  const showSuccess = useSuccessToast();
 
   const validatePassword = (password: string): PasswordValidation => {
     return {
@@ -117,7 +119,7 @@ export function ChangePasswordModal({ isOpen, onClose }: ChangePasswordModalProp
       await userService.changePassword(formData.currentPassword, formData.newPassword);
       
       // Success feedback
-      alert('Password changed successfully!');
+      showSuccess('Password changed successfully!');
       
       // Reset form and close modal
       setFormData({ currentPassword: '', newPassword: '', confirmPassword: '' });

@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import and_, or_, desc
+from sqlalchemy import and_, or_, desc, func
 import uuid
 
 from ..models.notification import Notification, NotificationType, NotificationPriority
+from ..models.user import User
+from ..config import settings
 from ..websocket.events import WebSocketEvents
 import logging
 
@@ -22,7 +24,7 @@ class NotificationService:
         message: str,
         priority: NotificationPriority = NotificationPriority.MEDIUM,
         action_url: Optional[str] = None,
-        extra_data: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None
     ) -> Notification:
         """Create a new notification and emit it via WebSocket"""
         try:
@@ -34,7 +36,7 @@ class NotificationService:
                 message=message,
                 priority=priority,
                 action_url=action_url,
-                extra_data=extra_data
+                metadata=metadata
             )
             
             db.add(notification)
@@ -49,7 +51,7 @@ class NotificationService:
                 notification_type=type.value,
                 priority=priority.value,
                 action_url=action_url,
-                metadata=extra_data
+                metadata=metadata
             )
             
             logger.info(f"Created and emitted notification {notification.id} for user {user_id}")
@@ -89,6 +91,67 @@ class NotificationService:
             Notification.user_id == user_id,
             Notification.is_read == False
         ).count()
+    
+    @staticmethod
+    def get_notifications_count(
+        db: Session,
+        user_id: uuid.UUID,
+        unread_only: bool = False,
+        type_filter: Optional[NotificationType] = None
+    ) -> int:
+        """Get total count of notifications for a user with optional filtering"""
+        query = db.query(func.count(Notification.id)).filter(
+            Notification.user_id == user_id
+        )
+        
+        if unread_only:
+            query = query.filter(Notification.is_read == False)
+            
+        if type_filter:
+            query = query.filter(Notification.type == type_filter)
+            
+        return query.scalar() or 0
+    
+    @staticmethod
+    def get_notification_stats_efficient(db: Session, user_id: uuid.UUID) -> Dict[str, Any]:
+        """Get notification statistics using efficient SQL aggregation"""
+        # Get total count
+        total_count = db.query(func.count(Notification.id)).filter(
+            Notification.user_id == user_id
+        ).scalar() or 0
+        
+        # Get unread count
+        unread_count = db.query(func.count(Notification.id)).filter(
+            Notification.user_id == user_id,
+            Notification.is_read == False
+        ).scalar() or 0
+        
+        # Get count by type using SQL aggregation
+        type_stats = db.query(
+            Notification.type,
+            func.count(Notification.id).label('count')
+        ).filter(
+            Notification.user_id == user_id
+        ).group_by(Notification.type).all()
+        
+        by_type = {stat.type.value: stat.count for stat in type_stats}
+        
+        # Get count by priority using SQL aggregation
+        priority_stats = db.query(
+            Notification.priority,
+            func.count(Notification.id).label('count')
+        ).filter(
+            Notification.user_id == user_id
+        ).group_by(Notification.priority).all()
+        
+        by_priority = {stat.priority.value: stat.count for stat in priority_stats}
+        
+        return {
+            "total_count": total_count,
+            "unread_count": unread_count,
+            "by_type": by_type,
+            "by_priority": by_priority
+        }
     
     @staticmethod
     def mark_as_read(
@@ -188,7 +251,7 @@ class NotificationService:
             message=message,
             priority=priority,
             action_url=f"/budgets?budgetId={budget_id}",
-            extra_data={
+            metadata={
                 "budget_id": str(budget_id),
                 "percentage_used": percentage_used,
                 "current_amount_cents": current_amount_cents,
@@ -218,7 +281,7 @@ class NotificationService:
             message=message,
             priority=NotificationPriority.MEDIUM,
             action_url=f"/goals?goalId={goal_id}",
-            extra_data={
+            metadata={
                 "goal_id": str(goal_id),
                 "milestone_percentage": milestone_percentage,
                 "current_amount_cents": current_amount_cents,
@@ -249,7 +312,7 @@ class NotificationService:
             message=message,
             priority=NotificationPriority.HIGH,
             action_url=f"/goals?goalId={goal_id}",
-            extra_data={
+            metadata={
                 "goal_id": str(goal_id),
                 "final_amount_cents": final_amount_cents
             }

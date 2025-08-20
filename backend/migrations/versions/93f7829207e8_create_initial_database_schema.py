@@ -195,7 +195,7 @@ def upgrade() -> None:
         sa.Column('target_date', sa.Date, nullable=True),
         sa.Column('completed_date', sa.Date, nullable=True),
         sa.Column('auto_contribute', sa.Boolean, nullable=False, default=False),
-        sa.Column('auto_contribution_amount', sa.BigInteger, nullable=True),
+        sa.Column('auto_contribution_amount_cents', sa.BigInteger, nullable=True),
         sa.Column('auto_contribution_source', sa.String(100), nullable=True),
         sa.Column('last_contribution_date', sa.Date, nullable=True),
         sa.Column('contribution_frequency', sa.String(20), nullable=False, default='weekly'),

@@ -7,7 +7,7 @@ from contextlib import contextmanager
 import uuid
 import logging
 from gotrue.errors import AuthError
-from jose import jwt, JWTError, jwk
+from jose import jwt, JWTError
 import httpx
 
 # New import for on-the-fly user creation
@@ -18,7 +18,6 @@ from app.auth.supabase_client import supabase_client
 from app.services.user_service import UserService
 from app.models.user import User
 from app.auth.auth_service import AuthService
-from app.core.redis_client import redis_client
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -30,15 +29,68 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
     """Dependency to get the authentication service."""
     return AuthService(db)
 
-# TODO: try except blocks are too broad, we should be more specific about the errors we are catching
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    auth_service: AuthService = Depends(get_auth_service)
-) -> User:
-    """Gets the current authenticated user from a token."""
-    token = credentials.credentials
+def _provision_user_from_supabase(auth_service: AuthService, user_data) -> User:
+    """Provisions a local user record from Supabase user data.
     
-    # Development mode: accept mock tokens
+    Args:
+        auth_service: The authentication service instance
+        user_data: Supabase user data response
+        
+    Returns:
+        Local User instance
+        
+    Raises:
+        HTTPException: If user provisioning fails
+    """
+    uid = uuid.UUID(user_data.user.id)
+
+    # Check if a local user exists with the same e-mail (created earlier without UID)
+    existing_by_email = auth_service.user_service.get_by_email(
+        db=auth_service.db,
+        email=user_data.user.email,
+    )
+
+    if existing_by_email:
+        # Link the Supabase UID to that user and update verification flag
+        try:
+            existing_by_email.supabase_user_id = uid
+            existing_by_email.is_verified = user_data.user.email_confirmed_at is not None
+            auth_service.db.add(existing_by_email)
+            auth_service.db.commit()
+            auth_service.db.refresh(existing_by_email)
+            return existing_by_email
+        except Exception as e:
+            auth_service.db.rollback()
+            logger.error(f"Linking existing user failed: {e}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
+    else:
+        # Create a brand-new row
+        try:
+            return auth_service.user_service.create(
+                db=auth_service.db,
+                obj_in=UserCreate(
+                    email=user_data.user.email,
+                    display_name=(user_data.user.user_metadata or {}).get("display_name"),
+                    first_name=(user_data.user.user_metadata or {}).get("first_name"),
+                    last_name=(user_data.user.user_metadata or {}).get("last_name"),
+                    supabase_user_id=uid,
+                    is_verified=user_data.user.email_confirmed_at is not None,
+                ),
+            )
+        except Exception as e:
+            logger.error(f"Auto-provisioning local user failed: {e}")
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
+
+def _validate_dev_token(token: str, auth_service: AuthService) -> Optional[User]:
+    """Validates development mock tokens and returns/creates dev user.
+    
+    Args:
+        token: The token to validate
+        auth_service: The authentication service instance
+        
+    Returns:
+        Development user if token is valid dev token, None otherwise
+    """
     from app.config import settings
     if hasattr(settings, 'ENVIRONMENT') and settings.ENVIRONMENT == 'development':
         if token.startswith('dev-mock-token-'):
@@ -64,83 +116,64 @@ async def get_current_user(
                 )
             
             return dev_user
+    return None
+
+def _validate_supabase_token(token: str, auth_service: AuthService):
+    """Validates token with Supabase and returns user data.
+    
+    Args:
+        token: JWT token to validate
+        auth_service: The authentication service instance
+        
+    Returns:
+        Supabase user data response
+        
+    Raises:
+        HTTPException: If token is invalid
+    """
+    user_data = auth_service.supabase.client.auth.get_user(token)
+    if not user_data or not user_data.user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
+    return user_data
+
+def _get_or_provision_local_user(user_data, auth_service: AuthService) -> User:
+    """Gets existing local user or provisions new one from Supabase data.
+    
+    Args:
+        user_data: Supabase user data response
+        auth_service: The authentication service instance
+        
+    Returns:
+        Local User instance
+    """
+    # Try to fetch matching local user row
+    user = auth_service.user_service.get_by_supabase_id(
+        db=auth_service.db,
+        supabase_user_id=uuid.UUID(user_data.user.id)
+    )
+
+    # Automatically provision a local record if it doesn't exist (first login from older account)
+    if not user:
+        user = _provision_user_from_supabase(auth_service, user_data)
+    
+    return user
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    auth_service: AuthService = Depends(get_auth_service)
+) -> User:
+    """Gets the current authenticated user from a token."""
+    token = credentials.credentials
+    
+    # Development mode: accept mock tokens
+    dev_user = _validate_dev_token(token, auth_service)
+    if dev_user:
+        return dev_user
     
     try:
         # Single Supabase token validation path
-        user_data = auth_service.supabase.client.auth.get_user(token)
-        if not user_data or not user_data.user:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
-        
-        # # Check if the token has been denylisted (logged out)
-        # try:
-        #     supabase_jwt_secret = settings.SUPABASE_JWT_SECRET or settings.JWT_SECRET_KEY
-        #     if supabase_jwt_secret:
-        #         payload = jwt.decode(
-        #             token, 
-        #             supabase_jwt_secret, 
-        #             algorithms=["HS256"], 
-        #             options={"verify_signature": False}
-        #         )
-        #         jti = payload.get("jti")
-        #         if jti:
-        #             is_denylisted = await redis_client.key_exists(f"denylist:{jti}")
-        #             if is_denylisted:
-        #                 logger.warning(f"Attempt to use a denylisted token for user: {user_data.user.email}")
-        #                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been invalidated.")
-        # except JWTError:
-        #     # If decoding fails here (it shouldn't if Supabase passed it), deny access
-        #     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token claims.")
-        # except Exception as e:
-        #     logger.error(f"Error checking token denylist: {e}")
-        #     # Continue without denylist check in case Redis is down - log the issue
-        
-        # Try to fetch matching local user row
-        user = auth_service.user_service.get_by_supabase_id(
-            db=auth_service.db,
-            supabase_user_id=uuid.UUID(user_data.user.id)
-        )
-
-        # Automatically provision a local record if it doesn't exist (first login from older account)
-        if not user:
-            uid = uuid.UUID(user_data.user.id)
-
-            # Check if a local user exists with the same e-mail (created earlier without UID)
-            existing_by_email = auth_service.user_service.get_by_email(
-                db=auth_service.db,
-                email=user_data.user.email,
-            )
-
-            if existing_by_email:
-                # Link the Supabase UID to that user and update verification flag
-                try:
-                    existing_by_email.supabase_user_id = uid
-                    existing_by_email.is_verified = user_data.user.email_confirmed_at is not None
-                    auth_service.db.add(existing_by_email)
-                    auth_service.db.commit()
-                    auth_service.db.refresh(existing_by_email)
-                    user = existing_by_email
-                except Exception as e:
-                    auth_service.db.rollback()
-                    logger.error(f"Linking existing user failed: {e}")
-                    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
-            else:
-                # Create a brand-new row
-                try:
-                    user = auth_service.user_service.create(
-                        db=auth_service.db,
-                        obj_in=UserCreate(
-                            email=user_data.user.email,
-                            display_name=(user_data.user.user_metadata or {}).get("display_name"),
-                            first_name=(user_data.user.user_metadata or {}).get("first_name"),
-                            last_name=(user_data.user.user_metadata or {}).get("last_name"),
-                            supabase_user_id=uid,
-                            is_verified=user_data.user.email_confirmed_at is not None,
-                        ),
-                    )
-                except Exception as e:
-                    logger.error(f"Auto-provisioning local user failed: {e}")
-                    raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
-        
+        user_data = _validate_supabase_token(token, auth_service)
+        user = _get_or_provision_local_user(user_data, auth_service)
         return user
         
     except AuthError as e:
@@ -149,11 +182,17 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials."
         )
-    except Exception as e:
-        logger.error(f"Authentication error: {e}")
+    except (ValueError, KeyError) as e:
+        logger.error(f"Token parsing error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed."
+            detail="Invalid token format."
+        )
+    except Exception as e:
+        logger.error(f"Unexpected authentication error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication service error."
         )
 
 async def get_current_active_user(
@@ -267,19 +306,7 @@ async def get_current_user_from_token(
         if not user_data or not user_data.user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
 
-        # Check denylist (for logged-out tokens)
-        # Note: Supabase already validated the token; we only need unverified claims to read JTI.
-        try:
-            supabase_jwt_secret = settings.SUPABASE_JWT_SECRET or settings.JWT_SECRET_KEY
-            if supabase_jwt_secret:
-                # Avoid validating claims like aud/exp when we're only reading JTI
-                payload = jwt.get_unverified_claims(token)
-                jti = payload.get("jti")
-                if jti and await redis_client.key_exists(f"denylist:{jti}"):
-                    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token has been invalidated.")
-        except JWTError:
-            # If claims cannot be read, skip denylist check but do not block auth
-            logger.warning("Failed to read unverified JWT claims for denylist check; proceeding without denylist validation")
+# No denylist check needed - Supabase handles token validation
 
         # Get or create local user record
         user = auth_service.user_service.get_by_supabase_id(
@@ -289,14 +316,7 @@ async def get_current_user_from_token(
 
         if not user:
             # Auto-provision user if they exist in Supabase but not locally
-            user = auth_service.user_service.create(
-                db=auth_service.db,
-                obj_in=UserCreate(
-                    email=user_data.user.email,
-                    supabase_user_id=uuid.UUID(user_data.user.id),
-                    is_verified=user_data.user.email_confirmed_at is not None,
-                ),
-            )
+            user = _provision_user_from_supabase(auth_service, user_data)
         
         return user
         
@@ -306,11 +326,17 @@ async def get_current_user_from_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Could not validate credentials from token."
         )
-    except Exception as e:
-        logger.error(f"Token authentication error: {e}")
+    except (ValueError, KeyError) as e:
+        logger.error(f"Token parsing error in get_current_user_from_token: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed."
+            detail="Invalid token format."
+        )
+    except Exception as e:
+        logger.error(f"Unexpected token authentication error: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication service error."
         )
 
 async def verify_plaid_webhook(

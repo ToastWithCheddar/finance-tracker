@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import { X } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -31,7 +31,6 @@ interface BudgetFormProps {
 
 export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = false }: BudgetFormProps) {
   const isEditing = !!budget;
-  const [amountInput, setAmountInput] = useState('');
 
   const {
     register,
@@ -40,6 +39,7 @@ export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = fals
     reset,
     setValue,
     watch,
+    control
   } = useForm<CreateBudgetRequest>();
 
   // Get categories for the dropdown
@@ -64,7 +64,6 @@ export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = fals
           alert_threshold: budget.alert_threshold,
           is_active: budget.is_active,
         });
-        setAmountInput((budget.amount_cents / 100).toString());
       } else {
         // Create mode - reset to defaults
         reset({
@@ -77,18 +76,21 @@ export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = fals
           alert_threshold: 0.8,
           is_active: true,
         });
-        setAmountInput('');
       }
     }
   }, [budget, isOpen, reset]);
 
-  // Handle amount input changes
-  const handleAmountChange = (value: string) => {
-    setAmountInput(value);
-    const numericValue = parseFloat(value);
-    if (!isNaN(numericValue)) {
-      setValue('amount_cents', Math.round(numericValue * 100));
-    }
+  // Format currency for display
+  const formatCurrencyDisplay = (cents: number): string => {
+    return (cents / 100).toFixed(2);
+  };
+
+  // Parse currency input to cents
+  const parseCurrencyInput = (input: string): number => {
+    // Remove any non-numeric characters except decimal point
+    const cleaned = input.replace(/[^\d.]/g, '');
+    const numericValue = parseFloat(cleaned);
+    return isNaN(numericValue) ? 0 : Math.round(numericValue * 100);
   };
 
   const onFormSubmit = (data: CreateBudgetRequest) => {
@@ -173,20 +175,37 @@ export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = fals
                 <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500 dark:text-gray-400">
                   $
                 </span>
-                <Input
-                  id="amount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={amountInput}
-                  onChange={(e) => handleAmountChange(e.target.value)}
-                  className="pl-8"
-                  placeholder="0.00"
-                  disabled={isLoading}
+                <Controller
+                  name="amount_cents"
+                  control={control}
+                  rules={{ 
+                    required: 'Budget amount is required',
+                    min: { value: 1, message: 'Amount must be greater than 0' }
+                  }}
+                  render={({ field: { value, onChange, onBlur } }) => (
+                    <Input
+                      id="amount"
+                      type="text"
+                      value={value ? formatCurrencyDisplay(value) : ''}
+                      onChange={(e) => {
+                        const cents = parseCurrencyInput(e.target.value);
+                        onChange(cents);
+                      }}
+                      onBlur={(e) => {
+                        // Format on blur for better UX
+                        const cents = parseCurrencyInput(e.target.value);
+                        onChange(cents);
+                        onBlur();
+                      }}
+                      className="pl-8"
+                      placeholder="0.00"
+                      disabled={isLoading}
+                    />
+                  )}
                 />
               </div>
               {errors.amount_cents && (
-                <p className="mt-1 text-sm text-red-600 dark:text-red-400">Amount must be greater than 0</p>
+                <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.amount_cents.message}</p>
               )}
             </div>
 

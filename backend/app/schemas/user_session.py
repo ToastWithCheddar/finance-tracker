@@ -1,37 +1,35 @@
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional
+# No imports needed from typing for this file after modernization
 from datetime import datetime
 from uuid import UUID
 
+from .base import BaseResponseSchema
+
 
 class UserSessionBase(BaseModel):
-    device_info: Optional[str] = None
-    user_agent: Optional[str] = None
-    ip_address: Optional[str] = None
-    location: Optional[str] = None
+    device_info: str | None = None
+    user_agent: str | None = None
+    ip_address: str | None = None
+    location: str | None = None
 
 
 class UserSessionCreate(UserSessionBase):
     session_token: str = Field(..., min_length=1, max_length=255)
-    expires_at: Optional[datetime] = None
+    expires_at: datetime | None = None
 
 
 class UserSessionUpdate(BaseModel):
-    device_info: Optional[str] = None
-    location: Optional[str] = None
-    is_active: Optional[bool] = None
-    last_activity: Optional[datetime] = None
+    device_info: str | None = None
+    location: str | None = None
+    is_active: bool | None = None
+    last_activity: datetime | None = None
 
 
-class UserSessionResponse(UserSessionBase):
-    id: UUID
+class UserSessionResponse(UserSessionBase, BaseResponseSchema):
     user_id: UUID
     is_active: bool
     last_activity: datetime
-    created_at: datetime
-    expires_at: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True)
+    expires_at: datetime | None = None
 
 
 class UserSessionPublic(BaseModel):
@@ -51,4 +49,4 @@ class SessionStatsResponse(BaseModel):
     total_sessions: int
     active_sessions: int
     inactive_sessions: int
-    current_session_id: Optional[UUID] = None
+    current_session_id: UUID | None = None

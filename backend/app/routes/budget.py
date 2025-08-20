@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -6,11 +6,14 @@ from datetime import date
 from uuid import UUID
 import logging
 
+from app.core.exceptions import CategoryNotFoundError, BudgetNotFoundError, DataIntegrityError, BusinessLogicError, ValidationError
+
 from ..database import get_db
+from app.dependencies import get_budget_service, get_owned_budget
 from ..services.budget_service import BudgetService
 from ..schemas.budget import (
     BudgetCreate, BudgetUpdate, BudgetResponse, BudgetFilter,
-    BudgetListResponse, BudgetProgress, BudgetPeriod
+    BudgetListResponse, BudgetProgress, BudgetPeriod, BudgetCalendarResponse
 )
 from ..auth.dependencies import get_current_user, get_db_with_user_context
 from ..models.user import User
@@ -24,7 +27,8 @@ logger = logging.getLogger(__name__)
 def create_budget(
     budget: BudgetCreate,
     db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    budget_service: BudgetService = Depends(get_budget_service)
 ):
     """Create a new budget"""
     # Validate category exists if provided
@@ -34,23 +38,26 @@ def create_budget(
             Category.user_id == current_user.id
         ).first()
         if not category:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+            raise CategoryNotFoundError(str(budget.category_id))
     
     try:
-        created_budget = BudgetService.create_budget(db, budget, current_user.id)
+        created_budget = budget_service.create_budget(db, budget, current_user.id)
     except SQLAlchemyError as e:
         logger.error(f"Database error creating budget: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create budget due to database error")
+        raise DataIntegrityError("Failed to create budget due to database error")
     except Exception as e:
-        logger.error(f"Unexpected error creating budget: {str(e)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create budget")
+        logger.error(f"Unexpected error creating budget: {str(e)}", exc_info=True)
+        raise BusinessLogicError("An error occurred while creating budget")
     
     # Calculate usage for response
-    usage = BudgetService.calculate_budget_usage(db, created_budget)
+    usage = budget_service.calculate_budget_usage(db, created_budget)
     
     # Refresh to get eager-loaded relationships
     db.refresh(created_budget)
     category_name = created_budget.category.name if created_budget.category else None
+    
+    # Check if custom alert settings exist
+    has_custom_alerts = hasattr(created_budget, 'alert_settings') and created_budget.alert_settings is not None
     
     return BudgetResponse(
         id=str(created_budget.id),
@@ -66,7 +73,8 @@ def create_budget(
         is_active=created_budget.is_active,
         created_at=created_budget.created_at,
         updated_at=created_budget.updated_at,
-        usage=usage
+        usage=usage,
+        has_custom_alerts=has_custom_alerts
     )
 
 
@@ -89,21 +97,19 @@ def get_budgets(
         over_budget=over_budget
     )
     
-    budgets = BudgetService.get_budgets(db, current_user.id, filters, skip, limit)
+    # Use optimized method to get budgets with usage data in minimal queries
+    budgets_with_usage = BudgetService.get_budgets_with_usage(db, current_user.id, filters, skip, limit)
     summary = BudgetService.get_budget_summary(db, current_user.id)
     alerts = BudgetService.get_budget_alerts(db, current_user.id)
     
-    # Build response with usage data using eager-loaded relationships
+    # Build response using pre-calculated usage data
     budget_responses = []
-    for budget in budgets:
-        usage = BudgetService.calculate_budget_usage(db, budget)
-        
-        # Apply over_budget filter if specified
-        if over_budget is not None and usage.is_over_budget != over_budget:
-            continue
-        
-        # Category name is now available due to eager loading
+    for budget, usage in budgets_with_usage:
+        # Category name is available due to eager loading
         category_name = budget.category.name if budget.category else None
+        
+        # Check if custom alert settings exist
+        has_custom_alerts = hasattr(budget, 'alert_settings') and budget.alert_settings is not None
         
         budget_responses.append(BudgetResponse(
             id=budget.id,
@@ -119,7 +125,8 @@ def get_budgets(
             is_active=budget.is_active,
             created_at=budget.created_at,
             updated_at=budget.updated_at,
-            usage=usage
+            usage=usage,
+            has_custom_alerts=has_custom_alerts
         ))
     
     return BudgetListResponse(
@@ -131,20 +138,19 @@ def get_budgets(
 
 @router.get("/{budget_id}", response_model=BudgetResponse)
 def get_budget(
-    budget_id: UUID,
-    db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_user)
+    budget = Depends(get_owned_budget),
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Get a budget by ID"""
-    budget = BudgetService.get_budget(db, budget_id, current_user.id)
-    if not budget:
-        raise HTTPException(status_code=404, detail="Budget not found")
     
     # Calculate usage
     usage = BudgetService.calculate_budget_usage(db, budget)
     
     # Category name is available due to eager loading from get_budget
     category_name = budget.category.name if budget.category else None
+    
+    # Check if custom alert settings exist
+    has_custom_alerts = hasattr(budget, 'alert_settings') and budget.alert_settings is not None
     
     return BudgetResponse(
         id=budget.id,
@@ -160,21 +166,19 @@ def get_budget(
         is_active=budget.is_active,
         created_at=budget.created_at,
         updated_at=budget.updated_at,
-        usage=usage
+        usage=usage,
+        has_custom_alerts=has_custom_alerts
     )
 
 
 @router.put("/{budget_id}", response_model=BudgetResponse)
 def update_budget(
-    budget_id: UUID,
     budget_update: BudgetUpdate,
+    budget = Depends(get_owned_budget),
     db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Update a budget"""
-    budget = BudgetService.get_budget(db, budget_id, current_user.id)
-    if not budget:
-        raise HTTPException(status_code=404, detail="Budget not found")
     
     # Validate category exists if being updated
     if budget_update.category_id:
@@ -183,7 +187,7 @@ def update_budget(
             Category.user_id == current_user.id
         ).first()
         if not category:
-            raise HTTPException(status_code=404, detail="Category not found")
+            raise CategoryNotFoundError(str(budget_update.category_id))
     
     updated_budget = BudgetService.update_budget(db, budget, budget_update)
     
@@ -193,6 +197,9 @@ def update_budget(
     # Refresh to get updated eager-loaded relationships
     db.refresh(updated_budget)
     category_name = updated_budget.category.name if updated_budget.category else None
+    
+    # Check if custom alert settings exist
+    has_custom_alerts = hasattr(updated_budget, 'alert_settings') and updated_budget.alert_settings is not None
     
     return BudgetResponse(
         id=updated_budget.id,
@@ -208,20 +215,17 @@ def update_budget(
         is_active=updated_budget.is_active,
         created_at=updated_budget.created_at,
         updated_at=updated_budget.updated_at,
-        usage=usage
+        usage=usage,
+        has_custom_alerts=has_custom_alerts
     )
 
 
 @router.delete("/{budget_id}")
 def delete_budget(
-    budget_id: UUID,
-    db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_user)
+    budget = Depends(get_owned_budget),
+    db: Session = Depends(get_db_with_user_context)
 ):
     """Delete a budget"""
-    budget = BudgetService.get_budget(db, budget_id, current_user.id)
-    if not budget:
-        raise HTTPException(status_code=404, detail="Budget not found")
     
     BudgetService.delete_budget(db, budget)
     return {"message": "Budget deleted successfully"}
@@ -229,14 +233,14 @@ def delete_budget(
 
 @router.get("/{budget_id}/progress", response_model=BudgetProgress)
 def get_budget_progress(
-    budget_id: UUID,
+    budget = Depends(get_owned_budget),
     db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
     """Get detailed budget progress over time"""
-    progress = BudgetService.get_budget_progress(db, budget_id, current_user.id)
+    progress = BudgetService.get_budget_progress(db, budget.id, current_user.id)
     if not progress:
-        raise HTTPException(status_code=404, detail="Budget not found")
+        raise BudgetNotFoundError(str(budget.id))
     
     return progress
 
@@ -257,3 +261,24 @@ def get_budget_alerts(
 ):
     """Get current budget alerts"""
     return BudgetService.get_budget_alerts(db, current_user.id)
+
+
+@router.get("/{budget_id}/calendar", response_model=BudgetCalendarResponse)
+def get_budget_calendar(
+    month: str = Query(..., description="Month in YYYY-MM format"),
+    budget = Depends(get_owned_budget),
+    db: Session = Depends(get_db_with_user_context),
+    current_user: User = Depends(get_current_user)
+):
+    """Get budget calendar data for a specific month"""
+    try:
+        calendar_data = BudgetService.get_budget_calendar(db, budget.id, current_user.id, month)
+        if not calendar_data:
+            raise BudgetNotFoundError(str(budget.id))
+        
+        return calendar_data
+    except ValueError as e:
+        raise ValidationError(str(e))
+    except Exception as e:
+        logger.error(f"Error getting budget calendar: {e}", exc_info=True)
+        raise BusinessLogicError("An error occurred while retrieving budget calendar")

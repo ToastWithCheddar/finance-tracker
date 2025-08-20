@@ -1,5 +1,5 @@
 // frontend/src/components/dashboard/NotificationPanel.tsx
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Bell, 
   BellOff, 
@@ -11,7 +11,10 @@ import {
   Target,
   PiggyBank,
   Sparkles,
-  ExternalLink
+  ExternalLink,
+  Search,
+  Filter,
+  ChevronDown
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -35,10 +38,82 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   } = useRealtimeStore();
   
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [typeFilter, setTypeFilter] = useState<string>('all');
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
-  const filteredNotifications = notifications.filter(notification => 
-    filter === 'all' || !notification.read
-  );
+  // Define available notification types for filtering
+  const notificationTypes = [
+    { value: 'all', label: 'All Types' },
+    { value: 'budget_alert', label: 'Budget Alert' },
+    { value: 'goal_milestone', label: 'Goal Milestone' },
+    { value: 'goal_achieved', label: 'Goal Achieved' },
+    { value: 'success', label: 'Success' },
+    { value: 'error', label: 'Error' },
+    { value: 'warning', label: 'Warning' },
+    { value: 'ai_insight_generated', label: 'AI Insight' },
+    { value: 'spending_pattern_detected', label: 'Spending Pattern' },
+    { value: 'goal_progress_update', label: 'Goal Progress' },
+  ];
+
+  // Helper function to group notifications by date
+  const groupNotificationsByDate = (notifications: RealtimeNotification[]) => {
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const groups: { [key: string]: RealtimeNotification[] } = {
+      'Today': [],
+      'Yesterday': [],
+      'Older': []
+    };
+
+    notifications.forEach(notification => {
+      const notificationDate = new Date(notification.created_at);
+      const isToday = notificationDate.toDateString() === today.toDateString();
+      const isYesterday = notificationDate.toDateString() === yesterday.toDateString();
+
+      if (isToday) {
+        groups['Today'].push(notification);
+      } else if (isYesterday) {
+        groups['Yesterday'].push(notification);
+      } else {
+        groups['Older'].push(notification);
+      }
+    });
+
+    // Remove empty groups
+    Object.keys(groups).forEach(key => {
+      if (groups[key].length === 0) {
+        delete groups[key];
+      }
+    });
+
+    return groups;
+  };
+
+  // Enhanced filtering logic with memoization
+  const filteredNotifications = useMemo(() => {
+    return notifications.filter(notification => {
+      // Filter by read status
+      const matchesReadFilter = filter === 'all' || !notification.read;
+      
+      // Filter by type
+      const matchesTypeFilter = typeFilter === 'all' || notification.type === typeFilter;
+      
+      // Filter by search query (case-insensitive search in title and message)
+      const matchesSearchQuery = !searchQuery || 
+        notification.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        notification.message.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      return matchesReadFilter && matchesTypeFilter && matchesSearchQuery;
+    });
+  }, [notifications, filter, typeFilter, searchQuery]);
+
+  // Group filtered notifications by date
+  const groupedNotifications = useMemo(() => {
+    return groupNotificationsByDate(filteredNotifications);
+  }, [filteredNotifications]);
 
   const handleNotificationClick = (notification: RealtimeNotification) => {
     if (!notification.read) {
@@ -136,9 +211,25 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                 {unreadCount}
               </span>
             )}
+            {filteredNotifications.length !== notifications.length && (
+              <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                {filteredNotifications.length} filtered
+              </span>
+            )}
           </div>
           
           <div className="flex items-center space-x-2">
+            {/* Advanced Filters Toggle */}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+              className="flex items-center gap-1"
+            >
+              <Filter className="h-4 w-4" />
+              <ChevronDown className={`h-3 w-3 transition-transform ${showAdvancedFilters ? 'rotate-180' : ''}`} />
+            </Button>
+            
             {/* Filter Toggle */}
             <div className="flex items-center border rounded-md overflow-hidden">
               <button
@@ -175,24 +266,113 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
             )}
           </div>
         </CardTitle>
+
+        {/* Advanced Filters Section */}
+        {showAdvancedFilters && (
+          <div className="mt-4 space-y-3 pt-3 border-t">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search notifications..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Type Filter Dropdown */}
+            <div className="flex items-center gap-3">
+              <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
+                Type:
+              </label>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              >
+                {notificationTypes.map(type => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+
+              {/* Clear Filters Button */}
+              {(searchQuery || typeFilter !== 'all' || filter !== 'all') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setTypeFilter('all');
+                    setFilter('all');
+                  }}
+                  className="text-xs whitespace-nowrap"
+                >
+                  Clear All
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
       </CardHeader>
       
       <CardContent className="p-0">
-        <div className="max-h-96 overflow-y-auto divide-y divide-gray-200">
+        <div className="max-h-96 overflow-y-auto">
           {filteredNotifications.length === 0 ? (
             <div className="p-8 text-center text-gray-500">
-              {filter === 'unread' ? 'No unread notifications' : 'No notifications'}
+              <div className="mb-4">
+                <BellOff className="h-12 w-12 text-gray-400 mx-auto" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                {searchQuery || typeFilter !== 'all' ? 'No matching notifications' : 
+                 filter === 'unread' ? 'No unread notifications' : 'No notifications'}
+              </h3>
+              <p className="text-gray-600">
+                {searchQuery && `No notifications match "${searchQuery}".`}
+                {typeFilter !== 'all' && !searchQuery && `No ${notificationTypes.find(t => t.value === typeFilter)?.label.toLowerCase()} notifications found.`}
+                {!searchQuery && typeFilter === 'all' && filter === 'unread' && 'All notifications have been read.'}
+                {!searchQuery && typeFilter === 'all' && filter === 'all' && 'No notifications yet.'}
+              </p>
+              {(searchQuery || typeFilter !== 'all' || filter !== 'all') && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setSearchQuery('');
+                    setTypeFilter('all');
+                    setFilter('all');
+                  }}
+                  className="mt-3"
+                >
+                  Clear Filters
+                </Button>
+              )}
             </div>
           ) : (
-            filteredNotifications.map((notification) => (
-              <NotificationItem
-                key={notification.id}
-                notification={notification}
-                onClick={() => handleNotificationClick(notification)}
-                onDismiss={(e) => handleDismiss(e, notification.id)}
-                getIcon={() => getNotificationIcon(notification.type || '', notification.priority || '')}
-                getPriorityColor={() => getPriorityColor(notification.priority || '')}
-              />
+            Object.entries(groupedNotifications).map(([dateGroup, notifications]) => (
+              <div key={dateGroup}>
+                {/* Date Group Header */}
+                <div className="sticky top-0 bg-gray-50 border-b border-gray-200 px-4 py-2 z-10">
+                  <h4 className="text-sm font-semibold text-gray-700">{dateGroup}</h4>
+                </div>
+                
+                {/* Notifications in this group */}
+                <div className="divide-y divide-gray-200">
+                  {notifications.map((notification) => (
+                    <NotificationItem
+                      key={notification.id}
+                      notification={notification}
+                      onClick={() => handleNotificationClick(notification)}
+                      onDismiss={(e) => handleDismiss(e, notification.id)}
+                      getIcon={() => getNotificationIcon(notification.type || '', notification.priority || '')}
+                      getPriorityColor={() => getPriorityColor(notification.priority || '')}
+                    />
+                  ))}
+                </div>
+              </div>
             ))
           )}
         </div>

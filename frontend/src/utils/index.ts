@@ -142,5 +142,61 @@ export function formatGroupDate(dateString: string): string {
   });
 }
 
+/**
+ * Get time-based greeting based on current hour
+ */
+export function getTimeBasedGreeting(): string {
+  const hour = new Date().getHours();
+  
+  if (hour < 12) {
+    return 'Good morning';
+  } else if (hour < 18) {
+    return 'Good afternoon';
+  } else {
+    return 'Good evening';
+  }
+}
+
+/**
+ * Get visual elements for transaction status
+ */
+export function getTransactionStatusVisuals(status: string) {
+  const statusMap = {
+    pending: {
+      label: 'Pending',
+      colorClass: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200',
+      iconName: 'Clock'
+    },
+    cleared: {
+      label: 'Cleared', 
+      colorClass: 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200',
+      iconName: 'Check'
+    },
+    reconciled: {
+      label: 'Reconciled',
+      colorClass: 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200', 
+      iconName: 'CheckCheck'
+    }
+  };
+
+  return statusMap[status as keyof typeof statusMap] || {
+    label: 'Unknown',
+    colorClass: 'bg-gray-100 dark:bg-gray-900/30 text-gray-800 dark:text-gray-200',
+    iconName: 'Circle'
+  };
+}
+
 // Export category colors utility
 export * from './categoryColors';
+
+// Export frequency utilities
+export * from './frequency';
+
+// Export user utilities
+export * from './userUtils';
+
+// Export account utilities
+export * from './account';
+
+// Export date utilities
+export * from './date';

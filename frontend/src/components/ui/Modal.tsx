@@ -1,17 +1,30 @@
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 import { Button } from './Button';
 
-interface ModalProps {
+/**
+ * Props for the Modal component
+ */
+export interface ModalProps {
+  /** Whether the modal is open */
   isOpen: boolean;
+  /** Callback function to close the modal */
   onClose: () => void;
+  /** Optional title to display in the modal header */
   title?: string;
+  /** Modal content */
   children: ReactNode;
+  /** Size of the modal */
   size?: 'sm' | 'md' | 'lg' | 'xl';
+  /** Whether to show the close button in the header */
   showCloseButton?: boolean;
 }
 
+/**
+ * A generic, reusable modal dialog component with overlay, escape key handling, and body scroll prevention
+ */
 export function Modal({ 
   isOpen, 
   onClose, 
@@ -74,9 +87,7 @@ export function Modal({
                   onClick={onClose}
                   className="text-[hsl(var(--text))] opacity-70 hover:opacity-100"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
+                  <X className="w-5 h-5" />
                 </Button>
               )}
             </div>

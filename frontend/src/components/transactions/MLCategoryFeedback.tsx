@@ -1,7 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
-import { Toast } from '../ui/Toast';
+import { useToast } from '../ui/Toast';
+import { apiClient } from '../../services/api';
+import { categoryService } from '../../services/categoryService';
+import type { Category } from '../../types/category';
 
 interface MLCategoryFeedbackProps {
   transactionId: string;
@@ -12,21 +15,6 @@ interface MLCategoryFeedbackProps {
   onFeedbackSubmitted?: () => void;
 }
 
-interface Category {
-  id: string;
-  name: string;
-}
-
-// Mock categories - in production, this would come from an API
-const categories: Category[] = [
-  { id: 'food-dining', name: 'Food & Dining' },
-  { id: 'transportation', name: 'Transportation' },
-  { id: 'shopping', name: 'Shopping' },
-  { id: 'bills-utilities', name: 'Bills & Utilities' },
-  { id: 'entertainment', name: 'Entertainment' },
-  { id: 'healthcare', name: 'Healthcare' },
-  { id: 'income', name: 'Income' },
-];
 
 export const MLCategoryFeedback: React.FC<MLCategoryFeedbackProps> = ({
   transactionId,
@@ -38,9 +26,26 @@ export const MLCategoryFeedback: React.FC<MLCategoryFeedbackProps> = ({
 }) => {
   const [selectedCategory, setSelectedCategory] = useState(actualCategory || '');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showToast, setShowToast] = useState(false);
-  const [toastMessage, setToastMessage] = useState('');
   const [showFeedbackForm, setShowFeedbackForm] = useState(!actualCategory);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [isLoadingCategories, setIsLoadingCategories] = useState(true);
+  const toast = useToast();
+
+  useEffect(() => {
+    const loadCategories = async () => {
+      try {
+        const fetchedCategories = await categoryService.getMyCategories();
+        setCategories(fetchedCategories);
+      } catch (error) {
+        console.error('Error loading categories:', error);
+        toast.error('Failed to load categories');
+      } finally {
+        setIsLoadingCategories(false);
+      }
+    };
+
+    loadCategories();
+  }, [toast]);
 
   const getConfidenceColor = (level: string) => {
     switch (level) {
@@ -56,30 +61,18 @@ export const MLCategoryFeedback: React.FC<MLCategoryFeedbackProps> = ({
 
     setIsSubmitting(true);
     try {
-      const response = await fetch('/api/ml/feedback', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transaction_id: transactionId,
-          predicted_category: predictedCategory,
-          actual_category: selectedCategory,
-        }),
+      await apiClient.post('/ml/feedback', {
+        transaction_id: transactionId,
+        predicted_category: predictedCategory,
+        actual_category: selectedCategory,
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to submit feedback');
-      }
-
-      setToastMessage('Thank you for your feedback! This helps improve our ML model.');
-      setShowToast(true);
+      toast.success('Thank you for your feedback! This helps improve our ML model.');
       setShowFeedbackForm(false);
       onFeedbackSubmitted?.();
     } catch (error) {
       console.error('Error submitting feedback:', error);
-      setToastMessage('Failed to submit feedback. Please try again.');
-      setShowToast(true);
+      toast.error('Failed to submit feedback. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -133,9 +126,12 @@ export const MLCategoryFeedback: React.FC<MLCategoryFeedbackProps> = ({
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  disabled={isLoadingCategories}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
                 >
-                  <option value="">Select correct category...</option>
+                  <option value="">
+                    {isLoadingCategories ? 'Loading categories...' : 'Select correct category...'}
+                  </option>
                   {categories.map((category) => (
                     <option key={category.id} value={category.name}>
                       {category.name}
@@ -147,7 +143,7 @@ export const MLCategoryFeedback: React.FC<MLCategoryFeedbackProps> = ({
               <div className="flex space-x-2">
                 <Button
                   onClick={handleSubmitFeedback}
-                  disabled={!selectedCategory || isSubmitting}
+                  disabled={!selectedCategory || isSubmitting || isLoadingCategories}
                   className="flex-1"
                 >
                   {isSubmitting ? 'Submitting...' : 'Submit Feedback'}
@@ -176,14 +172,6 @@ export const MLCategoryFeedback: React.FC<MLCategoryFeedbackProps> = ({
           )}
         </div>
       </Card>
-
-      {showToast && (
-        <Toast
-          message={toastMessage}
-          type="success"
-          onClose={() => setShowToast(false)}
-        />
-      )}
     </>
   );
 };

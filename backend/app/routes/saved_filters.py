@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 import logging
 
+from app.core.exceptions import DuplicateResourceError, DataIntegrityError, BusinessLogicError
+
 from ..database import get_db
 from ..models.saved_filter import SavedFilter
 from ..schemas.saved_filter import SavedFilterCreate, SavedFilterUpdate, SavedFilterResponse
@@ -13,7 +15,7 @@ from ..models.user import User
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["saved-filters"])
+router = APIRouter(prefix="/saved-filters", tags=["saved-filters"])
 
 
 @router.post("", response_model=SavedFilterResponse)
@@ -31,10 +33,7 @@ async def create_saved_filter(
         ).first()
         
         if existing_filter:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="A saved filter with this name already exists"
-            )
+            raise DuplicateResourceError("Saved filter", "A saved filter with this name already exists")
         
         # Create new saved filter
         db_saved_filter = SavedFilter(
@@ -59,13 +58,14 @@ async def create_saved_filter(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create saved filter"
         )
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database error creating saved filter: {str(e)}")
+        raise DataIntegrityError("Failed to create saved filter due to database error")
     except Exception as e:
         db.rollback()
         logger.error(f"Unexpected error creating saved filter: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create saved filter"
-        )
+        raise BusinessLogicError("Failed to create saved filter")
 
 
 @router.get("", response_model=List[SavedFilterResponse])
@@ -87,12 +87,12 @@ async def get_saved_filters(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch saved filters"
         )
+    except SQLAlchemyError as e:
+        logger.error(f"Database error fetching saved filters: {str(e)}")
+        raise DataIntegrityError("Failed to fetch saved filters due to database error")
     except Exception as e:
         logger.error(f"Unexpected error fetching saved filters: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch saved filters"
-        )
+        raise BusinessLogicError("Failed to fetch saved filters")
 
 
 @router.get("/{filter_id}", response_model=SavedFilterResponse)
@@ -124,12 +124,12 @@ async def get_saved_filter(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch saved filter"
         )
+    except SQLAlchemyError as e:
+        logger.error(f"Database error fetching saved filter: {str(e)}")
+        raise DataIntegrityError("Failed to fetch saved filter due to database error")
     except Exception as e:
         logger.error(f"Unexpected error fetching saved filter: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to fetch saved filter"
-        )
+        raise BusinessLogicError("Failed to fetch saved filter")
 
 
 @router.put("/{filter_id}", response_model=SavedFilterResponse)
@@ -188,13 +188,14 @@ async def update_saved_filter(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update saved filter"
         )
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database error updating saved filter: {str(e)}")
+        raise DataIntegrityError("Failed to update saved filter due to database error")
     except Exception as e:
         db.rollback()
         logger.error(f"Unexpected error updating saved filter: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update saved filter"
-        )
+        raise BusinessLogicError("Failed to update saved filter")
 
 
 @router.delete("/{filter_id}")
@@ -233,10 +234,11 @@ async def delete_saved_filter(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete saved filter"
         )
+    except SQLAlchemyError as e:
+        db.rollback()
+        logger.error(f"Database error deleting saved filter: {str(e)}")
+        raise DataIntegrityError("Failed to delete saved filter due to database error")
     except Exception as e:
         db.rollback()
         logger.error(f"Unexpected error deleting saved filter: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete saved filter"
-        )
+        raise BusinessLogicError("Failed to delete saved filter")

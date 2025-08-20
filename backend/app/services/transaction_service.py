@@ -8,22 +8,21 @@ from uuid import UUID
 
 # Third-party imports
 from fastapi import HTTPException, status
-from sqlalchemy import or_, and_, func, extract, case
+from sqlalchemy import or_, and_, func, extract, case, desc
 from sqlalchemy.orm import Session, joinedload
 
 # Local imports
 from ..config import settings
 from ..core.exceptions import (
-    ResourceNotFoundException,
-    ValidationException,
-    BusinessLogicException,
-    ExternalServiceException,
-    ErrorCode,
-    ErrorDetail,
-    create_validation_error
+    TransactionNotFoundError,
+    AccountNotFoundError,
+    ValidationError,
+    BusinessLogicError,
+    DataIntegrityError
 )
 from ..models.transaction import Transaction
 from ..models.account import Account
+from ..models.category import Category
 from ..schemas.ml import MLCategorizationResponse
 from ..schemas.transaction import (
     TransactionCreate, 
@@ -32,13 +31,25 @@ from ..schemas.transaction import (
     TransactionPagination, 
     TransactionResponse
 )
-from .ml_client import get_ml_client, MLServiceError
+from .ml_service import get_ml_client, MLServiceError
+from .merchant_service import merchant_service
 
 logger = logging.getLogger(__name__)
 
 class TransactionService:
     @staticmethod
     async def create_transaction(db: Session, transaction: TransactionCreate, user_id: UUID) -> Transaction:
+        # Enrich merchant if not provided but description exists
+        if not transaction.merchant and transaction.description:
+            try:
+                merchant_result = merchant_service.recognize_merchant(transaction.description)
+                if merchant_result.recognized_merchant and merchant_result.confidence_score >= 0.6:
+                    transaction.merchant = merchant_result.recognized_merchant
+                    logger.info(f"Auto-enriched merchant: '{transaction.description}' -> '{transaction.merchant}' (confidence: {merchant_result.confidence_score})")
+            except Exception as e:
+                logger.warning(f"Merchant enrichment failed: {str(e)}")
+                # Continue without merchant enrichment
+        
         # If category is not provided, try to predict it using ML service
         if not transaction.category_id and transaction.description:
             ml_client = get_ml_client()
@@ -79,7 +90,7 @@ class TransactionService:
                     logger.info("Transaction will be created without ML categorization")
                     # Continue without ML categorization
                     
-            except (BusinessLogicException, ExternalServiceException) as e:
+            except HTTPException as e:
                 # For automatic transaction sync, don't fail if ML service is unavailable
                 # Only re-raise if this is an interactive user operation (not a sync)
                 logger.warning(f"ML categorization failed during transaction creation: {str(e)}")
@@ -165,7 +176,7 @@ class TransactionService:
         ).first()
         
         if not transaction:
-            raise ResourceNotFoundException("Transaction", str(transaction_id))
+            raise TransactionNotFoundError(str(transaction_id))
         
         return transaction
 
@@ -191,6 +202,40 @@ class TransactionService:
         return True
 
     @staticmethod
+    def bulk_delete_transactions(db: Session, user_id: UUID, transaction_ids: List[UUID]) -> List[UUID]:
+        """
+        Efficiently delete multiple transactions in a single database operation.
+        Returns list of successfully deleted transaction IDs.
+        """
+        try:
+            # First verify ownership and get existing transactions in one query
+            existing_transactions = db.query(Transaction.id).filter(
+                Transaction.user_id == user_id,
+                Transaction.id.in_(transaction_ids)
+            ).all()
+            
+            existing_ids = [str(tx.id) for tx in existing_transactions]
+            
+            if not existing_ids:
+                return []
+            
+            # Perform bulk delete in single query
+            num_deleted = db.query(Transaction).filter(
+                Transaction.user_id == user_id,
+                Transaction.id.in_(existing_ids)
+            ).delete(synchronize_session=False)
+            
+            db.commit()
+            
+            # Return the IDs that were actually deleted
+            return [UUID(tx_id) for tx_id in existing_ids[:num_deleted]]
+            
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Database error during bulk delete: {str(e)}", exc_info=True)
+            raise DataIntegrityError("Failed to delete transactions due to database constraints")
+
+    @staticmethod
     def get_transactions_with_filters(
         db: Session,
         user_id: UUID,
@@ -209,7 +254,10 @@ class TransactionService:
         if filters.end_date:
             query = query.filter(Transaction.transaction_date <= filters.end_date)
         if filters.category_id:
-            query = query.filter(Transaction.category_id == filters.category_id)
+            if filters.category_id == '__uncategorized__':
+                query = query.filter(Transaction.category_id.is_(None))
+            else:
+                query = query.filter(Transaction.category_id == filters.category_id)
         if filters.status:
             query = query.filter(Transaction.status == filters.status)
         if filters.min_amount_cents is not None:
@@ -227,7 +275,9 @@ class TransactionService:
             query = query.filter(
                 or_(
                     Transaction.description.ilike(search),
-                    Transaction.merchant.ilike(search)
+                    Transaction.merchant.ilike(search),
+                    Transaction.notes.ilike(search),
+                    Category.name.ilike(search)
                 )
             )
         if filters.tags:
@@ -267,7 +317,10 @@ class TransactionService:
         if filters.end_date:
             query = query.filter(Transaction.transaction_date <= filters.end_date)
         if filters.category_id:
-            query = query.filter(Transaction.category_id == filters.category_id)
+            if filters.category_id == '__uncategorized__':
+                query = query.filter(Transaction.category_id.is_(None))
+            else:
+                query = query.filter(Transaction.category_id == filters.category_id)
         if filters.status:
             query = query.filter(Transaction.status == filters.status)
         if filters.min_amount_cents is not None:
@@ -285,7 +338,9 @@ class TransactionService:
             query = query.filter(
                 or_(
                     Transaction.description.ilike(search),
-                    Transaction.merchant.ilike(search)
+                    Transaction.merchant.ilike(search),
+                    Transaction.notes.ilike(search),
+                    Category.name.ilike(search)
                 )
             )
         if filters.tags:
@@ -372,235 +427,66 @@ class TransactionService:
         return db_transactions
 
     @staticmethod
-    def get_dashboard_analytics(db: Session, user_id: UUID, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Dict[str, Any]:
-        """Get comprehensive dashboard analytics for a user"""
+    def stream_transactions_for_export(
+        db: Session, 
+        user_id: UUID, 
+        filters: TransactionFilter, 
+        chunk_size: int = 1000
+    ):
+        """
+        Stream transactions in chunks for efficient export processing.
+        Yields batches of transactions to avoid loading all data into memory.
+        """
+        from sqlalchemy.orm import joinedload
         
-        # If no date range provided, use current month
-        if not start_date:
-            now = datetime.now()
-            start_date = datetime(now.year, now.month, 1)
-        if not end_date:
-            end_date = datetime.now()
-
-        query = db.query(Transaction).filter(
-            Transaction.user_id == user_id,
-            Transaction.transaction_date >= start_date,
-            Transaction.transaction_date <= end_date
-        )
-
-        # Get all transactions in the period
-        transactions = query.all()
-
-        # Calculate totals (convert from cents to dollars)
-        total_income = sum(t.amount_cents for t in transactions if t.amount_cents > 0) / 100.0
-        total_expenses = sum(abs(t.amount_cents) for t in transactions if t.amount_cents < 0) / 100.0
-        net_amount = total_income - total_expenses
-
-        # Get category breakdown
-        category_stats = {}
-        for transaction in transactions:
-            category_name = "Food & Dining"  # TODO: Get actual category name from relationship
-            if category_name not in category_stats:
-                category_stats[category_name] = {
-                    "total_amount": 0,
-                    "transaction_count": 0,
-                    "category_name": category_name
-                }
-            category_stats[category_name]["total_amount"] += abs(transaction.amount_cents / 100.0)
-            category_stats[category_name]["transaction_count"] += 1
-
-        # Convert to list and calculate percentages
-        category_breakdown = []
-        total_for_percentage = total_expenses if total_expenses > 0 else 1  # Avoid division by zero
+        # Build base query with filters
+        query = db.query(Transaction).options(
+            joinedload(Transaction.account),
+            joinedload(Transaction.category)
+        ).join(Transaction.account).filter(Transaction.user_id == user_id)
         
-        for category, stats in category_stats.items():
-            percentage = (stats["total_amount"] / total_for_percentage) * 100 if stats["total_amount"] < 0 else 0
-            category_breakdown.append({
-                "category_name": category,
-                "total_amount": stats["total_amount"],
-                "transaction_count": stats["transaction_count"],
-                "percentage": round(percentage, 2)
-            })
-
-        # Sort by total amount descending
-        category_breakdown.sort(key=lambda x: x["total_amount"], reverse=True)
-
-        # Get recent transactions (last 10)
-        recent_transactions = db.query(Transaction).filter(
-            Transaction.user_id == user_id
-        ).order_by(Transaction.transaction_date.desc()).limit(10).all()
-
-        return {
-            "period": {
-                "start_date": start_date.isoformat(),
-                "end_date": end_date.isoformat()
-            },
-            "summary": {
-                "total_income": total_income,
-                "total_expenses": total_expenses,
-                "net_amount": net_amount,
-                "transaction_count": len(transactions)
-            },
-            "category_breakdown": category_breakdown,
-            "recent_transactions": [
-                {
-                    "id": t.id,
-                    "amount": t.amount_cents / 100.0,
-                    "category": "Food & Dining",  # TODO: Get actual category name
-                    "description": t.description,
-                    "transaction_date": t.transaction_date.isoformat(),
-                    "transaction_type": "income" if t.amount_cents > 0 else "expense"
-                } for t in recent_transactions
-            ]
-        }
-
-    @staticmethod
-    def get_transaction_summary(db: Session, user_id: UUID, start_date: Optional[date] = None, end_date: Optional[date] = None, category_id: Optional[UUID] = None, search_query: Optional[str] = None) -> Dict[str, Any]:
-        """Get transaction summary statistics matching the frontend TransactionSummary interface"""
-        from sqlalchemy import or_
-        
-        # Build base query
-        query = db.query(Transaction).filter(Transaction.user_id == user_id)
-        
-        # Apply filters
-        if start_date:
-            query = query.filter(Transaction.transaction_date >= start_date)
-        if end_date:
-            query = query.filter(Transaction.transaction_date <= end_date)
-        if category_id:
-            query = query.filter(Transaction.category_id == category_id)
-        if search_query:
-            search = f"%{search_query}%"
+        # Apply filters (same logic as get_transactions_with_filters)
+        if filters.start_date:
+            query = query.filter(Transaction.transaction_date >= filters.start_date)
+        if filters.end_date:
+            query = query.filter(Transaction.transaction_date <= filters.end_date)
+        if filters.category:
+            query = query.join(Transaction.category).filter(Category.name.ilike(f"%{filters.category}%"))
+        if filters.search_query:
+            search_term = f"%{filters.search_query}%"
             query = query.filter(
                 or_(
-                    Transaction.description.ilike(search),
-                    Transaction.merchant.ilike(search)
+                    Transaction.description.ilike(search_term),
+                    Transaction.merchant_name.ilike(search_term)
                 )
             )
         
-        # Get all matching transactions
-        transactions = query.all()
+        # Order by transaction_date for consistent export ordering
+        query = query.order_by(desc(Transaction.transaction_date), desc(Transaction.created_at))
         
-        # Calculate summary statistics
-        total_income = sum(t.amount_cents for t in transactions if t.amount_cents > 0) / 100.0
-        total_expenses = sum(abs(t.amount_cents) for t in transactions if t.amount_cents < 0) / 100.0
-        net_amount = total_income - total_expenses
-        transaction_count = len(transactions)
-        
-        # Calculate category breakdown
-        category_stats = {}
-        total_for_percentage = total_expenses if total_expenses > 0 else 1
-        
-        for transaction in transactions:
-            # Get category info (assuming there's a relationship)
-            category_id_str = str(transaction.category_id) if transaction.category_id else "uncategorized"
-            category_name = "Uncategorized"  # Default name
-            
-            # Try to get category name if there's a relationship
-            if hasattr(transaction, 'category') and transaction.category:
-                category_name = transaction.category.name
-            
-            if category_id_str not in category_stats:
-                category_stats[category_id_str] = {
-                    "categoryId": category_id_str,
-                    "categoryName": category_name,
-                    "totalAmount": 0.0,
-                    "transactionCount": 0
-                }
-            
-            category_stats[category_id_str]["totalAmount"] += abs(transaction.amount_cents) / 100.0
-            category_stats[category_id_str]["transactionCount"] += 1
-        
-        # Convert to list and add percentages
-        category_breakdown = []
-        for category_id_str, stats in category_stats.items():
-            percentage = (stats["totalAmount"] / total_for_percentage) * 100 if total_for_percentage > 0 else 0
-            category_breakdown.append({
-                "categoryId": stats["categoryId"],
-                "categoryName": stats["categoryName"], 
-                "totalAmount": stats["totalAmount"],
-                "transactionCount": stats["transactionCount"],
-                "percentage": round(percentage, 2)
-            })
-        
-        # Sort by total amount descending
-        category_breakdown.sort(key=lambda x: x["totalAmount"], reverse=True)
-        
-        # Calculate additional statistics  
-        income_count = sum(1 for t in transactions if t.amount_cents > 0)
-        expense_count = sum(1 for t in transactions if t.amount_cents < 0)
-        average_transaction = (total_income + total_expenses) / transaction_count if transaction_count > 0 else 0
-        
-        return {
-            # Main stats for compatibility
-            "totalIncome": total_income,
-            "totalExpenses": total_expenses, 
-            "netAmount": net_amount,
-            "transactionCount": transaction_count,
-            "categoryBreakdown": category_breakdown,
-            
-            # Additional stats to match frontend TransactionStats interface
-            "total_income": total_income,
-            "total_expenses": total_expenses,
-            "net_amount": net_amount,
-            "total_count": transaction_count,
-            "transaction_count": transaction_count,
-            "average_transaction": average_transaction,
-            "transaction_count_by_type": {
-                "income": income_count,
-                "expense": expense_count
-            }
-        }
+        # Stream in chunks
+        offset = 0
+        while True:
+            chunk = query.offset(offset).limit(chunk_size).all()
+            if not chunk:
+                break
+            yield chunk
+            offset += chunk_size
+
+    @staticmethod
+    def get_dashboard_analytics(db: Session, user_id: UUID, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Dict[str, Any]:
+        """Get comprehensive dashboard analytics for a user - delegated to analytics service"""
+        from .transaction_analytics_service import transaction_analytics_service
+        return transaction_analytics_service.get_dashboard_analytics(db, user_id, start_date, end_date)
+
+    @staticmethod
+    def get_transaction_summary(db: Session, user_id: UUID, start_date: Optional[date] = None, end_date: Optional[date] = None, category_id: Optional[UUID] = None, search_query: Optional[str] = None) -> Dict[str, Any]:
+        """Get transaction summary statistics - delegated to analytics service"""
+        from .transaction_analytics_service import transaction_analytics_service
+        return transaction_analytics_service.get_transaction_summary(db, user_id, start_date, end_date, category_id, search_query)
 
     @staticmethod
     def get_spending_trends(db: Session, user_id: UUID, period: str = "monthly") -> List[Dict[str, Any]]:
-        """Get spending trends over time"""
-        
-        # Calculate date range based on period
-        now = datetime.now()
-        if period == "weekly":
-            start_date = now - timedelta(weeks=12)  # Last 12 weeks
-            date_format = "week"
-        else:  # monthly
-            start_date = now - timedelta(days=365)  # Last 12 months
-            date_format = "month"
-
-        query = db.query(Transaction).filter(
-            Transaction.user_id == user_id,
-            Transaction.transaction_date >= start_date
-        )
-
-        transactions = query.all()
-
-        # Group by time period
-        trends = {}
-        for transaction in transactions:
-            if period == "weekly":
-                # Get week number and year
-                year = transaction.transaction_date.year
-                week = transaction.transaction_date.isocalendar()[1]
-                key = f"{year}-W{week:02d}"
-                display_date = transaction.transaction_date.strftime("%Y-W%U")
-            else:  # monthly
-                key = transaction.transaction_date.strftime("%Y-%m")
-                display_date = transaction.transaction_date.strftime("%Y-%m")
-
-            if key not in trends:
-                trends[key] = {
-                    "period": display_date,
-                    "income": 0,
-                    "expenses": 0,
-                    "net": 0
-                }
-
-            if transaction.amount_cents > 0:
-                trends[key]["income"] += transaction.amount_cents / 100.0
-            else:
-                trends[key]["expenses"] += abs(transaction.amount_cents / 100.0)
-            trends[key]["net"] = trends[key]["income"] - trends[key]["expenses"]
-
-        # Convert to sorted list
-        trend_list = list(trends.values())
-        trend_list.sort(key=lambda x: x["period"])
-
-        return trend_list 
+        """Get spending trends over time - delegated to analytics service"""
+        from .transaction_analytics_service import transaction_analytics_service
+        return transaction_analytics_service.get_spending_trends(db, user_id, period) 

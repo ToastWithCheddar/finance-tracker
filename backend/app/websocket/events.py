@@ -362,3 +362,142 @@ class WebSocketEvents:
             }
         }
         await manager.send_to_user(user_id, message, persist=False)
+
+    # ========== ACTIVITY EVENTS ==========
+    
+    @staticmethod
+    async def emit_user_activity(
+        user_id: str,
+        activity_type: str,
+        title: str,
+        description: str,
+        table_name: Optional[str] = None,
+        record_id: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ):
+        """Emit user activity event for real-time activity feed"""
+        message = {
+            "type": "user_activity_created",
+            "payload": {
+                "id": f"activity_{datetime.utcnow().timestamp()}_{user_id}",
+                "type": activity_type,
+                "title": title,
+                "description": description,
+                "table_name": table_name,
+                "record_id": record_id,
+                "metadata": metadata or {},
+                "created_at": datetime.utcnow().isoformat()
+            }
+        }
+        await manager.send_to_user(user_id, message)
+
+    @staticmethod
+    async def emit_transaction_activity(user_id: str, action: str, transaction_data: Dict[str, Any]):
+        """Emit transaction-specific activity"""
+        action_map = {
+            "created": ("Transaction Created", f"Created transaction: {transaction_data.get('description', 'New transaction')}"),
+            "updated": ("Transaction Updated", f"Updated transaction: {transaction_data.get('description', 'Transaction modified')}"),
+            "deleted": ("Transaction Deleted", f"Deleted transaction: {transaction_data.get('description', 'Transaction removed')}")
+        }
+        
+        title, description = action_map.get(action, ("Transaction Activity", f"Transaction {action}"))
+        
+        await WebSocketEvents.emit_user_activity(
+            user_id=user_id,
+            activity_type=f"transaction_{action}",
+            title=title,
+            description=description,
+            table_name="transactions",
+            record_id=transaction_data.get("id"),
+            metadata=transaction_data
+        )
+
+    @staticmethod
+    async def emit_budget_activity(user_id: str, action: str, budget_data: Dict[str, Any]):
+        """Emit budget-specific activity"""
+        budget_name = budget_data.get('name', 'Budget')
+        action_map = {
+            "created": ("Budget Created", f"Created budget: {budget_name}"),
+            "updated": ("Budget Updated", f"Updated budget: {budget_name}"),
+            "deleted": ("Budget Deleted", f"Deleted budget: {budget_name}")
+        }
+        
+        title, description = action_map.get(action, ("Budget Activity", f"Budget {action}"))
+        
+        await WebSocketEvents.emit_user_activity(
+            user_id=user_id,
+            activity_type=f"budget_{action}",
+            title=title,
+            description=description,
+            table_name="budgets",
+            record_id=budget_data.get("id"),
+            metadata=budget_data
+        )
+
+    @staticmethod
+    async def emit_goal_activity(user_id: str, action: str, goal_data: Dict[str, Any]):
+        """Emit goal-specific activity"""
+        goal_name = goal_data.get('name', 'Goal')
+        action_map = {
+            "created": ("Goal Created", f"Created goal: {goal_name}"),
+            "updated": ("Goal Updated", f"Updated goal: {goal_name}"),
+            "deleted": ("Goal Deleted", f"Deleted goal: {goal_name}"),
+            "achieved": ("Goal Achieved", f"🎉 Achieved goal: {goal_name}")
+        }
+        
+        title, description = action_map.get(action, ("Goal Activity", f"Goal {action}"))
+        
+        await WebSocketEvents.emit_user_activity(
+            user_id=user_id,
+            activity_type=f"goal_{action}",
+            title=title,
+            description=description,
+            table_name="goals",
+            record_id=goal_data.get("id"),
+            metadata=goal_data
+        )
+
+    @staticmethod
+    async def emit_account_activity(user_id: str, action: str, account_data: Dict[str, Any]):
+        """Emit account-specific activity"""
+        account_name = account_data.get('name', 'Account')
+        action_map = {
+            "connected": ("Account Connected", f"Connected account: {account_name}"),
+            "updated": ("Account Updated", f"Updated account: {account_name}"),
+            "synced": ("Account Synced", f"Synced account: {account_name}")
+        }
+        
+        title, description = action_map.get(action, ("Account Activity", f"Account {action}"))
+        
+        await WebSocketEvents.emit_user_activity(
+            user_id=user_id,
+            activity_type=f"account_{action}",
+            title=title,
+            description=description,
+            table_name="accounts",
+            record_id=account_data.get("id"),
+            metadata=account_data
+        )
+
+    @staticmethod
+    async def emit_rule_activity(user_id: str, action: str, rule_data: Dict[str, Any]):
+        """Emit categorization rule activity"""
+        rule_name = rule_data.get('name', 'Rule')
+        action_map = {
+            "created": ("Rule Created", f"Created categorization rule: {rule_name}"),
+            "updated": ("Rule Updated", f"Updated categorization rule: {rule_name}"),
+            "deleted": ("Rule Deleted", f"Deleted categorization rule: {rule_name}"),
+            "applied": ("Rule Applied", f"Applied rule '{rule_name}' to transaction")
+        }
+        
+        title, description = action_map.get(action, ("Rule Activity", f"Rule {action}"))
+        
+        await WebSocketEvents.emit_user_activity(
+            user_id=user_id,
+            activity_type=f"rule_{action}",
+            title=title,
+            description=description,
+            table_name="categorization_rules",
+            record_id=rule_data.get("id"),
+            metadata=rule_data
+        )

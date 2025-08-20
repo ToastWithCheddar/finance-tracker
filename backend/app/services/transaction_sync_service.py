@@ -15,7 +15,7 @@ from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.transaction import TransactionCreate
-from app.services.enhanced_plaid_service import enhanced_plaid_service
+from app.services import plaid_service
 from app.services.transaction_service import TransactionService
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
@@ -39,7 +39,7 @@ class TransactionSyncService:
     
     def __init__(self):
         self.transaction_service = TransactionService()
-        self.plaid_service = enhanced_plaid_service
+        self.plaid_service = plaid_service
         
         # Sync configuration
         self.max_sync_days = 365  # Maximum days to sync in one operation
@@ -48,6 +48,35 @@ class TransactionSyncService:
         
         # Lock configuration
         self.lock_timeout_seconds = 300  # 5 minutes timeout for distributed locks
+    
+    def _normalize_merchant_name(self, description: str, merchant: str = None) -> str:
+        """
+        Simple merchant name normalization for duplicate detection.
+        
+        Args:
+            description: Transaction description
+            merchant: Optional merchant name
+            
+        Returns:
+            Normalized string for comparison
+        """
+        # Use merchant if available, otherwise description
+        text = merchant if merchant else description
+        if not text:
+            return ""
+        
+        # Basic normalization: lowercase, remove extra spaces
+        text = text.lower().strip()
+        
+        # Remove common payment prefixes/suffixes
+        for prefix in ['payment to ', 'purchase at ', 'transfer to ', 'debit card purchase ']:
+            if text.startswith(prefix):
+                text = text[len(prefix):]
+        
+        # Remove extra whitespace
+        text = ' '.join(text.split())
+        
+        return text
     
     async def _acquire_sync_lock(self, account_id: str) -> bool:
         """
@@ -240,7 +269,7 @@ class TransactionSyncService:
         
         accounts = db.query(Account).filter(
             Account.user_id == user_id,
-            Account.plaid_access_token.isnot(None),
+            Account.plaid_access_token_encrypted.isnot(None),
             Account.is_active == True
         ).all()
         
@@ -373,18 +402,29 @@ class TransactionSyncService:
                         result.duplicates_skipped += 1
                         continue
                     
-                    # Create new transaction
-                    logger.info(f"       💾 CREATING - New transaction")
+                    # Create new transaction or merge with existing
+                    logger.info(f"       💾 PROCESSING - Creating new transaction or merging with existing")
                     transaction = await self._create_transaction_from_plaid(
                         plaid_txn, account, db
                     )
                     
                     if transaction:
-                        logger.info(f"       ✅ SUCCESS - Transaction created with ID: {transaction.id}")
-                        result.new_transactions += 1
+                        # Check if this was a merge (transaction has plaid_id but was not in existing_plaid_ids)
+                        is_merge = (transaction.plaid_transaction_id == plaid_id and 
+                                   hasattr(transaction.metadata_json, 'get') and 
+                                   transaction.metadata_json and
+                                   transaction.metadata_json.get('sync_match') == 'merged_from_plaid_import')
+                        
+                        if is_merge:
+                            logger.info(f"       ✅ MERGE SUCCESS - Manual transaction merged with Plaid data: {transaction.id}")
+                            result.updated_transactions += 1
+                        else:
+                            logger.info(f"       ✅ CREATE SUCCESS - New transaction created with ID: {transaction.id}")
+                            result.new_transactions += 1
+                        
                         existing_plaid_ids.add(plaid_id)
                     else:
-                        logger.warning(f"       ⚠️  FAILED - Transaction creation returned None")
+                        logger.warning(f"       ⚠️  FAILED - Transaction processing returned None")
                 
                 except Exception as e:
                     error_msg = f"Failed to process transaction {plaid_txn.get('transaction_id', 'unknown')}: {str(e)}"
@@ -410,15 +450,178 @@ class TransactionSyncService:
         
         return result
     
+    def _find_potential_duplicate(
+        self, 
+        db: Session, 
+        account: Account, 
+        plaid_transaction: Dict[str, Any]
+    ) -> Optional[Transaction]:
+        """
+        Find potential duplicate manual transaction for a Plaid transaction.
+        
+        This method implements conservative matching to detect when a manually-entered
+        transaction and a Plaid-imported transaction represent the same real-world event.
+        
+        Matching criteria:
+        - Same account
+        - Manual transaction (plaid_transaction_id IS NULL)
+        - Amount within ±$1.00 tolerance
+        - Date within ±2 days tolerance
+        - Normalized description similarity
+        
+        Args:
+            db: Database session
+            account: Account being synced
+            plaid_transaction: Plaid transaction data dictionary
+            
+        Returns:
+            Transaction object if single high-confidence match found, None otherwise
+        """
+        try:
+            # Extract Plaid transaction data
+            plaid_amount = float(plaid_transaction.get('amount', 0))
+            plaid_amount_cents = self._convert_plaid_amount(plaid_amount, account.account_type)
+            plaid_date = self._parse_date(plaid_transaction.get('date'))
+            plaid_description = plaid_transaction.get('name', '')
+            
+            if not plaid_date:
+                logger.warning(f"Plaid transaction {plaid_transaction.get('transaction_id')} has no valid date")
+                return None
+            
+            # Define tolerances
+            amount_tolerance_cents = 100  # ±$1.00
+            date_tolerance_days = 2
+            
+            # Calculate date range for query
+            date_start = plaid_date.date() - timedelta(days=date_tolerance_days)
+            date_end = plaid_date.date() + timedelta(days=date_tolerance_days)
+            
+            # Calculate amount range for query
+            amount_min = plaid_amount_cents - amount_tolerance_cents
+            amount_max = plaid_amount_cents + amount_tolerance_cents
+            
+            logger.info(f"🔍 DUPLICATE SEARCH: Looking for manual transactions matching Plaid transaction")
+            logger.info(f"   - Account: {account.name}")
+            logger.info(f"   - Amount range: {amount_min} to {amount_max} cents (target: {plaid_amount_cents})")
+            logger.info(f"   - Date range: {date_start} to {date_end} (target: {plaid_date.date()})")
+            logger.info(f"   - Description: '{plaid_description}'")
+            
+            # Query for potential manual duplicates
+            potential_duplicates = db.query(Transaction).filter(
+                Transaction.account_id == account.id,
+                Transaction.plaid_transaction_id.is_(None),  # Manual transactions only
+                Transaction.transaction_date >= date_start,
+                Transaction.transaction_date <= date_end,
+                Transaction.amount_cents >= amount_min,
+                Transaction.amount_cents <= amount_max
+            ).all()
+            
+            logger.info(f"   - Found {len(potential_duplicates)} potential matches")
+            
+            if not potential_duplicates:
+                return None
+            
+            # Normalize Plaid description for comparison
+            normalized_plaid_desc = self._normalize_merchant_name(plaid_description)
+            
+            # Find best match based on description similarity
+            best_match = None
+            best_match_score = 0
+            
+            for candidate in potential_duplicates:
+                # Normalize candidate description
+                normalized_candidate_desc = self._normalize_merchant_name(
+                    candidate.description, candidate.merchant
+                )
+                
+                # Calculate simple similarity score (exact match for now, can be enhanced later)
+                if normalized_plaid_desc == normalized_candidate_desc:
+                    similarity_score = 1.0
+                elif normalized_plaid_desc in normalized_candidate_desc or normalized_candidate_desc in normalized_plaid_desc:
+                    similarity_score = 0.8
+                else:
+                    # Check for word overlap
+                    plaid_words = set(normalized_plaid_desc.split())
+                    candidate_words = set(normalized_candidate_desc.split())
+                    if plaid_words and candidate_words:
+                        overlap = len(plaid_words.intersection(candidate_words))
+                        similarity_score = overlap / max(len(plaid_words), len(candidate_words))
+                    else:
+                        similarity_score = 0
+                
+                logger.info(f"   - Candidate: '{candidate.description}' (normalized: '{normalized_candidate_desc}') - Score: {similarity_score:.2f}")
+                
+                # Require minimum similarity threshold
+                if similarity_score > best_match_score and similarity_score >= 0.6:  # 60% similarity threshold
+                    best_match = candidate
+                    best_match_score = similarity_score
+            
+            if best_match:
+                logger.info(f"   ✅ DUPLICATE FOUND: Manual transaction {best_match.id} matches with score {best_match_score:.2f}")
+                logger.info(f"      Manual: {best_match.description} | {best_match.amount_cents} cents | {best_match.transaction_date}")
+                logger.info(f"      Plaid:  {plaid_description} | {plaid_amount_cents} cents | {plaid_date.date()}")
+                return best_match
+            else:
+                logger.info(f"   ⚠️  NO DUPLICATE: No matches meet similarity threshold (>= 0.6)")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Error in duplicate detection: {str(e)}")
+            return None
+    
     async def _create_transaction_from_plaid(
         self, 
         plaid_txn: Dict[str, Any], 
         account: Account, 
         db: Session
     ) -> Optional[Transaction]:
-        """Create a transaction from Plaid data with enhanced processing"""
+        """Create a transaction from Plaid data with enhanced processing and conflict resolution"""
         
         try:
+            # CONFLICT RESOLUTION: Check for potential duplicate manual transaction
+            existing_transaction = self._find_potential_duplicate(db, account, plaid_txn)
+            
+            if existing_transaction:
+                logger.info(f"       🔄 MERGING: Updating existing manual transaction {existing_transaction.id} with Plaid data")
+                
+                # Update existing transaction with Plaid data
+                existing_transaction.plaid_transaction_id = plaid_txn.get('transaction_id')
+                
+                # Update status if it was pending
+                if existing_transaction.status == 'pending':
+                    existing_transaction.status = 'posted'
+                    logger.info(f"       📝 STATUS: Updated status from 'pending' to 'posted'")
+                
+                # Add merge metadata
+                metadata = existing_transaction.metadata_json or {}
+                metadata.update({
+                    'sync_match': 'merged_from_plaid_import',
+                    'match_timestamp': datetime.now(timezone.utc).isoformat(),
+                    'original_plaid_data': plaid_txn,
+                    'merge_method': 'conflict_resolution'
+                })
+                existing_transaction.metadata_json = metadata
+                
+                # Optionally update other fields if they were missing in manual entry
+                if not existing_transaction.merchant and plaid_txn.get('merchant_name'):
+                    existing_transaction.merchant = plaid_txn.get('merchant_name')
+                    logger.info(f"       🏪 MERCHANT: Added merchant info from Plaid")
+                
+                if not existing_transaction.plaid_category and plaid_txn.get('category'):
+                    existing_transaction.plaid_category = plaid_txn.get('category', [])
+                    logger.info(f"       🏷️  CATEGORY: Added Plaid category info")
+                
+                # Update authorized date if available
+                if plaid_txn.get('authorized_date') and not existing_transaction.authorized_date:
+                    existing_transaction.authorized_date = self._parse_date(plaid_txn.get('authorized_date'))
+                    logger.info(f"       📅 DATE: Added authorized date from Plaid")
+                
+                db.add(existing_transaction)
+                logger.info(f"       ✅ MERGE SUCCESS: Manual transaction merged with Plaid data")
+                return existing_transaction
+            
+            # NO DUPLICATE FOUND: Create new transaction as usual
+            logger.info(f"       💾 NEW TRANSACTION: No duplicate found, creating new transaction")
             # Parse amount - Plaid's sign convention varies by account type
             raw_amount = float(plaid_txn.get('amount', 0))
             
@@ -611,7 +814,7 @@ class TransactionSyncService:
         
         # Find accounts that need sync
         query = db.query(Account).filter(
-            Account.plaid_access_token.isnot(None),
+            Account.plaid_access_token_encrypted.isnot(None),
             Account.is_active == True,
             Account.sync_status != 'syncing'
         )

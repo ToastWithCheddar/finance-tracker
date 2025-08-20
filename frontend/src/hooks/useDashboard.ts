@@ -42,3 +42,22 @@ export function useSpendingHeatmap(startDate: string, endDate: string) {
     gcTime: 15 * 60 * 1000, // 15 minutes
   });
 }
+
+export function useNetWorthTrend(period: string = '90d') {
+  return useQuery({
+    queryKey: ['net-worth-trend', period],
+    queryFn: () => dashboardService.getNetWorthTrend(period),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
+export function useCashFlowWaterfall(startDate: string, endDate: string) {
+  return useQuery({
+    queryKey: ['cash-flow-waterfall', startDate, endDate],
+    queryFn: () => dashboardService.getCashFlowWaterfall({ start_date: startDate, end_date: endDate }),
+    enabled: !!startDate && !!endDate,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+    gcTime: 15 * 60 * 1000, // 15 minutes
+  });
+}

@@ -42,8 +42,8 @@ export function MonthlyComparisonChart({ data, title = "Monthly Comparison" }: M
   }));
 
   if (chartData.length === 0) {
-  return (
-    <Card>
+    return (
+      <Card>
         <CardHeader>
           <CardTitle>{title}</CardTitle>
         </CardHeader>
@@ -52,19 +52,19 @@ export function MonthlyComparisonChart({ data, title = "Monthly Comparison" }: M
             <div className="text-center">
               <p>No comparison data available</p>
               <p className="text-sm mt-1">Add transactions to see monthly comparisons</p>
+            </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-        <Card>
-          <CardHeader>
+    <Card>
+      <CardHeader>
         <CardTitle>{title}</CardTitle>
-          </CardHeader>
-          <CardContent>
+      </CardHeader>
+      <CardContent>
         <div className="h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
@@ -93,12 +93,11 @@ export function MonthlyComparisonChart({ data, title = "Monthly Comparison" }: M
                 name="Expenses"
                 radius={[2, 2, 0, 0]}
               />
-                        </BarChart>
+            </BarChart>
           </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
-export default MonthlyComparisonChart;

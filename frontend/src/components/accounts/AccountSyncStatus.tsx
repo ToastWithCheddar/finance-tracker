@@ -1,29 +1,13 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, CheckCircle, AlertTriangle, XCircle, Wifi, WifiOff } from 'lucide-react';
+import { RefreshCw, WifiOff } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { useWebSocket, type WebSocketMessage } from '../../hooks/useWebSocket';
-import { apiClient } from '../../services/api';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
+import { formatLastSync } from '../../utils/date';
+import { getConnectionStatusIcon, getConnectionStatusText, getConnectionStatusColor } from '../../utils/account';
+import { useAccountSyncStatus } from '../../hooks/useAccountSyncStatus';
 
-interface ConnectionStatus {
-  total_connections: number;
-  active_connections: number;
-  failed_connections: number;
-  needs_reauth: number;
-  accounts: AccountConnection[];
-}
-
-interface AccountConnection {
-  account_id: string;
-  name: string;
-  type: string;
-  health_status: 'healthy' | 'warning' | 'failed' | 'unknown';
-  last_sync: string | null;
-  balance: number;
-  currency: string;
-  plaid_account_id: string;
-}
 
 interface AccountSyncStatusProps {
   refreshTrigger?: number;
@@ -31,49 +15,37 @@ interface AccountSyncStatusProps {
 }
 
 export function AccountSyncStatus({ refreshTrigger = 0, onSyncComplete }: AccountSyncStatusProps) {
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null);
-  const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    connectionStatus,
+    isLoadingConnectionStatus,
+    connectionStatusError,
+    refetchConnectionStatus,
+    syncAllBalances,
+    isSyncingAllBalances,
+    syncAccountBalance,
+    isSyncingAccountBalance
+  } = useAccountSyncStatus();
 
   // Listen for real-time updates
   useWebSocket({
     onMessage: (msg: WebSocketMessage) => {
       const event = { type: msg.type, data: msg.payload };
       if (event.type === 'ACCOUNT_BALANCE_UPDATED' || event.type === 'ACCOUNT_CONNECTED') {
-        fetchConnectionStatus();
+        refetchConnectionStatus();
         onSyncComplete?.();
       }
     }
   });
 
-  const fetchConnectionStatus = async () => {
-    try {
-      setError(null);
-      const response = await apiClient.get<{ success: boolean; data: ConnectionStatus }>('/api/accounts/connection-status');
-      if (response.success) {
-        setConnectionStatus(response.data);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch connection status');
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleSyncAll = async () => {
     try {
       setSyncing(true);
-      setError(null);
-      
-      const response = await apiClient.post<{ success: boolean; data: Record<string, unknown> }>('/api/accounts/sync-balances');
-      
-      if (response.success) {
-        await fetchConnectionStatus();
-        onSyncComplete?.();
-      }
+      await syncAllBalances();
+      onSyncComplete?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync accounts');
+      console.error('Sync all failed:', err);
     } finally {
       setSyncing(false);
     }
@@ -82,80 +54,21 @@ export function AccountSyncStatus({ refreshTrigger = 0, onSyncComplete }: Accoun
   const handleSyncAccount = async (accountId: string) => {
     try {
       setSyncing(true);
-      setError(null);
-      
-      const response = await apiClient.post<{ success: boolean; data: Record<string, unknown> }>('/api/accounts/sync-balances', {
-        account_ids: [accountId]
-      });
-      
-      if (response.success) {
-        await fetchConnectionStatus();
-        onSyncComplete?.();
-      }
+      await syncAccountBalance(accountId);
+      onSyncComplete?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to sync account');
+      console.error('Sync account failed:', err);
     } finally {
       setSyncing(false);
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'healthy':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
-      case 'warning':
-        return <AlertTriangle className="h-5 w-5 text-yellow-500" />;
-      case 'failed':
-        return <XCircle className="h-5 w-5 text-red-500" />;
-      default:
-        return <Wifi className="h-5 w-5 text-gray-400" />;
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'healthy':
-        return 'Connected';
-      case 'warning':
-        return 'Sync Overdue';
-      case 'failed':
-        return 'Connection Failed';
-      default:
-        return 'Unknown';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'healthy':
-        return 'text-green-600 bg-green-50';
-      case 'warning':
-        return 'text-yellow-600 bg-yellow-50';
-      case 'failed':
-        return 'text-red-600 bg-red-50';
-      default:
-        return 'text-gray-600 bg-gray-50';
-    }
-  };
-
-  const formatLastSync = (lastSync: string | null) => {
-    if (!lastSync) return 'Never';
-    
-    const syncDate = new Date(lastSync);
-    const now = new Date();
-    const diffHours = Math.floor((now.getTime() - syncDate.getTime()) / (1000 * 60 * 60));
-    
-    if (diffHours < 1) return 'Just now';
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffHours < 168) return `${Math.floor(diffHours / 24)}d ago`;
-    return syncDate.toLocaleDateString();
-  };
 
   useEffect(() => {
-    fetchConnectionStatus();
-  }, [refreshTrigger]);
+    refetchConnectionStatus();
+  }, [refreshTrigger, refetchConnectionStatus]);
 
-  if (loading) {
+  if (isLoadingConnectionStatus) {
     return (
       <Card className="p-6">
         <div className="flex items-center justify-center">
@@ -166,15 +79,15 @@ export function AccountSyncStatus({ refreshTrigger = 0, onSyncComplete }: Accoun
     );
   }
 
-  if (error) {
+  if (connectionStatusError) {
     return (
       <Card className="p-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center">
             <XCircle className="h-5 w-5 text-red-500 mr-2" />
-            <span className="text-red-600">{error}</span>
+            <span className="text-red-600">{connectionStatusError.message}</span>
           </div>
-          <Button onClick={fetchConnectionStatus} variant="outline" size="sm">
+          <Button onClick={() => refetchConnectionStatus()} variant="outline" size="sm">
             Retry
           </Button>
         </div>
@@ -247,14 +160,14 @@ export function AccountSyncStatus({ refreshTrigger = 0, onSyncComplete }: Accoun
           <Card key={account.account_id} className="p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-3">
-                {getStatusIcon(account.health_status)}
+                {getConnectionStatusIcon(account.health_status)}
                 <div>
                   <h4 className="font-medium text-gray-900">{account.name}</h4>
                   <div className="flex items-center space-x-2 text-sm text-gray-600">
                     <span className="capitalize">{account.type.replace('_', ' ')}</span>
                     <span>•</span>
-                    <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(account.health_status)}`}>
-                      {getStatusText(account.health_status)}
+                    <span className={`px-2 py-1 rounded-full text-xs ${getConnectionStatusColor(account.health_status)}`}>
+                      {getConnectionStatusText(account.health_status)}
                     </span>
                   </div>
                 </div>

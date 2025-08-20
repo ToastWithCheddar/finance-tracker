@@ -63,7 +63,10 @@ class AccountInsightsService:
             # Generate overall insights
             categorization['insights'] = self._generate_portfolio_insights(db, user_id, categorization)
             categorization['recommendations'] = self._generate_recommendations(categorization)
-            categorization['financial_health'] = self._calculate_financial_health(categorization)
+            # Delegate financial health calculation to specialized service
+            from .financial_health_service import get_financial_health_service
+            health_service = get_financial_health_service()
+            categorization['financial_health'] = health_service.calculate_overall_financial_health(categorization)
             
             return categorization
             
@@ -139,8 +142,10 @@ class AccountInsightsService:
                 elif recent_balance_change < -10000:  # -$100+
                     insights.append("Balance decreasing - monitor spending")
             
-            # Health score calculation
-            health_score = self._calculate_account_health_score(
+            # Health score calculation - delegate to financial health service
+            from .financial_health_service import get_financial_health_service
+            health_service = get_financial_health_service()
+            health_score = health_service.calculate_account_health_score(
                 account, total_transactions, activity_level, total_income, total_expenses
             )
             
@@ -226,51 +231,6 @@ class AccountInsightsService:
         else:
             return 'irregular'
     
-    def _calculate_account_health_score(
-        self, 
-        account: Account, 
-        transaction_count: int, 
-        activity_level: str, 
-        total_income: int, 
-        total_expenses: int
-    ) -> int:
-        """Calculate health score (0-100) for an account"""
-        score = 100
-        balance = account.balance_cents
-        
-        # Balance health (40% weight)
-        if balance < 0:  # Negative balance
-            score -= 30
-        elif balance < 10000:  # Less than $100
-            score -= 20
-        elif balance > 100000:  # More than $1000 - good
-            score += 10
-        
-        # Activity health (30% weight)
-        if activity_level == 'inactive':
-            score -= 20
-        elif activity_level == 'high':
-            score += 10
-        
-        # Cash flow health (30% weight)
-        if total_income > 0 and total_expenses > 0:
-            net_flow = total_income - abs(total_expenses)
-            if net_flow > 0:
-                score += 15  # Positive cash flow
-            elif net_flow < -50000:  # Spending much more than earning
-                score -= 25
-        
-        # Connection health bonus
-        if account.plaid_access_token:
-            metadata = account.account_metadata or {}
-            last_sync = metadata.get('last_sync')
-            if last_sync:
-                last_sync_dt = datetime.fromisoformat(last_sync.replace('Z', ''))
-                hours_since_sync = (datetime.utcnow() - last_sync_dt).total_seconds() / 3600
-                if hours_since_sync < 24:
-                    score += 5  # Recently synced
-        
-        return max(0, min(100, score))
     
     def _generate_portfolio_insights(
         self, 
@@ -413,82 +373,6 @@ class AccountInsightsService:
         
         return recommendations[:6]  # Limit to top 6 recommendations
     
-    def _calculate_financial_health(self, categorization: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate overall financial health metrics"""
-        try:
-            categories = categorization['categories']
-            
-            # Calculate totals
-            total_liquid = sum(
-                account['balance'] for account in categories['spending'] + categories['saving']
-                if account['balance'] > 0
-            )
-            
-            total_debt = sum(
-                abs(account['balance']) for account in categories['credit']
-                if account['balance'] < 0
-            )
-            
-            total_investment = sum(
-                account['balance'] for account in categories['investment']
-                if account['balance'] > 0
-            )
-            
-            net_worth = total_liquid + total_investment - total_debt
-            
-            # Calculate ratios
-            debt_ratio = total_debt / max(1, total_liquid) if total_liquid > 0 else 0
-            investment_ratio = total_investment / max(1, total_liquid + total_investment) if total_liquid + total_investment > 0 else 0
-            
-            # Determine overall health score
-            health_score = 100
-            
-            if debt_ratio > 0.5:
-                health_score -= 30
-            elif debt_ratio > 0.3:
-                health_score -= 15
-            
-            if investment_ratio < 0.1 and total_liquid > 1000:
-                health_score -= 20
-            elif investment_ratio > 0.3:
-                health_score += 10
-            
-            if net_worth < 0:
-                health_score -= 25
-            elif net_worth > 10000:
-                health_score += 15
-            
-            # Health grade
-            if health_score >= 90:
-                grade = 'A'
-            elif health_score >= 80:
-                grade = 'B'
-            elif health_score >= 70:
-                grade = 'C'
-            elif health_score >= 60:
-                grade = 'D'
-            else:
-                grade = 'F'
-            
-            return {
-                'overall_score': max(0, min(100, health_score)),
-                'grade': grade,
-                'net_worth': net_worth,
-                'total_liquid': total_liquid,
-                'total_debt': total_debt,
-                'total_investment': total_investment,
-                'debt_ratio': debt_ratio,
-                'investment_ratio': investment_ratio,
-                'account_diversity': len([cat for cat in categories.values() if len(cat) > 0])
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to calculate financial health: {e}")
-            return {
-                'overall_score': 0,
-                'grade': 'F',
-                'error': str(e)
-            }
 
 # Create global service instance
 account_insights_service = AccountInsightsService()

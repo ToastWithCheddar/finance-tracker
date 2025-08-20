@@ -8,10 +8,10 @@ from app.auth.dependencies import get_current_user, get_optional_user, get_db_wi
 from app.models.category import Category
 from app.models.user import User
 from app.schemas.category import CategoryCreate, CategoryResponse, CategoryUpdate
+from app.dependencies import get_category_service
 from app.services.category_service import CategoryService
 
 router = APIRouter()
-category_service = CategoryService()
 
 @router.get("/", response_model=List[CategoryResponse])
 async def get_categories(
@@ -21,7 +21,8 @@ async def get_categories(
     parent_only: bool = Query(False),
     search: Optional[str] = Query(None),
     current_user: Optional[User] = Depends(get_optional_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    category_service: CategoryService = Depends(get_category_service)
 ):
     """Get all categories (system + user's custom categories)"""
     categories = category_service.get_categories(
@@ -37,7 +38,8 @@ async def get_categories(
 
 @router.get("/system", response_model=List[CategoryResponse])
 async def get_system_categories(
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    category_service: CategoryService = Depends(get_category_service)
 ):
     """Get all system (default) categories"""
     return category_service.get_system_categories(db=db)

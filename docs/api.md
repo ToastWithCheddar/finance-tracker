@@ -82,13 +82,7 @@ DELETE /api/users/me
 GET /api/users/search?query={query}&skip={skip}&limit={limit}
     Response: List[UserProfile] (search results)
 
-# User Preferences
-GET /api/users/me/preferences
-    Response: UserPreferencesResponse
 
-PUT /api/users/me/preferences
-    Request: UserPreferencesUpdate
-    Response: UserPreferencesResponse
 ```
 
 #### **Transaction Routes (`/api/transactions/`)**

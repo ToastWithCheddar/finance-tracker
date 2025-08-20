@@ -45,7 +45,7 @@ class User(BaseModel):
 
 **Relationships:**
 - One-to-many: accounts, transactions, budgets, goals, insights, categories
-- One-to-one: preferences
+
 
 #### **Account Model (`backend/app/models/account.py`)**
 ```python
@@ -229,7 +229,7 @@ class Goal(BaseModel):
 
 **GoalContribution** - Individual contributions to goals
 **GoalMilestone** - Milestone achievement tracking
-**UserPreferences** - User-specific settings and preferences
+
 **Insight** - AI-generated financial insights
 **MLModelPerformance** - ML model performance tracking
 
@@ -241,7 +241,7 @@ User (1) ──── (M) Transaction
 User (1) ──── (M) Category
 User (1) ──── (M) Budget
 User (1) ──── (M) Goal
-User (1) ──── (1) UserPreferences
+
 
 Account (1) ──── (M) Transaction
 Category (1) ──── (M) Transaction
@@ -278,4 +278,3 @@ The application uses Pydantic models to define the data structures used in the A
 -   **`ml.py`**: Contains the schemas for the machine learning service, such as `MLCategorizationRequest` and `MLCategorizationResponse`.
 -   **`transaction.py`**: Defines the schemas for transactions, including `TransactionCreate`, `TransactionUpdate`, and `Transaction`.
 -   **`user.py`**: Contains the schemas for user data, such as `UserCreate`, `UserUpdate`, and `User`.
--   **`user_preferences.py`**: Defines the schemas for user preferences.

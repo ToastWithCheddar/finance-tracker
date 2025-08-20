@@ -1,5 +1,5 @@
 # backend/app/routes/websockets.py
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException 
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query 
 from sqlalchemy.orm import Session
 from typing import Optional, Dict, Any
 import json
@@ -12,6 +12,11 @@ from ..websocket.events import WebSocketEvents, MessageType
 from ..auth.dependencies import get_current_user_from_token
 from ..database import get_db
 from ..models import User
+from ..core.exceptions import (
+    ExternalServiceError,
+    ResourceNotFoundError,
+    AuthenticationError
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -263,8 +268,8 @@ async def websocket_health():
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"WebSocket health check failed: {str(e)}")
-        raise HTTPException(status_code=500, detail="WebSocket service unhealthy")
+        logger.error(f"WebSocket health check failed: {str(e)}", exc_info=True)
+        raise ExternalServiceError("WebSocket Service", "WebSocket service unhealthy")
 
 # Admin endpoint to get connection statistics
 @router.get("/ws/stats")
@@ -282,8 +287,8 @@ async def get_websocket_stats(current_user: User = Depends(get_current_user_from
             "timestamp": datetime.utcnow().isoformat()
         }
     except Exception as e:
-        logger.error(f"Error getting WebSocket stats: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get WebSocket statistics")
+        logger.error(f"Error getting WebSocket stats: {str(e)}", exc_info=True)
+        raise ExternalServiceError("WebSocket Service", "Failed to get WebSocket statistics")
 
 # Endpoint to send test message to user (for testing)
 @router.post("/ws/test-message/{user_id}")
@@ -296,7 +301,7 @@ async def send_test_message(
     """Send test message to a user (for testing purposes)"""
     try:
         if not manager.is_user_connected(user_id):
-            raise HTTPException(status_code=404, detail="User not connected")
+            raise ResourceNotFoundError("Connected user", user_id)
         
         test_message = {
             "type": message_type,
@@ -315,9 +320,11 @@ async def send_test_message(
             "message_type": message_type
         }
         
+    except ResourceNotFoundError:
+        raise
     except Exception as e:
-        logger.error(f"Error sending test message: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to send test message")
+        logger.error(f"Error sending test message: {str(e)}", exc_info=True)
+        raise ExternalServiceError("WebSocket Service", "Failed to send test message")
 
 # Endpoint to broadcast system message
 @router.post("/ws/broadcast")
@@ -351,8 +358,8 @@ async def broadcast_system_message(
         }
         
     except Exception as e:
-        logger.error(f"Error broadcasting system message: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to broadcast system message")
+        logger.error(f"Error broadcasting system message: {str(e)}", exc_info=True)
+        raise ExternalServiceError("WebSocket Service", "Failed to broadcast system message")
 
 # Background task to cleanup stale connections
 async def cleanup_stale_connections():

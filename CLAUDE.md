@@ -1,432 +1,154 @@
+## 1\. Project Mission & Core Philosophy
 
-# CLAUDE.md - Memory Bridge for Finance Tracker Execution
+**Primary Mission:** To engineer and maintain a production-grade, modern personal finance application. The goal is to empower users with a comprehensive tool to track all their financial activities, set and achieve savings goals, manage budgets effectively, and receive clear, explainable, and actionable AI-powered insights into their spending habits.
 
-## Project Mission & Core Philosophy
+#### Core Product Philosophy (Non-Negotiable Principles)
 
-**Mission:** Build a modern, production-grade personal finance application that helps users track all financial activity, set and achieve savings goals, manage budgets, and receive clear, explainable, and actionable AI-powered insights about their spending.
+  * **User Empowerment and Control**: The application must always prioritize user agency. While AI and automation will handle tedious tasks, every suggestion, categorization, or insight is fully transparent and overridable by the user. The user is the ultimate authority.
+  * **Radical Transparency**: There will be no "black box" algorithms. For every AI-driven feature, the system must be able to surface *why* a decision was made, including confidence scores and the data points that influenced the outcome.
+  * **Privacy as a Foundation**: The system is built on a privacy-first architecture. No sensitive personal or financial data should leave the user's control (i.e., be sent to third-party servers for processing) without explicit, informed consent for a specific feature. Local-first is the default.
+  * **Accessibility and Joy of Use**: The user interface must be clean, minimal, and intuitive. It must support both dark and light modes, include privacy features like blurring sensitive information for use in public spaces, and ensure all critical user flows are fully accessible via keyboard navigation. The application should be a pleasure to use.
+  * **Automate the Tedious, Not the Personal**: The purpose of AI, OCR, and auto-categorization is to eliminate the friction of manual data entry, not to make decisions for the user. The application should learn from user behavior to become a smarter, more efficient assistant over time.
 
-### Core Product Philosophy (Non-Negotiable)
+-----
 
-- **User empowerment**: All automatic AI/ML suggestions are overrideable, with clear explanations
-- **Transparency**: No "black box" features—ML confidence and reasoning are visible to the user
-- **Privacy-first**: No sensitive data leaves user's system unless explicit
-- **Accessibility and Joy**: Clean, minimal UI; dark/light modes; blur for public spaces; all critical flows keyboard-accessible
-- **Automate the boring**: ML, OCR, and auto-categorization should reduce, not increase, manual entry
+### 2\. System Architecture & Service Responsibilities
 
-**Budget:** $0 (free tiers only) | **Timeline:** 30-day development plan | **Target:** Production-ready PWA
-
----
-
-## System Architecture & Service Responsibilities
-
-### Microservices Pattern (Dockerized)
+The application is built on a **dockerized microservices pattern**, ensuring separation of concerns, scalability, and maintainability.
 
 ```
-Frontend: React 18 + TypeScript + Vite + Tailwind CSS + Zustand + React Query
-Backend API: FastAPI + SQLAlchemy + PostgreSQL + Redis + Nginx (reverse proxy)
-ML Worker: Sentence Transformers + ONNX + Celery for distributed ML tasks
-Auth: Supabase (user management/auth provider)
-External: Plaid (banking) + SendGrid (email) + OpenAI API (optional, not required)
-Infrastructure: Docker Compose orchestrates everything
++----------------+      +------------------+      +----------------+
+|   Frontend     | <--> |      Nginx       | <--> |   Backend API  |
+| (React, Vite)  |      | (Reverse Proxy)  |      |   (FastAPI)    |
++----------------+      +------------------+      +-------+--------+
+                                                          |
+                                           +--------------+--------------+
+                                           |              |              |
+                                     +-----v-----+  +-----v----+   +-----v----+
+                                     | PostgreSQL|  |   Redis  |   | ML Worker|
+                                     |  (Data)   |  | (Cache/Q) |   | (Celery) |
+                                     +-----------+  +----------+   +----------+
 ```
 
-### Docker Services & Responsibilities
-
-- **frontend** (React + Nginx): All UX; real-time sync via WebSocket; offline/optimistic updates
-- **backend** (FastAPI + Uvicorn + WebSocket): REST/WS API; business logic; all DB ops; ML service integration
-- **postgres** (PostgreSQL 15): Source of truth for financial/accounting data
-- **redis** (Redis): Message queue (Celery), real-time cache (WebSocket), ephemeral store
-- **ml-worker** (Sentence Transformers + Classification): Transaction categorization; learns from user feedback
-- **nginx** (Reverse proxy + WebSocket): Single public entrypoint; routes requests; rate-limits API/auth
-
-**Important**: Single environment only - no suffixes/prefixes for variables. All production and development systems point to the same thing.
-
----
-
-## Actual Project Structure & File Navigation
-
-### Backend Structure (`backend/`)
-
-```
-app/
-├── auth/                    # Authentication system
-│   ├── auth_service.py     # Core auth logic with Supabase integration
-│   ├── dependencies.py    # FastAPI dependencies for auth
-│   ├── middleware.py      # Auth middleware
-│   └── supabase_client.py # Supabase client configuration
-├── core/                   # Core infrastructure
-│   ├── exceptions.py      # Custom exception classes
-│   ├── import_standards.md # Code standards documentation
-│   └── redis_client.py    # Redis connection management
-├── routes/                 # API endpoints (all REST routes)
-│   ├── accounts.py        # Account CRUD and Plaid integration
-│   ├── analytics.py       # Analytics and reporting endpoints
-│   ├── auth.py           # Authentication endpoints
-│   ├── budget.py         # Budget management endpoints
-│   ├── categories.py     # Category management
-│   ├── goals.py          # Goal tracking endpoints
-│   ├── health.py         # Health check endpoints
-│   ├── insights.py       # AI insights endpoints
-│   ├── ml.py             # ML model management
-│   ├── mlcategory.py     # ML categorization endpoints
-│   ├── recurring.py      # Recurring transaction detection
-│   ├── transaction.py    # Transaction CRUD operations
-│   ├── user.py           # User management
-│   └── websockets.py     # WebSocket connection handling
-├── schemas/               # Pydantic models for API validation
-│   ├── account.py        # Account validation schemas
-│   ├── auth.py           # Authentication schemas
-│   ├── base.py           # Base schema classes
-│   ├── budget.py         # Budget validation schemas
-│   ├── category.py       # Category schemas
-│   ├── goal.py           # Goal validation schemas
-│   ├── transaction.py    # Transaction validation schemas
-│   └── user.py           # User schemas
-├── services/              # Business logic layer
-│   ├── account_service.py           # Account business logic
-│   ├── analytics_service.py        # Analytics calculations
-│   ├── budget_service.py           # Budget management logic
-│   ├── category_service.py         # Category management
-│   ├── enhanced_plaid_service.py   # Plaid integration service
-│   ├── goal_service.py             # Goal tracking logic
-│   ├── ml_client.py                # ML service client
-│   ├── transaction_service.py      # Transaction business logic
-│   ├── user_service.py             # User management
-│   └── recurring_detection_service.py # Recurring pattern detection
-├── websocket/             # Real-time WebSocket system
-│   ├── events.py         # WebSocket event definitions
-│   ├── manager.py        # WebSocket connection manager
-│   └── schemas.py        # WebSocket message schemas
-├── config.py             # Application configuration
-├── database.py           # Database connection setup
-├── main.py               # FastAPI application entry point
-└── seed_data.py          # Database seeding for development
-```
-
-### Frontend Structure (`frontend/src/`)
-
-```
-components/
-├── accounts/              # Account management components
-│   ├── AccountsList.tsx          # Account overview display
-│   ├── AccountSyncStatus.tsx     # Plaid sync status indicator
-│   └── AccountReconciliation.tsx # Balance reconciliation UI
-├── auth/                  # Authentication UI
-│   ├── LoginForm.tsx             # Login interface
-│   └── RegisterForm.tsx          # Registration interface
-├── budgets/               # Budget management UI
-│   ├── BudgetCard.tsx           # Individual budget display
-│   └── BudgetForm.tsx           # Budget creation/editing
-├── dashboard/             # Main dashboard components
-│   ├── RealtimeDashboard.tsx     # Main dashboard container
-│   ├── RealtimeTransactionFeed.tsx # Live transaction updates
-│   ├── CategoryPieChart.tsx      # Category spending visualization
-│   ├── SpendingTrendsChart.tsx   # Spending trend analysis
-│   ├── MonthlyComparisonChart.tsx # Period comparisons
-│   └── NotificationPanel.tsx     # Real-time notifications
-├── goals/                 # Goal tracking UI
-│   ├── GoalCard.tsx             # Individual goal display
-│   ├── GoalDashboard.tsx        # Goals overview
-│   └── GoalForm.tsx             # Goal creation/editing
-├── transactions/          # Transaction management UI
-│   ├── TransactionList.tsx      # Transaction display with filtering
-│   ├── TransactionForm.tsx      # Transaction creation/editing
-│   ├── TransactionFilters.tsx   # Advanced filtering UI
-│   ├── MLCategoryFeedback.tsx   # ML categorization feedback
-│   └── CSVImport.tsx            # CSV import functionality
-├── plaid/                 # Bank connection UI
-│   ├── PlaidLink.tsx            # Plaid Link integration
-│   └── AccountConnectionStatus.tsx # Connection status display
-└── ui/                    # Reusable UI components
-    ├── Button.tsx               # Button component
-    ├── Card.tsx                 # Card container
-    ├── Modal.tsx                # Modal dialog
-    ├── Toast.tsx                # Toast notifications
-    └── LoadingSpinner.tsx       # Loading states
-
-hooks/                     # Custom React hooks
-├── useTransactions.ts     # Transaction data management
-├── useAccounts.ts         # Account data management
-├── useBudgets.ts          # Budget data management
-├── useGoals.ts            # Goal data management
-├── useWebSocket.ts        # WebSocket connection management
-└── useDashboard.ts        # Dashboard data aggregation
-
-stores/                    # Zustand state management
-├── authStore.ts           # Authentication state
-├── realtimeStore.ts       # Real-time data state
-└── themeStore.ts          # UI theme preferences
-
-services/                  # API client services
-├── api.ts                 # Base API client configuration
-├── transactionService.ts  # Transaction API calls
-├── accountService.ts      # Account API calls
-├── budgetService.ts       # Budget API calls
-├── goalService.ts         # Goal API calls
-└── mlService.ts           # ML service integration
-
-types/                     # TypeScript type definitions
-├── transaction.ts         # Transaction type definitions
-├── auth.ts               # Authentication types
-├── budgets.ts            # Budget types
-├── goals.ts              # Goal types
-└── api.ts                # API response types
-```
-
-### ML Worker Structure (`ml-worker/`)
-
-```
-ml_classification_service.py    # Main ML service with Sentence Transformers
-optimized_inference_engine.py  # ONNX-optimized inference engine
-onnx_converter.py              # Model conversion utilities
-model_monitoring.py            # ML model performance monitoring
-ab_testing_framework.py        # A/B testing for ML models
-production_orchestrator.py     # Production ML workflow
-worker.py                      # Celery worker entry point
-```
-
-### Memory 
-
-project-memory/
-├── 00-project-overview.md          # High-level project context
-├── 01-architecture-decisions.md    # Key technical decisions & rationale
-├── 02-codebase-patterns.md         # Code patterns & conventions
-├── 03-current-state.md             # What's implemented, what's not
-├── 04-dependencies-config.md       # Libraries, tools, setup
-└── 05-execution-history.md         # Log of completed tasks
-
----
-
-## Domain Data Model & Key Files
-
-### Database Models Location
-
-- **SQLAlchemy Models**: Backend database models are likely in `backend/app/models/` (check for model files)
-- **Database Migrations**: `backend/migrations/versions/` contains Alembic migration files
-- **Schema Definitions**: `backend/app/schemas/` contains Pydantic validation models
-
-### Core Objects (All IDs are UUID4, money as integer cents, UTC timestamps)
-
-**Reference Files for Data Models:**
-
-- **User Model**: `backend/app/schemas/user.py` and corresponding SQLAlchemy model
-- **Account Model**: `backend/app/schemas/account.py` and service in `backend/app/services/account_service.py`
-- **Transaction Model**: `backend/app/schemas/transaction.py` and service in `backend/app/services/transaction_service.py`
-- **Category Model**: `backend/app/schemas/category.py` and service in `backend/app/services/category_service.py`
-- **Budget Model**: `backend/app/schemas/budget.py` and service in `backend/app/services/budget_service.py`
-- **Goal Model**: `backend/app/schemas/goal.py` and service in `backend/app/services/goal_service.py`
-
-### Relationships & Business Logic
-
-- One user → many accounts, transactions, categories, budgets, goals
-- One account → many transactions
-- One category → many transactions (hierarchical: parent/child)
-- One goal → many contributions/milestones
-
-**Important**: Database entries and relationships can change - always ask user before updating memory when making schema changes.
-
----
-
-## Critical Technical Decisions & AI/ML System
-
-### ML Pipeline Implementation Files
-
-- **Main ML Service**: `ml-worker/ml_classification_service.py`
-- **ONNX Optimization**: `ml-worker/onnx_converter.py` and `ml-worker/optimized_inference_engine.py`
-- **ML API Integration**: `backend/app/services/ml_client.py`
-- **ML Routes**: `backend/app/routes/ml.py` and `backend/app/routes/mlcategory.py`
-- **Category Management**: `backend/app/services/category_service.py`
-
-### ML System Specifications
-
-- **Model**: `all-MiniLM-L6-v2` via Sentence Transformers; ONNX-quantized for <10ms inference on CPU
-- **Learning**: Few-shot—category "prototypes" updated by user-corrected examples
-- **Confidence Levels**: High (auto-assign), Medium (suggest), Low (ask user)
-- **Performance Target**: <10ms inference, >90% accuracy, 75%+ confidence auto-assign
-
-### Real-time System Implementation Files
-
-- **WebSocket Manager**: `backend/app/websocket/manager.py`
-- **WebSocket Events**: `backend/app/websocket/events.py`
-- **WebSocket Routes**: `backend/app/routes/websockets.py`
-- **Frontend WebSocket Hook**: `frontend/src/hooks/useWebSocket.ts`
-- **Real-time Store**: `frontend/src/stores/realtimeStore.ts`
-
----
-
-## Key Service Layer Files & Responsibilities
-
-### Backend Services (`backend/app/services/`)
-
-- **account_service.py**: Account CRUD, balance calculation, Plaid integration
-- **transaction_service.py**: Transaction CRUD, categorization, validation
-- **budget_service.py**: Budget management, alert system, progress tracking
-- **goal_service.py**: Goal tracking, milestone management, progress calculation
-- **enhanced_plaid_service.py**: Bank connection, transaction sync, account linking
-- **analytics_service.py**: Dashboard analytics, spending analysis, insights generation
-- **recurring_detection_service.py**: Automatic recurring transaction detection
-- **ml_client.py**: Interface to ML worker service for categorization
-
-### Frontend Services (`frontend/src/services/`)
-
-- **api.ts**: Base API client with authentication and error handling
-- **transactionService.ts**: Transaction API calls and local caching
-- **accountService.ts**: Account management and Plaid integration
-- **budgetService.ts**: Budget API calls and real-time updates
-- **goalService.ts**: Goal tracking and progress updates
-- **mlService.ts**: ML categorization feedback and suggestions
-
----
-
-## Configuration & Setup Files
-
-### Key Configuration Files
-
-- **Backend Config**: `backend/app/config.py` - Application settings and environment variables
-- **Database Setup**: `backend/app/database.py` - Database connection and session management
-- **Docker Compose**: `docker-compose.dev.yml` - Development environment orchestration
-- **Frontend Config**: `frontend/vite.config.ts` - Vite build configuration
-- **Nginx Config**: `nginx/nginx.conf` - Reverse proxy and routing rules
-
-### Environment & Dependencies
-
-- **Backend Dependencies**: `backend/requirements.txt`, `backend/pyproject.toml`
-- **Frontend Dependencies**: `frontend/package.json`
-- **ML Worker Dependencies**: `ml-worker/requirements.txt`
-- **Environment Template**: `.env.example`
-
----
-
-## Implementation Status & Key Features
+#### Docker Service Breakdown & Responsibilities:
 
-### COMPLETED Features (Based on File Structure)
+  * **`nginx` (The Gatekeeper)**:
 
-- Complete Docker infrastructure with all services
-- Authentication system with Supabase integration (`backend/app/auth/`)
-- **Row-Level Security (RLS) system fully implemented and verified** (`backend/migrations/versions/e98b7b1df196_enable_row_level_security.py`)
-- **User context database dependency for secure operations** (`backend/app/auth/dependencies.py::get_db_with_user_context`)
-- Transaction management with ML categorization (`backend/app/routes/transaction.py`)
-- Account management with Plaid integration (`backend/app/services/enhanced_plaid_service.py`)
-- Budget system with real-time tracking (`backend/app/services/budget_service.py`)
-- Goal tracking system (`backend/app/services/goal_service.py`)
-- Real-time WebSocket system (`backend/app/websocket/`)
-- ML classification service with ONNX optimization (`ml-worker/`)
-- Frontend dashboard with real-time updates (`frontend/src/components/dashboard/`)
-- Recurring transaction detection (`backend/app/services/recurring_detection_service.py`)
+      * **Single Public Entrypoint**: All incoming traffic from the user's browser hits Nginx first.
+      * **Request Routing**: It intelligently routes requests: UI assets are served by the `frontend` container, while API calls (`/api/...`) are forwarded to the `backend` container.
+      * **Security**: Provides a critical security layer, handling SSL termination, rate limiting, and protecting the backend services from direct exposure.
 
-### Development Areas to Focus On
+  * **`frontend` (The User Experience)**:
 
-- Testing coverage (`backend/tests/`, `frontend/src/__tests__/`)
-- Advanced analytics and insights (`backend/app/routes/insights.py`)
-- CSV import/export functionality (`frontend/src/components/transactions/CSVImport.tsx`)
-- Performance optimization and monitoring
-- Security hardening and comprehensive testing
+      * **Responsibility**: Renders the entire user interface and manages all client-side state and interactions.
+      * **Technology**: Built with React 18, TypeScript, and Vite for a modern, fast development experience.
+      * **Real-time Sync**: Establishes a WebSocket connection with the backend for real-time data updates (e.g., new transactions appearing without a page refresh).
+      * **Optimistic Updates**: Implements optimistic UI updates for a snappy user experience, where the UI updates immediately while the backend request is in flight.
 
----
+  * **`backend` (The Brains)**:
 
-## Key Constraints & Non-Negotiable Conventions
+      * **Responsibility**: Implements all business logic, manages data persistence, and orchestrates communication between other services. It exposes a REST and WebSocket API for the frontend.
+      * **Technology**: A high-performance FastAPI application.
+      * **Orchestration**: When a new transaction needs categorization, the backend doesn't do the ML work itself; it creates a task and places it on the Redis queue for the `ml-worker` to process.
 
-### Performance Targets
+  * **`postgres` (The Source of Truth)**:
 
-- ML inference: <10ms per transaction
-- WebSocket latency: <100ms for real-time updates
-- Dashboard load: <2 seconds initial load
-- API response: <200ms for CRUD operations
+      * **Responsibility**: The primary, persistent data store for all core financial and user data. This includes users, accounts, transactions, budgets, etc.
+      * **Integrity**: Data integrity is enforced here through schemas, constraints, and transactions, managed by SQLAlchemy in the backend.
 
-### Security & Privacy Requirements
+  * **`redis` (The Nervous System)**:
 
-- **All API endpoints authenticated** by default (JWT via Supabase)
-- **All actions audited** (edit/delete logged by user/timestamp)
-- **User data export/delete** flows (GDPR-friendly)
-- **Rate limiting**: API (10r/s), Auth (5r/min), via Nginx
-- **ML models**: Local inference by default
+      * **Responsibility**: A multi-purpose, in-memory data store.
+      * **Message Queue**: Acts as the message broker for Celery, allowing the `backend` to asynchronously delegate tasks to the `ml-worker`.
+      * **Real-time Cache**: Caches session data or frequently accessed information to speed up API responses.
+      * **Ephemeral Store**: Used for managing WebSocket connection states and other temporary data.
 
-### Data & Business Rules
+  * **`ml-worker` (The Specialist)**:
 
-- **All money stored as integer cents**; always convert for display
-- **All times stored in UTC**, rendered in user's timezone
-- **All major user actions auditable**
-- **Undo must be available** for all destructive actions
-- **Data must be exportable** by user at any time
+      * **Responsibility**: Handles all heavy computational AI/ML tasks, primarily transaction categorization. It listens for new tasks on the Redis queue, processes them, and returns the result.
+      * **Isolation**: Running ML inference in a separate service prevents it from blocking or slowing down the main `backend` API.
+      * **Technology**: Uses Sentence Transformers for semantic understanding and is optimized with ONNX for fast, CPU-based inference.
 
----
+#### **CRITICAL: Single-Worker Architecture Constraint**
 
-## File Reference Guide for Common Tasks
+**The current application architecture requires running with exactly 1 Uvicorn worker process** (`UVICORN_WORKERS=1`) due to in-memory caching implementations in several services:
 
-### When Working on Authentication
+- **Automatic Sync Scheduler**: Uses TTLCache for sync job management  
+- **Merchant Service**: Uses TTLCache for merchant recognition and user corrections
+- **Auto Categorization Service**: Uses TTLCache for rule caching
 
-- **Backend Auth**: `backend/app/auth/auth_service.py`
-- **Auth Routes**: `backend/app/routes/auth.py`
-- **Auth Middleware**: `backend/app/auth/middleware.py`
-- **Frontend Auth Store**: `frontend/src/stores/authStore.ts`
-- **Login Components**: `frontend/src/components/auth/`
+**Why This Matters:**
+- Multiple workers would have separate memory spaces, causing cache inconsistencies
+- User corrections made on one worker wouldn't be available to others
+- Sync job state could become fragmented across workers
 
-### When Working on Transactions
+**Current Solution:** 
+- All caches use `cachetools.TTLCache` with bounded size and time-to-live
+- Prevents memory leaks while maintaining single-worker compatibility
+- Cache management methods available for monitoring and cleanup
 
-- **Transaction Service**: `backend/app/services/transaction_service.py`
-- **Transaction Routes**: `backend/app/routes/transaction.py`
-- **Transaction Schemas**: `backend/app/schemas/transaction.py`
-- **Frontend Transaction Hook**: `frontend/src/hooks/useTransactions.ts`
-- **Transaction Components**: `frontend/src/components/transactions/`
+**Future Enhancement Path:**
+- Migrate to Redis-based distributed caching for multi-worker support
+- Implement cache synchronization mechanisms
+- Add worker health monitoring and failover capabilities
 
-### When Working on ML/Categorization
-
-- **ML Worker**: `ml-worker/ml_classification_service.py`
-- **ML Client**: `backend/app/services/ml_client.py`
-- **ML Routes**: `backend/app/routes/ml.py`, `backend/app/routes/mlcategory.py`
-- **Category Service**: `backend/app/services/category_service.py`
-- **Frontend ML Feedback**: `frontend/src/components/transactions/MLCategoryFeedback.tsx`
-
-### When Working on Real-time Features
-
-- **WebSocket Manager**: `backend/app/websocket/manager.py`
-- **WebSocket Events**: `backend/app/websocket/events.py`
-- **Frontend WebSocket Hook**: `frontend/src/hooks/useWebSocket.ts`
-- **Real-time Store**: `frontend/src/stores/realtimeStore.ts`
-- **Dashboard Components**: `frontend/src/components/dashboard/`
-
-### When Working on Budget/Goals
-
-- **Budget Service**: `backend/app/services/budget_service.py`
-- **Goal Service**: `backend/app/services/goal_service.py`
-- **Budget Routes**: `backend/app/routes/budget.py`
-- **Goal Routes**: `backend/app/routes/goals.py`
-- **Frontend Budget Components**: `frontend/src/components/budgets/`
-- **Frontend Goal Components**: `frontend/src/components/goals/`
-
----
-
-## Quick Reference Commands
-
-### Development Environment
-
+**Configuration:**
 ```bash
-# Start all services
-docker-compose -f docker-compose.yml up -d
-# or 
-./scripts/dev.sh
+# Required for current architecture
+UVICORN_WORKERS=1
 
-# Database migrations  
-docker exec backend alembic upgrade head
-
-# Access points
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:8000  
-# API Docs: http://localhost:8000/docs
-# Database: localhost:5432
-# Redis: localhost:6379
+# Cache settings (automatically applied)
+SYNC_JOBS_CACHE_MAX_SIZE=500
+MERCHANT_CACHE_MAX_SIZE=2000  
+RULE_CACHE_MAX_SIZE=1000
 ```
 
----
+-----
 
-## Memory Summary for AI Assistant
+### 3\. Codebase Navigation & Architectural Patterns
 
-**Mission**: Help build, improve, and document a modern, explainable, user-first finance tracker. All features, decisions, and code must align with this project context and the domain/business model described here.
+Instead of memorizing specific filenames, understand the *purpose* of the directories.
 
-**Key Navigation Principle**: Instead of keeping code snippets in memory, always reference the actual files in the project structure. Use this memory as a map to find the right files for any given task.
+#### Backend (`backend/app/`)
 
-**File-First Approach**: When implementing features, always check existing implementations in the relevant service/component files before writing new code. The project structure is comprehensive and most patterns already exist.
+  * **`routes/`**: The API layer. Each file here defines a set of HTTP endpoints (e.g., `routes/transaction.py`). Its job is to handle incoming requests, validate the data using schemas, and call the appropriate service layer function. **Routes should not contain business logic.**
+  * **`services/`**: The business logic layer. This is where the core application logic lives (e.g., `services/transaction_service.py`). Services orchestrate data operations, interact with other services (like the `ml_service`), and enforce business rules.
+  * **`models/`**: The database object layer. Each file defines a database table using SQLAlchemy's declarative base (e.g., `models/transaction.py`). This is the single source of truth for the database structure.
+  * **`schemas/`**: The data validation and serialization layer. These Pydantic models define the expected shape of API request and response bodies (e.g., `schemas/transaction.py`). They ensure data is clean before it enters the service layer and is formatted correctly before being sent to the client.
+  * **`websocket/`**: Contains the logic for real-time communication, including the connection manager and definitions of WebSocket events.
 
-**If any doubt exists, check the relevant files first, then clarify with the user, and record changes in memory.** This file is living documentation: update it with all significant architectural, business, or model changes.
+#### Frontend (`frontend/src/`)
 
-**Vital** : Don't try to read "repomix-output.xml", without asking for permission
+  * **`components/`**: Contains reusable UI components, organized by feature (e.g., `components/transactions/`).
+  * **`services/`**: The frontend's data layer. These files are responsible for making API calls to the backend (e.g., `services/transactionService.ts`). They abstract away the details of HTTP requests.
+  * **`stores/`**: The state management layer (using Zustand). These stores hold the application's state and provide methods for updating it.
+  * **`hooks/`**: Contains custom React hooks that encapsulate reusable logic, such as fetching data (`useTransactions.ts`) or managing WebSocket connections (`useWebSocket.ts`).
+
+-----
+
+### 4\. Domain Data Model & Key Business Rules
+
+  * **Core Objects**:
+      * **User**: Represents an authenticated user of the system.
+      * **Account**: A financial account (e.g., checking, savings, credit card) linked by a user.
+      * **Transaction**: An individual financial event with a date, amount, description, and category.
+      * **Category**: A user-defined category for transactions, which can be hierarchical (e.g., "Food" \> "Groceries").
+      * **Budget**: A user-defined spending limit for a specific category over a time period.
+      * **Goal**: A user-defined savings goal with a target amount and date.
+  * **Crucial Business Rules**:
+      * **Money is Always an Integer**: All monetary values are stored as **integer cents** in the database to avoid floating-point precision errors. All calculations are done with these integers. Convert to dollars/euros only at the final display stage in the frontend.
+      * **Timestamps are Always UTC**: All dates and times are stored in the database in UTC. Conversion to the user's local timezone should only happen in the frontend.
+      * **Auditability**: All significant user actions (creates, updates, deletes) must be auditable, linking the action back to a user and a timestamp.
+      * **Soft Deletes vs. Hard Deletes**: Consider using soft deletes (marking records as deleted instead of removing them) for critical data like transactions to allow for "undo" functionality and maintain historical integrity.
+
+-----
+
+### 5\. AI Assistant Quick Reference & Guidelines
+
+**Your Primary Directive**: Your mission is to assist in building, improving, and documenting this finance tracker. Every action you take and every line of code you write must align with the project's mission, architecture, and core philosophies outlined in this document.
+
+**The File-First Approach**:
+
+  * **Don't Reinvent the Wheel**: Before writing new code, always use this guide as a map to find the relevant files where similar functionality already exists. The project has a consistent structure; learn its patterns.
+  * **Reference, Don't Memorize Code**: Do not store large code snippets in your memory. Instead, reference the actual, up-to-date files in the project. The codebase is the living source of truth.
+  * **When in Doubt, Ask and Update**: If the user's request is ambiguous or requires a change to the architecture or business rules, first check the relevant files, then ask clarifying questions. Once a decision is made, update this memory document to reflect the change. This is living documentation.

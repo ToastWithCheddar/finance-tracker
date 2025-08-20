@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import redis
@@ -9,32 +9,31 @@ from datetime import datetime
 from app.database import get_db, check_database_health
 from app.config import settings
 from app.auth.supabase_client import supabase_client
+from app.core.exceptions import ExternalServiceError
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.get("/health")
-async def basic_health_check():
-    """Basic health check endpoint"""
-    return {
+async def health_check(detailed: bool = False, db: Session = Depends(get_db)):
+    """Health check endpoint with optional detailed information"""
+    health_status = {
         "status": "healthy",
         "service": "finance-tracker-api",
         "version": "1.0.0",
-        "environment": settings.ENVIRONMENT
-    }
-
-@router.get("/health/detailed")
-async def detailed_health_check(db: Session = Depends(get_db)):
-    """Detailed health check including all services"""
-    health_status = {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
         "environment": settings.ENVIRONMENT,
-        "checks": {
-            "database": {"status": "unknown"},
-            "redis": {"status": "unknown"},
-            "supabase": {"status": "unknown"}
-        }
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    
+    # Return basic health if detailed is False
+    if not detailed:
+        return health_status
+    
+    # Add detailed checks
+    health_status["checks"] = {
+        "database": {"status": "unknown"},
+        "redis": {"status": "unknown"},
+        "supabase": {"status": "unknown"}
     }
     
     # Check database
@@ -68,39 +67,7 @@ async def detailed_health_check(db: Session = Depends(get_db)):
         health_status["status"] = "degraded"
     
     if health_status["status"] == "unhealthy":
-        raise HTTPException(status_code=503, detail=health_status)
+        raise ExternalServiceError("Health Check", f"Service is unhealthy: {health_status}")
     
     return health_status
 
-@router.get("/health/database")
-async def database_health_check(db: Session = Depends(get_db)):
-    """Database-specific health check"""
-    try:
-        # Test basic query
-        result = db.execute(text("SELECT COUNT(*) as count FROM categories WHERE is_system = true"))
-        count = result.scalar()
-        
-        # Test user table
-        user_count = db.execute(text("SELECT COUNT(*) as count FROM users")).scalar()
-        
-        return {
-            "status": "healthy",
-            "database": "connected",
-            "system_categories": count,
-            "total_users": user_count
-        }
-    except Exception as e:
-        logger.error(f"Database health check failed: {e}")
-        raise HTTPException(
-            status_code=503, 
-            detail={"status": "unhealthy", "error": str(e)}
-        )
-
-@router.get("/health/auth")
-async def auth_health_check():
-    """Authentication service health check"""
-    return {
-        "status": "healthy" if supabase_client.is_configured() else "not_configured",
-        "supabase_configured": supabase_client.is_configured(),
-        "service": "authentication"
-    }

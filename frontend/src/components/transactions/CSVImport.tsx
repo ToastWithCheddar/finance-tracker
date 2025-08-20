@@ -25,7 +25,6 @@ export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const requiredHeaders = ['amount', 'category', 'transaction_date', 'transaction_type'];
-  // const optionalHeaders = ['description']; // Currently unused but kept for future functionality
 
   const handleFileSelect = (selectedFile: File) => {
     if (!selectedFile.name.endsWith('.csv')) {

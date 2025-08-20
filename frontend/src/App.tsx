@@ -15,10 +15,9 @@ import { Recurring } from './pages/Recurring';
 import { Categories } from './pages/Categories';
 import { Budgets } from './pages/Budgets';
 import Goals from './pages/Goals';
-import { Insights } from './pages/Insights';
 import { Timeline } from './pages/Timeline';
-import { AdminBypassButton } from './components/ui/AdminBypassButton';
-import { Layout } from './components/layout/Navigation';
+import { AdminBypassButton } from './components/dev-tools/AdminBypassButton';
+import { Layout } from './components/layout/Layout';
 import { CommandPalette } from './components/layout/CommandPalette';
 
 function App() {
@@ -95,17 +94,6 @@ function App() {
                     <ProtectedRoute>
                       <Layout>
                         <Goals />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
-                
-                <Route
-                  path="/insights"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Insights />
                       </Layout>
                     </ProtectedRoute>
                   }

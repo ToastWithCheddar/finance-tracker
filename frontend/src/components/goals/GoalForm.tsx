@@ -4,6 +4,7 @@ import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { Card } from '../ui/Card';
 import { useCreateGoal, useUpdateGoal, useGoalOptions } from '../../hooks/useGoals';
+import { useAccounts } from '../../hooks/useAccounts';
 import type { Goal, GoalCreate, GoalUpdate } from '../../types/goals';
 
 interface GoalFormProps {
@@ -32,6 +33,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
   const createGoal = useCreateGoal();
   const updateGoal = useUpdateGoal();
   const { data: options } = useGoalOptions();
+  const { data: accounts } = useAccounts();
 
   const isEditing = !!goal;
   const isLoading = createGoal.isPending || updateGoal.isPending;
@@ -111,6 +113,12 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
   const handleInputChange = (field: string, value: string | number | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
+
+  // Filter accounts to show only valid funding sources
+  const validFundingAccounts = accounts?.filter(account => 
+    account.is_active && 
+    (account.account_type === 'checking' || account.account_type === 'savings')
+  ) || [];
 
   const calculateMonthlyTarget = () => {
     const targetAmount = Math.round(parseFloat(formData.target_amount_cents) * 100);
@@ -350,12 +358,23 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
                   <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
                     Source Account
                   </label>
-                  <Input
+                  <select
                     value={formData.auto_contribution_source}
                     onChange={(e) => handleInputChange('auto_contribution_source', e.target.value)}
-                    placeholder="e.g., Checking Account"
-                    className="w-full"
-                  />
+                    className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))] bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))]"
+                  >
+                    <option value="">Select account</option>
+                    {validFundingAccounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name} ({account.account_type === 'checking' ? 'Checking' : 'Savings'})
+                      </option>
+                    ))}
+                  </select>
+                  {validFundingAccounts.length === 0 && (
+                    <p className="text-xs text-red-500 mt-1">
+                      No valid funding accounts available. Please add a checking or savings account first.
+                    </p>
+                  )}
                 </div>
               </div>
             )}

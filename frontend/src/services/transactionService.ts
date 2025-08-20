@@ -326,6 +326,99 @@ export class TransactionService extends BaseService {
     return type === 'income' ? '📈' : '📉';
   }
 
+  // Merchant recognition methods
+  async enrichTransactionWithMerchant(
+    transactionId: string,
+    description?: string,
+    options?: { context?: ErrorContext }
+  ): Promise<{
+    transaction_id: string;
+    original_description: string;
+    recognized_merchant: string | null;
+    confidence_score: number;
+    method_used: string;
+    updated: boolean;
+  }> {
+    const payload: any = {};
+    if (description) {
+      payload.description = description;
+    }
+
+    return this.post<{
+      transaction_id: string;
+      original_description: string;
+      recognized_merchant: string | null;
+      confidence_score: number;
+      method_used: string;
+      updated: boolean;
+    }>(
+      `/merchants/transactions/${transactionId}/enrich`,
+      payload,
+      { context: options?.context }
+    );
+  }
+
+  async correctTransactionMerchant(
+    transactionId: string,
+    merchantName: string,
+    options?: { context?: ErrorContext }
+  ): Promise<{
+    message: string;
+    transaction_id: string;
+    corrected_merchant: string;
+    learning_updated: boolean;
+  }> {
+    return this.put<{
+      message: string;
+      transaction_id: string;
+      corrected_merchant: string;
+      learning_updated: boolean;
+    }>(
+      `/merchants/transactions/${transactionId}/correct`,
+      { merchant_name: merchantName },
+      { context: options?.context }
+    );
+  }
+
+  async recognizeMerchantFromDescription(
+    description: string,
+    options?: { context?: ErrorContext }
+  ): Promise<{
+    original_description: string;
+    recognized_merchant: string | null;
+    confidence_score: number;
+    method_used: string;
+    suggestions: string[];
+  }> {
+    const params = { description };
+    
+    return this.get<{
+      original_description: string;
+      recognized_merchant: string | null;
+      confidence_score: number;
+      method_used: string;
+      suggestions: string[];
+    }>(
+      `/merchants/recognize`,
+      params,
+      { context: options?.context }
+    );
+  }
+
+  async getMerchantSuggestions(
+    query: string,
+    limit: number = 5,
+    options?: { context?: ErrorContext }
+  ): Promise<{ suggestions: string[] }> {
+    const params = { query, limit };
+    
+    return this.get<{ suggestions: string[] }>(
+      `/merchants/suggestions`,
+      params,
+      { context: options?.context }
+    );
+  }
+
   parseCSVFile(file: File): Promise<CreateTransactionRequest[]> {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();

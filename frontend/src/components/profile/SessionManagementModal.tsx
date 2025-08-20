@@ -5,6 +5,8 @@ import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { LoadingSpinner } from '../ui';
 import { userService } from '../../services/userService';
+import { useSuccessToast, useErrorToast } from '../ui/Toast';
+import { ConfirmationModal } from '../ui/ConfirmationModal';
 
 interface SessionManagementModalProps {
   isOpen: boolean;
@@ -25,6 +27,10 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
   const [isRevoking, setIsRevoking] = useState<string | null>(null);
   const [isRevokingAll, setIsRevokingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+  const [confirmRevokeAll, setConfirmRevokeAll] = useState(false);
+  const showSuccess = useSuccessToast();
+  const showError = useErrorToast();
 
   // Load sessions when modal opens
   useEffect(() => {
@@ -47,35 +53,37 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
     }
   };
 
-  const handleRevokeSession = async (sessionId: string) => {
-    if (!confirm('Are you sure you want to revoke this session? The user will be logged out from that device.')) {
-      return;
-    }
+  const handleRevokeSession = (sessionId: string) => {
+    setConfirmRevoke(sessionId);
+  };
+
+  const confirmRevokeSession = async () => {
+    if (!confirmRevoke) return;
 
     try {
-      setIsRevoking(sessionId);
-      await userService.revokeSession(sessionId);
+      setIsRevoking(confirmRevoke);
+      await userService.revokeSession(confirmRevoke);
       
       // Remove session from local state
-      setSessions(prev => prev.filter(session => session.id !== sessionId));
+      setSessions(prev => prev.filter(session => session.id !== confirmRevoke));
       
       // Show success message
-      alert('Session revoked successfully');
+      showSuccess('Session revoked successfully');
+      setConfirmRevoke(null);
     } catch (error) {
       console.error('Failed to revoke session:', error);
-      alert('Failed to revoke session. Please try again.');
+      showError('Failed to revoke session. Please try again.');
     } finally {
       setIsRevoking(null);
+      setConfirmRevoke(null);
     }
   };
 
-  const handleRevokeAllSessions = async () => {
-    const confirmMessage = 'Are you sure you want to revoke all other sessions? This will log you out from all other devices except this one.';
-    
-    if (!confirm(confirmMessage)) {
-      return;
-    }
+  const handleRevokeAllSessions = () => {
+    setConfirmRevokeAll(true);
+  };
 
+  const confirmRevokeAllSessions = async () => {
     try {
       setIsRevokingAll(true);
       await userService.revokeAllSessions();
@@ -84,12 +92,14 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
       setSessions(prev => prev.filter(session => session.is_current));
       
       // Show success message
-      alert('All other sessions have been revoked successfully');
+      showSuccess('All other sessions have been revoked successfully');
+      setConfirmRevokeAll(false);
     } catch (error) {
       console.error('Failed to revoke all sessions:', error);
-      alert('Failed to revoke all sessions. Please try again.');
+      showError('Failed to revoke all sessions. Please try again.');
     } finally {
       setIsRevokingAll(false);
+      setConfirmRevokeAll(false);
     }
   };
 
@@ -290,6 +300,28 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
           </Button>
         </div>
       </div>
+
+      <ConfirmationModal
+        isOpen={!!confirmRevoke}
+        onClose={() => setConfirmRevoke(null)}
+        onConfirm={confirmRevokeSession}
+        title="Revoke Session"
+        message="Are you sure you want to revoke this session? The user will be logged out from that device."
+        confirmText="Revoke"
+        variant="danger"
+        isLoading={isRevoking === confirmRevoke}
+      />
+
+      <ConfirmationModal
+        isOpen={confirmRevokeAll}
+        onClose={() => setConfirmRevokeAll(false)}
+        onConfirm={confirmRevokeAllSessions}
+        title="Revoke All Sessions"
+        message="Are you sure you want to revoke all other sessions? This will log you out from all other devices except this one."
+        confirmText="Revoke All"
+        variant="danger"
+        isLoading={isRevokingAll}
+      />
     </Modal>
   );
 }

@@ -236,48 +236,75 @@ describe('BudgetCard', () => {
       expect(mockOnEdit).toHaveBeenCalledWith(defaultBudget);
     });
 
-    it('should show confirmation state when delete button is clicked', async () => {
+    it('should show delete confirmation modal when delete button is clicked', async () => {
       render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
       
-      const deleteButton = screen.getByRole('button', { name: /delete/i });
+      const deleteButton = screen.getByRole('button', { name: /delete budget/i });
       await user.click(deleteButton);
       
-      expect(screen.getByText('Confirm')).toBeInTheDocument();
-      expect(screen.getByText('✕')).toBeInTheDocument();
+      expect(screen.getByText('Delete Budget')).toBeInTheDocument();
+      expect(screen.getByText('This action cannot be undone')).toBeInTheDocument();
+      expect(screen.getByText(/Are you sure you want to delete the budget "Food Budget"/)).toBeInTheDocument();
     });
 
     it('should cancel delete confirmation when cancel button is clicked', async () => {
       render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
       
-      const deleteButton = screen.getByRole('button', { name: /delete/i });
+      const deleteButton = screen.getByRole('button', { name: /delete budget/i });
       await user.click(deleteButton);
       
-      const cancelButton = screen.getByText('✕');
+      const cancelButton = screen.getByRole('button', { name: /cancel/i });
       await user.click(cancelButton);
       
-      expect(screen.queryByText('Confirm')).not.toBeInTheDocument();
+      expect(screen.queryByText('Delete Budget')).not.toBeInTheDocument();
     });
 
-    it('should call onDelete when confirm button is clicked', async () => {
+    it('should call onDelete when confirm delete button is clicked', async () => {
       render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
       
-      const deleteButton = screen.getByRole('button', { name: /delete/i });
+      const deleteButton = screen.getByRole('button', { name: /delete budget/i });
       await user.click(deleteButton);
       
-      const confirmButton = screen.getByText('Confirm');
+      const confirmButton = screen.getByRole('button', { name: /delete budget/i });
       await user.click(confirmButton);
       
       expect(mockOnDelete).toHaveBeenCalledWith('budget-1');
     });
 
+    it('should open alert settings modal when alert settings button is clicked', async () => {
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      
+      const alertSettingsButton = screen.getByRole('button', { name: /alert settings/i });
+      await user.click(alertSettingsButton);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Alert Settings')).toBeInTheDocument();
+      });
+    });
+
+    it('should open calendar modal when calendar button is clicked', async () => {
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      
+      const calendarButton = screen.getByRole('button', { name: /calendar view/i });
+      await user.click(calendarButton);
+      
+      await waitFor(() => {
+        expect(screen.getByText('Budget Calendar')).toBeInTheDocument();
+      });
+    });
+
     it('should disable buttons when loading', () => {
       render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} isLoading={true} />);
       
-      const editButton = screen.getByRole('button', { name: /edit/i });
-      const deleteButton = screen.getByRole('button', { name: /delete/i });
+      const editButton = screen.getByRole('button', { name: /edit budget/i });
+      const deleteButton = screen.getByRole('button', { name: /delete budget/i });
+      const calendarButton = screen.getByRole('button', { name: /calendar view/i });
+      const alertButton = screen.getByRole('button', { name: /alert settings/i });
       
       expect(editButton).toBeDisabled();
       expect(deleteButton).toBeDisabled();
+      expect(calendarButton).toBeDisabled();
+      expect(alertButton).toBeDisabled();
     });
 
     it('should apply opacity when loading', () => {

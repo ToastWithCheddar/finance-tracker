@@ -6,6 +6,8 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { PlaidLink } from './PlaidLink';
 import { usePlaidConnectionStatus, usePlaidActions } from '../../hooks/usePlaid';
 import { plaidService } from '../../services/plaidService';
+import { formatCurrency } from '../../utils';
+import { getAccountIcon, getHealthColor } from '../../utils/account';
 import { 
   Building2, 
   RefreshCw, 
@@ -56,38 +58,7 @@ export function AccountConnectionStatus() {
     }
   };
 
-  const formatCurrency = (cents: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-    }).format(cents / 100);
-  };
 
-  const getAccountIcon = (type: string | undefined | null) => {
-    const accountType = type?.toLowerCase() || 'unknown';
-    switch (accountType) {
-      case 'credit':
-      case 'credit_card':
-        return <CreditCard className="h-5 w-5" />;
-      case 'checking':
-      case 'savings':
-      default:
-        return <Banknote className="h-5 w-5" />;
-    }
-  };
-
-  const getHealthColor = (health: string) => {
-    switch (health) {
-      case 'healthy':
-        return 'text-green-600 bg-green-100';
-      case 'warning':
-        return 'text-yellow-600 bg-yellow-100';
-      case 'failed':
-        return 'text-red-600 bg-red-100';
-      default:
-        return 'text-gray-600 bg-gray-100';
-    }
-  };
 
   if (isLoading) {
     return (

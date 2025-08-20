@@ -52,14 +52,14 @@ graph TD
     *   **Zustand**: For global client-side state (authentication, real-time data).
 *   **API Communication**: Uses a custom `ApiClient` for all backend interactions, including token management and structured error handling.
 *   **Real-time Updates**: Consumes WebSocket messages from the backend for live data updates (e.g., new transactions, budget alerts).
-*   **Key Features**: User authentication (login/register), dashboard with analytics, transaction management (CRUD, CSV import/export), budget tracking, category management, goal setting, user preferences.
+*   **Key Features**: User authentication (login/register), dashboard with analytics, transaction management (CRUD, CSV import/export), budget tracking, category management, goal setting.
 
 ### 3.2. Backend (FastAPI/Python)
 
 *   **Purpose**: Serves as the core API for the application, handling business logic, data persistence, and communication with external services.
 *   **Technology Stack**: FastAPI, Python, SQLAlchemy (ORM), PostgreSQL (database), Redis (cache/message broker).
 *   **Authentication**: Manages user authentication and authorization, likely using JWTs.
-*   **API Endpoints**: Exposes RESTful API endpoints for accounts, transactions, categories, budgets, goals, user preferences, and analytics.
+*   **API Endpoints**: Exposes RESTful API endpoints for accounts, transactions, categories, budgets, goals, and analytics.
 *   **Business Logic**: Contains the core business rules and orchestrates interactions between different data models and services.
 *   **Data Access**: Interacts with PostgreSQL for data storage and retrieval.
 *   **ML Service Integration**: Communicates with the ML Worker via HTTP-based MLServiceClient for transaction categorization and model management.

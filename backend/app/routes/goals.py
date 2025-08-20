@@ -7,14 +7,11 @@ from ..schemas.goal import (
     Goal, GoalCreate, GoalUpdate, GoalContribution, GoalContributionCreate,
     GoalsResponse, GoalStats, GoalStatus, GoalType, GoalPriority
 )
+from app.dependencies import get_goal_service, get_owned_goal
 from ..services.goal_service import GoalService
-from ..websocket.manager import get_websocket_manager
 from uuid import UUID
 
 router = APIRouter(prefix="/goals", tags=["goals"])
-
-def get_goal_service():
-    return GoalService(websocket_manager=get_websocket_manager())
 
 @router.post("/", response_model=Goal)
 async def create_goal(
@@ -24,10 +21,7 @@ async def create_goal(
     goal_service: GoalService = Depends(get_goal_service)
 ):
     """Create a new financial goal"""
-    try:
-        return goal_service.create_goal(db, current_user["id"], goal_data)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return goal_service.create_goal(db, current_user["id"], goal_data)
 
 @router.get("/", response_model=GoalsResponse)
 async def get_goals(
@@ -56,15 +50,9 @@ async def get_goal_statistics(
 
 @router.get("/{goal_id}", response_model=Goal)
 async def get_goal(
-    goal_id: UUID,
-    db: Session = Depends(get_db_with_user_context),
-    current_user: dict = Depends(get_current_user),
-    goal_service: GoalService = Depends(get_goal_service)
+    goal = Depends(get_owned_goal)
 ):
     """Get a specific goal with all related data"""
-    goal = goal_service.get_goal(db, current_user["id"], goal_id)
-    if not goal:
-        raise HTTPException(status_code=404, detail="Goal not found")
     return goal
 
 @router.put("/{goal_id}", response_model=Goal)

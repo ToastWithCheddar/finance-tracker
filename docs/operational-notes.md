@@ -60,7 +60,6 @@ Environment variables are crucial for configuring the application across differe
 *   `DATABASE_URL`: PostgreSQL connection string (e.g., `postgresql://user:password@host:port/database`).
 *   `REDIS_URL`: Redis connection string (e.g., `redis://redis:6379`).
 *   `SECRET_KEY`: A strong, random key for general application security.
-*   `JWT_SECRET_KEY`: A strong, random key for JWT token signing.
 *   `SUPABASE_URL`: URL for Supabase integration.
 *   `SUPABASE_ANON_KEY`: Anonymous key for Supabase integration.
 *   `ENVIRONMENT`: Application environment (`development`, `staging`, `production`).

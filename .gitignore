@@ -4,6 +4,13 @@
 .env.development.local
 .env.test.local
 .env.production.local
+repomix-output.xml
+repomix.config.json
+CLAUDE.md
+CLAUDE.local.md
+.claude/
+.cursor/
+problems.md
 
 # Dependencies
 node_modules/
@@ -71,7 +78,6 @@ Thumbs.db
 *.joblib
 ml_models/*.pkl
 ml_models/*.joblib
-models/
 
 # Temporary files
 *.tmp

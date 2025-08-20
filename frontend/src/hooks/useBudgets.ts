@@ -54,6 +54,16 @@ export function useBudgetAlerts() {
   });
 }
 
+// Get budget calendar
+export function useBudgetCalendar(budgetId: string, month: string) {
+  return useQuery({
+    queryKey: [...budgetKeys.detail(budgetId), 'calendar', month],
+    queryFn: () => budgetService.getBudgetCalendar(budgetId, month),
+    enabled: !!budgetId && !!month,
+    staleTime: 10 * 60 * 1000, // 10 minutes
+  });
+}
+
 // Create budget mutation
 export function useCreateBudget() {
   const queryClient = useQueryClient();

@@ -3,13 +3,23 @@ import type { ButtonHTMLAttributes } from 'react';
 import { Loader2 } from 'lucide-react';
 import { cn } from '../../utils';
 
+/**
+ * Props for the Button component
+ */
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  /** Visual variant of the button */
   variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+  /** Size of the button */
   size?: 'sm' | 'md' | 'lg';
+  /** Whether the button is in a loading state */
   loading?: boolean;
+  /** Button content */
   children: React.ReactNode;
 }
 
+/**
+ * A versatile button component with multiple variants, sizes, and loading state support
+ */
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(
   ({ 
     className, 

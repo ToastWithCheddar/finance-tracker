@@ -8,9 +8,8 @@ from app.auth.auth_service import AuthService
 from app.auth.dependencies import get_current_user, get_current_active_user, get_auth_service
 from app.schemas.auth import (
     UserRegister, UserLogin, RefreshTokenRequest,
-    PasswordResetRequest, ResendVerificationRequest, AuthResponse, StandardAuthResponse
+    PasswordResetRequest, ResendVerificationRequest, AuthResponse, PasswordUpdate
 )
-from app.schemas.user import PasswordUpdate
 from app.schemas.user import User as UserSchema
 from app.models.user import User
 from app.auth.supabase_client import supabase_client
@@ -29,14 +28,14 @@ async def register(
     """Registers a new user."""
     return await auth_service.register_user(user_data)
 
-@router.post("/login", response_model=StandardAuthResponse)
+@router.post("/login", response_model=AuthResponse)
 async def login(
     login_data: UserLogin,
     auth_service: AuthService = Depends(get_auth_service)
-) -> StandardAuthResponse:
+) -> AuthResponse:
     """Authenticates a user and returns a token."""
     result = await auth_service.login_user(login_data)
-    return StandardAuthResponse(**result)
+    return AuthResponse(**result)
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
@@ -48,14 +47,14 @@ async def logout(
     await auth_service.logout_user(token)
     return
 
-@router.post("/refresh", response_model=StandardAuthResponse)
+@router.post("/refresh", response_model=AuthResponse)
 async def refresh_token(
     refresh_data: RefreshTokenRequest,
     auth_service: AuthService = Depends(get_auth_service)
-) -> StandardAuthResponse:
+) -> AuthResponse:
     """Refreshes an access token."""
     result = await auth_service.refresh_token(refresh_data.refresh_token)
-    return StandardAuthResponse(**result)
+    return AuthResponse(**result)
 
 @router.post("/request-password-reset", status_code=status.HTTP_204_NO_CONTENT)
 async def request_password_reset(
