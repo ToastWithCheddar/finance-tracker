@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid
 import logging
 
@@ -76,7 +76,7 @@ class UserService(BaseService[User, UserCreate, UserUpdate]):
         from datetime import datetime
         user_update = UserUpdate(
             is_verified=True,
-            email_verified_at=datetime.utcnow()
+            email_verified_at=datetime.now(timezone.utc)
         )
         return self.update(db=db, db_obj=db_user, obj_in=user_update)
     
@@ -178,7 +178,7 @@ class UserService(BaseService[User, UserCreate, UserUpdate]):
         if not session:
             return False
         
-        session.last_activity = datetime.utcnow()
+        session.last_activity = datetime.now(timezone.utc)
         db.commit()
         return True
 
@@ -224,7 +224,7 @@ class UserService(BaseService[User, UserCreate, UserUpdate]):
         """Clean up expired sessions (utility method)"""
         expired_sessions = db.query(UserSession).filter(
             and_(
-                UserSession.expires_at < datetime.utcnow(),
+                UserSession.expires_at < datetime.now(timezone.utc),
                 UserSession.is_active == True
             )
         ).all()

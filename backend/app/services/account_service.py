@@ -79,5 +79,12 @@ class AccountService(BaseService[Account, AccountCreate, AccountUpdate]):
         return account
 
 
-# Global instance
-account_service = AccountService()
+# Provider function with lazy caching
+_account_service_instance = None
+
+def get_account_service() -> AccountService:
+    """Get the global AccountService instance with lazy initialization"""
+    global _account_service_instance
+    if _account_service_instance is None:
+        _account_service_instance = AccountService()
+    return _account_service_instance

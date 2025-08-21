@@ -48,9 +48,6 @@ class GoalBase(BaseModel):
     status: Annotated[GoalStatus, Field(default=GoalStatus.ACTIVE)]
     start_date: datetime | None = None
     target_date: datetime | None = None
-    auto_contribute: bool = False
-    auto_contribution_amount_cents: int | None = Field(None, description="Auto contribution amount in cents")
-    auto_contribution_source: str | None = None
     last_contribution_date: datetime | None = None
     contribution_frequency: Annotated[ContributionFrequency, Field(default=ContributionFrequency.WEEKLY)]
     monthly_target_cents: int | None = Field(None, description="Monthly target in cents")
@@ -64,13 +61,6 @@ class GoalBase(BaseModel):
         return v
 
 class GoalCreate(GoalBase):
-    @field_validator('auto_contribution_amount_cents')
-    @classmethod
-    def validate_auto_contribution_amount(cls, v, info: dict):
-        values = info.data
-        if values.get('auto_contribute') and not v:
-            raise ValueError("Auto contribution amount is required when auto-contribute is enabled")
-        return v
 
 class GoalUpdate(BaseModel):
     name: Annotated[str, Field(min_length=1, max_length=255)] | None = None
@@ -83,9 +73,6 @@ class GoalUpdate(BaseModel):
     target_date: datetime | None = None
     contribution_frequency: ContributionFrequency | None = None
     monthly_target_cents: Annotated[int, Field(ge=0)] | None = None
-    auto_contribute: bool | None = None
-    auto_contribution_amount_cents: Annotated[int, Field(gt=0)] | None = None
-    auto_contribution_source: str | None = None
     milestone_percentage: Annotated[int, Field(ge=1, le=100)] | None = None
 
     @field_validator('target_date')
@@ -95,15 +82,6 @@ class GoalUpdate(BaseModel):
             raise ValueError('Target date must be after start date')
         return v
 
-    @field_validator('auto_contribution_amount_cents')
-    @classmethod
-    def validate_auto_contribution_amount(cls, v, info):
-        values = info.data
-        if values.get('auto_contribute') and not v:
-            raise ValueError("Auto contribution amount is required when auto-contribute is enabled")
-        if not values.get('auto_contribute') and v:
-            raise ValueError("Auto contribution amount should not be set when auto-contribute is disabled")
-        return v
 
     @field_validator('monthly_target_cents')
     @classmethod
@@ -125,7 +103,6 @@ class GoalContributionCreate(GoalContributionBase):
 class GoalContribution(GoalContributionBase, BaseResponseSchema):
     goal_id: UUID
     contribution_date: datetime = Field(default_factory=datetime.now)
-    is_automatic: bool = False
     transaction_id: UUID | None = None
 
 # Milestone schemas

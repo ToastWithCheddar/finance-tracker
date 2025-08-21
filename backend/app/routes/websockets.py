@@ -5,14 +5,14 @@ from typing import Optional, Dict, Any
 import json
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
-from ..websocket.manager import redis_websocket_manager as manager
-from ..websocket.events import WebSocketEvents, MessageType
-from ..auth.dependencies import get_current_user_from_token
-from ..database import get_db
-from ..models import User
-from ..core.exceptions import (
+from app.websocket.manager import redis_websocket_manager as manager
+from app.websocket.events import WebSocketEvents, MessageType
+from app.auth.dependencies import get_current_user_from_token
+from app.database import get_db
+from app.models import User
+from app.core.exceptions import (
     ExternalServiceError,
     ResourceNotFoundError,
     AuthenticationError
@@ -42,8 +42,8 @@ async def websocket_endpoint(
         client_info = {
             "user_agent": websocket.headers.get("user-agent", ""),
             "client_ip": websocket.client.host if websocket.client else "unknown",
-            "connected_at": datetime.utcnow().isoformat(),
-            "last_activity": datetime.utcnow().isoformat()
+            "connected_at": datetime.now(timezone.utc).isoformat(),
+            "last_activity": datetime.now(timezone.utc).isoformat()
         }
 
         # Connect to WebSocket manager
@@ -59,7 +59,7 @@ async def websocket_endpoint(
                 
                 # Update last activity
                 if websocket in manager.connection_metadata:
-                    manager.connection_metadata[websocket]["last_activity"] = datetime.utcnow().isoformat()
+                    manager.connection_metadata[websocket]["last_activity"] = datetime.now(timezone.utc).isoformat()
                 
                 # Handle incoming message
                 await handle_client_message(websocket, user.id, data)
@@ -125,11 +125,11 @@ async def handle_ping(websocket: WebSocket, user_id: str, payload: Dict[str, Any
         pong_message = {
             "type": "pong",
             "payload": {
-                "server_time": datetime.utcnow().isoformat(),
+                "server_time": datetime.now(timezone.utc).isoformat(),
                 "client_time": payload.get("client_time"),
                 "latency_ms": payload.get("sent_at")
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
         await websocket.send_text(json.dumps(pong_message))
     except Exception as e:
@@ -192,7 +192,7 @@ async def handle_dashboard_refresh(websocket: WebSocket, user_id: str, payload: 
         response = {
             "type": "dashboard_refresh_completed",
             "payload": {
-                "refreshed_at": datetime.utcnow().isoformat()
+                "refreshed_at": datetime.now(timezone.utc).isoformat()
             }
         }
         await websocket.send_text(json.dumps(response))
@@ -211,7 +211,7 @@ async def handle_mark_notification_read(websocket: WebSocket, user_id: str, payl
             "type": "notifications_marked_read",
             "payload": {
                 "marked_read": notification_ids,
-                "marked_at": datetime.utcnow().isoformat()
+                "marked_at": datetime.now(timezone.utc).isoformat()
             }
         }
         await websocket.send_text(json.dumps(response))
@@ -233,7 +233,7 @@ async def handle_get_connection_stats(websocket: WebSocket, user_id: str, payloa
                 "user_connections": user_connections,
                 "total_connections": stats.get("active_connections", 0),
                 "connected_users": stats.get("connected_users", 0),
-                "server_uptime": datetime.utcnow().isoformat()
+                "server_uptime": datetime.now(timezone.utc).isoformat()
             }
         }
         await websocket.send_text(json.dumps(response))
@@ -248,7 +248,7 @@ async def send_error_response(websocket: WebSocket, error_message: str):
             "type": "error",
             "payload": {
                 "message": error_message,
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         }
         await websocket.send_text(json.dumps(error_response))
@@ -265,7 +265,7 @@ async def websocket_health():
             "status": "healthy",
             "total_connections": stats.get("active_connections", 0),
             "connected_users": stats.get("connected_users", 0),
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error(f"WebSocket health check failed: {str(e)}", exc_info=True)
@@ -284,7 +284,7 @@ async def get_websocket_stats(current_user: User = Depends(get_current_user_from
                 "connected_users": manager.get_connected_users(),
                 "total_connections": manager.get_total_connections()
             },
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
         logger.error(f"Error getting WebSocket stats: {str(e)}", exc_info=True)
@@ -372,9 +372,5 @@ async def cleanup_stale_connections():
             logger.error(f"Error in cleanup task: {str(e)}")
             await asyncio.sleep(60)  # Wait 1 minute before retrying
 
-# Start cleanup task when module is imported
-try:
-    asyncio.create_task(cleanup_stale_connections())
-except RuntimeError:
-    # Handle case where event loop is not yet running
-    logger.info("Event loop not ready, cleanup task will be started later")
+# Note: Background task moved to main app startup to avoid import-time execution
+# See main.py lifespan event for cleanup task initialization

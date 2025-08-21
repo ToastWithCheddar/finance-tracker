@@ -23,15 +23,6 @@ export function useDashboardDateRanges() {
   return dashboardService.getDateRangePresets();
 }
 
-export function useMoneyFlow(startDate: string, endDate: string) {
-  return useQuery({
-    queryKey: ['money-flow', startDate, endDate],
-    queryFn: () => dashboardService.getMoneyFlow({ start_date: startDate, end_date: endDate }),
-    enabled: !!startDate && !!endDate,
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
-  });
-}
 
 export function useSpendingHeatmap(startDate: string, endDate: string) {
   return useQuery({

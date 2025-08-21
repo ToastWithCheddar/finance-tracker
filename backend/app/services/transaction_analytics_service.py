@@ -357,5 +357,12 @@ class TransactionAnalyticsService:
         }
 
 
-# Create singleton instance
-transaction_analytics_service = TransactionAnalyticsService()
+# Provider function with lazy caching
+_transaction_analytics_service_instance = None
+
+def get_transaction_analytics_service() -> TransactionAnalyticsService:
+    """Get the global TransactionAnalyticsService instance with lazy initialization"""
+    global _transaction_analytics_service_instance
+    if _transaction_analytics_service_instance is None:
+        _transaction_analytics_service_instance = TransactionAnalyticsService()
+    return _transaction_analytics_service_instance

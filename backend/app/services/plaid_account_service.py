@@ -11,9 +11,9 @@ from uuid import UUID
 
 from app.models.account import Account
 from app.schemas.account import AccountCreate
-from app.services.account_service import AccountService
-from app.services.account_alert_service import account_alert_service
-from app.services.plaid_client_service import plaid_client_service
+from app.services.account_service import get_account_service
+# from app.services.account_alert_service import get_account_alert_service  # Service doesn't exist
+from app.services.plaid_client_service import get_plaid_client_service
 from app.services.utils.plaid_utils import group_accounts_by_token
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
@@ -25,7 +25,7 @@ class PlaidAccountService:
     """Service for managing Plaid-connected accounts"""
     
     def __init__(self):
-        self.account_service = AccountService()
+        self.account_service = get_account_service()
     
     async def create_or_update_account(
         self, 
@@ -311,7 +311,7 @@ class PlaidAccountService:
         """Sync balances for a group of accounts with the same access token"""
         try:
             # Fetch fresh balances from Plaid
-            balance_response = await plaid_client_service.fetch_account_balances(access_token)
+            balance_response = await get_plaid_client_service().fetch_account_balances(access_token)
             
             if not balance_response.get('success'):
                 raise Exception(balance_response.get('error', 'Unknown error'))
@@ -410,8 +410,8 @@ class PlaidAccountService:
             # Send to user's WebSocket connections
             await websocket_manager.send_to_user(str(account.user_id), event)
             
-            # Check for account alerts
-            await account_alert_service.check_balance_alerts(account, new_balance)
+            # Check for account alerts (service not yet implemented)
+            # await get_account_alert_service().check_balance_alerts(account, new_balance)
             
         except Exception as e:
             logger.error(f"Failed to send balance update notification: {e}")
@@ -480,5 +480,12 @@ class PlaidAccountService:
         return 'checking'  # Safe default
 
 
-# Create singleton instance
-plaid_account_service = PlaidAccountService()
+# Provider function with lazy caching
+_plaid_account_service_instance = None
+
+def get_plaid_account_service() -> PlaidAccountService:
+    """Get the global PlaidAccountService instance with lazy initialization"""
+    global _plaid_account_service_instance
+    if _plaid_account_service_instance is None:
+        _plaid_account_service_instance = PlaidAccountService()
+    return _plaid_account_service_instance

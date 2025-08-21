@@ -12,8 +12,8 @@ from uuid import UUID
 
 from app.models.account import Account
 from app.models.plaid_recurring_transaction import PlaidRecurringTransaction
-from app.services.plaid_client_service import plaid_client_service
-from app.services.plaid_transaction_service import plaid_transaction_service
+from app.services.plaid_client_service import get_plaid_client_service
+from app.services.plaid_transaction_service import get_plaid_transaction_service
 from app.services.utils.plaid_utils import group_accounts_by_token
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
@@ -60,7 +60,7 @@ class PlaidWebhookService:
             for access_token, accounts_in_group in token_groups.items():
                 try:
                     # Fetch recurring transactions for this token group
-                    recurring_data = await plaid_client_service.fetch_recurring_transactions(access_token)
+                    recurring_data = await get_plaid_client_service().fetch_recurring_transactions(access_token)
                     
                     if not recurring_data.get('success'):
                         raise Exception(recurring_data.get('error', 'Failed to fetch recurring transactions'))
@@ -296,7 +296,7 @@ class PlaidWebhookService:
             user_id = str(accounts[0].user_id)
             
             try:
-                sync_result = await plaid_transaction_service.sync_transactions_for_user(db, user_id)
+                sync_result = await get_plaid_transaction_service().sync_transactions_for_user(db, user_id)
                 logger.info(f"Webhook triggered transaction sync for user {user_id}: {sync_result.get('total_new_transactions', 0)} new transactions")
                 
                 return {"success": True, "sync_result": sync_result}
@@ -382,5 +382,12 @@ class PlaidWebhookService:
     
 
 
-# Create singleton instance
-plaid_webhook_service = PlaidWebhookService()
+# Provider function with lazy caching
+_plaid_webhook_service_instance = None
+
+def get_plaid_webhook_service() -> PlaidWebhookService:
+    """Get the global PlaidWebhookService instance with lazy initialization"""
+    global _plaid_webhook_service_instance
+    if _plaid_webhook_service_instance is None:
+        _plaid_webhook_service_instance = PlaidWebhookService()
+    return _plaid_webhook_service_instance

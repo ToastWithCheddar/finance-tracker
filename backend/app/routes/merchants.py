@@ -11,14 +11,14 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 
-from ..database import get_db
+from app.database import get_db
 from app.dependencies import get_transaction_service, get_merchant_service
-from ..services.merchant_service import merchant_service, MerchantRecognitionResult
-from ..services.transaction_service import TransactionService
+from app.services.merchant_service import get_merchant_service, MerchantRecognitionResult
+from app.services.transaction_service import TransactionService
 from app.auth.dependencies import get_current_user, get_db_with_user_context
-from ..models.user import User
-from ..models.transaction import Transaction
-from ..core.exceptions import (
+from app.models.user import User
+from app.models.transaction import Transaction
+from app.core.exceptions import (
     ExternalServiceError,
     TransactionNotFoundError,
     DataIntegrityError
@@ -70,7 +70,7 @@ def recognize_merchant_from_description(
     Recognize merchant from transaction description without updating any transaction
     """
     try:
-        result = merchant_service.recognize_merchant(description)
+        result = get_merchant_service().recognize_merchant(description)
         
         return MerchantRecognitionResponse(
             original_description=result.original_description,
@@ -104,7 +104,7 @@ def enrich_transaction_with_merchant(
         description_to_analyze = request.description or transaction.description
         
         # Recognize merchant
-        result = merchant_service.recognize_merchant(description_to_analyze)
+        result = get_merchant_service().recognize_merchant(description_to_analyze)
         
         # Update transaction if merchant was recognized and is different
         updated = False
@@ -114,7 +114,7 @@ def enrich_transaction_with_merchant(
             
             try:
                 # Update the transaction with recognized merchant
-                from ..schemas.transaction import TransactionUpdate
+                from app.schemas.transaction import TransactionUpdate
                 update_data = TransactionUpdate(merchant=result.recognized_merchant)
                 transaction_service.update_transaction(db, transaction, update_data)
                 updated = True
@@ -157,12 +157,12 @@ def correct_transaction_merchant(
             raise TransactionNotFoundError(str(transaction_id))
         
         # Update the transaction with corrected merchant
-        from ..schemas.transaction import TransactionUpdate
+        from app.schemas.transaction import TransactionUpdate
         update_data = TransactionUpdate(merchant=request.merchant_name)
         updated_transaction = transaction_service.update_transaction(db, transaction, update_data)
         
         # Add user correction to merchant service to improve future recognition
-        merchant_service.add_user_correction(
+        get_merchant_service().add_user_correction(
             original_description=transaction.description,
             corrected_merchant=request.merchant_name
         )
@@ -192,7 +192,7 @@ def get_merchant_suggestions(
     Get merchant suggestions for autocomplete
     """
     try:
-        suggestions = merchant_service.get_merchant_suggestions(query, limit)
+        suggestions = get_merchant_service().get_merchant_suggestions(query, limit)
         
         return MerchantSuggestionResponse(suggestions=suggestions)
         
@@ -200,16 +200,20 @@ def get_merchant_suggestions(
         logger.error(f"Error getting merchant suggestions for query '{query}': {str(e)}", exc_info=True)
         raise ExternalServiceError("Merchant Service", "Failed to get merchant suggestions")
 
+class BulkRecognitionRequest(BaseModel):
+    """Request for bulk merchant recognition"""
+    descriptions: List[str] = Field(..., min_items=1, max_items=100, description="List of descriptions to analyze")
+
 @router.post("/bulk-recognize", response_model=List[MerchantRecognitionResponse])
 def bulk_recognize_merchants(
-    descriptions: List[str] = Field(..., min_items=1, max_items=100, description="List of descriptions to analyze"),
+    request: BulkRecognitionRequest,
     current_user: User = Depends(get_current_user)
 ) -> List[MerchantRecognitionResponse]:
     """
     Recognize merchants for multiple descriptions at once
     """
     try:
-        results = merchant_service.bulk_recognize_merchants(descriptions)
+        results = get_merchant_service().bulk_recognize_merchants(request.descriptions)
         
         return [
             MerchantRecognitionResponse(
@@ -234,7 +238,7 @@ def get_merchant_service_stats(
     Get merchant service statistics (for debugging/monitoring)
     """
     try:
-        stats = merchant_service.get_cache_stats()
+        stats = get_merchant_service().get_cache_stats()
         
         return {
             "cache_stats": stats,
@@ -253,7 +257,7 @@ def clear_merchant_cache(
     Clear merchant recognition cache (admin function)
     """
     try:
-        merchant_service.clear_cache()
+        get_merchant_service().clear_cache()
         
         return {
             "message": "Merchant recognition cache cleared successfully"

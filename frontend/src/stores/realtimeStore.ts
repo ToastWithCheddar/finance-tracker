@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { toast } from 'sonner';
 
-import { queryClient } from '../services/queryClient';
+import { queryClient, invalidateDashboard, upsertTransactionInCache, removeTransactionFromCache } from '../services/queryClient';
 import type { Transaction } from '../types/transaction';
 import type { MilestoneAlert } from '../types/goals';
 import type { ActivityEvent } from '../types/activity';
@@ -60,6 +60,15 @@ export interface RealtimeTransaction extends Transaction {
 }
 
 export type ConnectionStatusValue = 'connected' | 'connecting' | 'disconnected';
+
+// Deduplication map for transaction-related WS events (TTL = 60s)
+const RECENT_ID_TTL_MS = 60_000;
+const recentTransactionIds = new Map<string, number>();
+function purgeStaleDedup(now: number) {
+  for (const [id, ts] of recentTransactionIds) {
+    if (now - ts > RECENT_ID_TTL_MS) recentTransactionIds.delete(id);
+  }
+}
 
 interface RealtimeState {
   /* WebSocket connection */
@@ -474,12 +483,24 @@ export const useRealtimeStore = create<RealtimeState>()(
           const payload = typedMessage.payload as any;
           toast.info(`Balance updated for ${payload.account_name}.`);
 
-          // Invalidate queries that depend on account balances
+          // Invalidate queries that depend on account balances and analytics
+          invalidateDashboard();
           queryClient.invalidateQueries({ queryKey: ['accounts'] });
-          queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
           
         } else if (isTransactionMessage(typedMessage)) {
+          // Dedup guard per-transaction within TTL window
+          const now = Date.now();
+          purgeStaleDedup(now);
           const payload = typedMessage.payload;
+          if (payload?.id) {
+            const last = recentTransactionIds.get(payload.id);
+            if (last && now - last < RECENT_ID_TTL_MS) {
+              console.debug?.('[RealtimeStore] Skipping duplicate NEW_TRANSACTION for id', payload.id);
+              return;
+            }
+            recentTransactionIds.set(payload.id, now);
+          }
           const transactionData: RealtimeTransaction = {
             id: payload.id,
             userId: typedMessage.user_id || '',
@@ -502,9 +523,33 @@ export const useRealtimeStore = create<RealtimeState>()(
           
           get().addRecentTransaction(transactionData);
           get().addTransactionUpdate({ type: 'created', transaction: transactionData });
+          // Apply to any cached list pages where present
+          upsertTransactionInCache({
+            id: transactionData.id,
+            accountId: transactionData.accountId,
+            categoryId: transactionData.categoryId,
+            amountCents: transactionData.amountCents,
+            currency: transactionData.currency,
+            description: transactionData.description,
+            merchant: transactionData.merchant,
+            transactionDate: transactionData.transactionDate,
+            isRecurring: transactionData.isRecurring,
+            createdAt: transactionData.createdAt!,
+            updatedAt: transactionData.updatedAt!,
+          } as any);
           
         } else if (typedMessage.type === MessageType.TRANSACTION_UPDATED) {
+          const now = Date.now();
+          purgeStaleDedup(now);
           const payload = typedMessage.payload as TransactionPayload;
+          if (payload?.id) {
+            const last = recentTransactionIds.get(payload.id);
+            if (last && now - last < RECENT_ID_TTL_MS) {
+              console.debug?.('[RealtimeStore] Skipping duplicate TRANSACTION_UPDATED for id', payload.id);
+              return;
+            }
+            recentTransactionIds.set(payload.id, now);
+          }
           const realtimeTransaction: RealtimeTransaction = {
             id: payload.id,
             userId: typedMessage.user_id || '',
@@ -527,13 +572,39 @@ export const useRealtimeStore = create<RealtimeState>()(
           
           get().updateTransaction(realtimeTransaction);
           get().addTransactionUpdate({ type: 'updated', transaction: realtimeTransaction });
+          // Apply to any cached list pages where present
+          upsertTransactionInCache({
+            id: realtimeTransaction.id,
+            accountId: realtimeTransaction.accountId,
+            categoryId: realtimeTransaction.categoryId,
+            amountCents: realtimeTransaction.amountCents,
+            currency: realtimeTransaction.currency,
+            description: realtimeTransaction.description,
+            merchant: realtimeTransaction.merchant,
+            transactionDate: realtimeTransaction.transactionDate,
+            isRecurring: realtimeTransaction.isRecurring,
+            createdAt: realtimeTransaction.createdAt!,
+            updatedAt: realtimeTransaction.updatedAt!,
+          } as any);
           
         } else if (typedMessage.type === MessageType.TRANSACTION_DELETED) {
+          const now = Date.now();
+          purgeStaleDedup(now);
           const payload = typedMessage.payload as { id: string };
+          if (payload?.id) {
+            const last = recentTransactionIds.get(payload.id);
+            if (last && now - last < RECENT_ID_TTL_MS) {
+              console.debug?.('[RealtimeStore] Skipping duplicate TRANSACTION_DELETED for id', payload.id);
+              return;
+            }
+            recentTransactionIds.set(payload.id, now);
+          }
           set((state) => ({
             recentTransactions: state.recentTransactions.filter((t) => t.id !== payload.id),
           }));
           get().addTransactionUpdate({ type: 'deleted', transactionId: payload.id });
+          // Remove from any cached list pages
+          removeTransactionFromCache(payload.id);
           
         } else if (typedMessage.type === MessageType.BULK_TRANSACTIONS_IMPORTED) {
           // Handle bulk import notification
@@ -545,6 +616,8 @@ export const useRealtimeStore = create<RealtimeState>()(
           
         } else if (isBudgetAlert(typedMessage)) {
           get().addBudgetAlert(typedMessage.payload);
+          // Budget alerts can change budget state; refresh budgets-related queries
+          queryClient.invalidateQueries({ queryKey: ['budgets'] });
           
         } else if (isGoalProgress(typedMessage)) {
           const payload = typedMessage.payload as any;
@@ -600,9 +673,10 @@ export const useRealtimeStore = create<RealtimeState>()(
           }
 
           // Invalidate queries to trigger refetch
+          invalidateDashboard();
           queryClient.invalidateQueries({ queryKey: ['transactions'] });
           queryClient.invalidateQueries({ queryKey: ['accounts'] });
-          queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+          queryClient.invalidateQueries({ queryKey: ['budgets'] });
           
         } else if (typedMessage.type === MessageType.BULK_SYNC_COMPLETE) {
           const payload = typedMessage.payload as BulkSyncPayload;
@@ -618,9 +692,10 @@ export const useRealtimeStore = create<RealtimeState>()(
           }
 
           // Invalidate queries to trigger refetch
+          invalidateDashboard();
           queryClient.invalidateQueries({ queryKey: ['transactions'] });
           queryClient.invalidateQueries({ queryKey: ['accounts'] });
-          queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+          queryClient.invalidateQueries({ queryKey: ['budgets'] });
           
         } else if (typedMessage.type === MessageType.PING) {
           // Handle ping - could send pong response

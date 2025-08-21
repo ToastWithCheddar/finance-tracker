@@ -5,7 +5,7 @@ import { LoadingSpinner } from '../components/ui/LoadingSpinner';
 import { GoalCard } from '../components/goals/GoalCard';
 import { GoalForm } from '../components/goals/GoalForm';
 import { GoalsDashboard } from '../components/goals/GoalDashboard';
-import { useGoals, useDeleteGoal, useProcessAutoContributions } from '../hooks/useGoals';
+import { useGoals, useDeleteGoal } from '../hooks/useGoals';
 import { GoalStatus, GoalType, GoalPriority, type Goal } from '../types/goals';
 import { toast } from 'react-hot-toast';
 
@@ -23,7 +23,6 @@ export default function Goals() {
 
   const { data: goalsData, isLoading, error } = useGoals(filters);
   const deleteGoal = useDeleteGoal();
-  const processAutoContributions = useProcessAutoContributions();
 
   const handleDeleteGoal = async (goalId: string) => {
     if (window.confirm('Are you sure you want to delete this goal? This action cannot be undone.')) {
@@ -35,15 +34,6 @@ export default function Goals() {
     }
   };
 
-  const handleProcessAutoContributions = async () => {
-    if (window.confirm('Process automatic contributions for all eligible goals?')) {
-      try {
-        await processAutoContributions.mutateAsync();
-      } catch {
-        // Error handling is done in the hook
-      }
-    }
-  };
 
   const handleEditGoal = (goal: Goal) => {
     setEditingGoal(goal);
@@ -98,13 +88,6 @@ export default function Goals() {
             Create Goal
           </Button>
           
-          <Button
-            onClick={handleProcessAutoContributions}
-            variant="outline"
-            disabled={processAutoContributions.isPending}
-          >
-            {processAutoContributions.isPending ? 'Processing...' : 'Auto Contributions'}
-          </Button>
         </div>
       </div>
 

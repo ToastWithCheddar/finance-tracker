@@ -7,35 +7,26 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.auth.dependencies import get_current_active_user, get_db_with_user_context
-from app.services.account_service import AccountService
-from app.services.transaction_service import TransactionService
+from app.services.account_service import get_account_service
+from app.services.transaction_service import get_transaction_service
 from app.services.category_service import CategoryService
 from app.services.budget_service import BudgetService
 from app.services.goal_service import GoalService
 from app.services.user_service import UserService
-from app.services import plaid_service
-from app.services.transaction_sync_service import transaction_sync_service
-from app.services.account_sync_monitor import account_sync_monitor
-from app.services.enhanced_reconciliation_service import enhanced_reconciliation_service
-from app.services.automatic_sync_scheduler import automatic_sync_scheduler
-from app.services.analytics_service import analytics_service
+from app.services.plaid_orchestration_service import get_plaid_service
+from app.services.transaction_sync_service import get_transaction_sync_service
+from app.services.account_sync_monitor import get_account_sync_monitor
+from app.services.reconciliation_service import get_enhanced_reconciliation_service
+from app.services.analytics_service import get_analytics_service
 from app.services.notification_service import NotificationService
-from app.services.merchant_service import merchant_service
+from app.services.merchant_service import get_merchant_service
 from app.services.auto_categorization_service import AutoCategorizationService
 from app.services.rule_template_service import RuleTemplateService
 from app.services.financial_health_service import FinancialHealthService
-from app.websocket.manager import redis_websocket_manager, get_websocket_manager
+from app.websocket.manager import redis_websocket_manager
 
 
-# Core service dependencies
-def get_account_service() -> AccountService:
-    """Dependency injection for AccountService."""
-    return AccountService()
-
-
-def get_transaction_service() -> TransactionService:
-    """Dependency injection for TransactionService."""
-    return TransactionService()
+# Core service dependencies using provider functions
 
 
 def get_category_service() -> CategoryService:
@@ -58,55 +49,31 @@ def get_user_service(db: Session = Depends(get_db)) -> UserService:
     return UserService()
 
 
-# Plaid and sync services (singletons)
-def get_plaid_service():
-    """Dependency injection for Plaid orchestration service."""
-    return plaid_service
-
-
-def get_transaction_sync_service():
-    """Dependency injection for transaction sync service."""
-    return transaction_sync_service
-
-
-def get_account_sync_monitor():
-    """Dependency injection for account sync monitor."""
-    return account_sync_monitor
-
-
-def get_enhanced_reconciliation_service():
-    """Dependency injection for enhanced reconciliation service."""
-    return enhanced_reconciliation_service
-
-
-def get_automatic_sync_scheduler():
-    """Dependency injection for automatic sync scheduler."""
-    return automatic_sync_scheduler
-
-
-def get_analytics_service():
-    """Dependency injection for analytics service."""
-    return analytics_service
-
-
+# Additional service dependencies
 def get_notification_service() -> NotificationService:
     """Dependency injection for NotificationService."""
     return NotificationService()
 
 
-def get_merchant_service():
-    """Dependency injection for merchant service (singleton)."""
-    return merchant_service
-
+# Engine services (stateless singletons with lazy caching)
+_auto_categorization_service_instance = None
 
 def get_auto_categorization_service() -> AutoCategorizationService:
     """Dependency injection for AutoCategorizationService."""
-    return AutoCategorizationService()
+    global _auto_categorization_service_instance
+    if _auto_categorization_service_instance is None:
+        _auto_categorization_service_instance = AutoCategorizationService()
+    return _auto_categorization_service_instance
 
+
+_rule_template_service_instance = None
 
 def get_rule_template_service() -> RuleTemplateService:
     """Dependency injection for RuleTemplateService."""
-    return RuleTemplateService()
+    global _rule_template_service_instance
+    if _rule_template_service_instance is None:
+        _rule_template_service_instance = RuleTemplateService()
+    return _rule_template_service_instance
 
 
 def get_financial_health_service() -> FinancialHealthService:
@@ -125,7 +92,7 @@ def get_owned_account(
     account_id: str,
     current_user = Depends(get_current_active_user),
     db: Session = Depends(get_db_with_user_context),
-    account_service: AccountService = Depends(get_account_service)
+    account_service = Depends(get_account_service)
 ):
     """
     Dependency to fetch and validate account ownership.
@@ -147,7 +114,7 @@ def get_owned_transaction(
     transaction_id,
     current_user = Depends(get_current_active_user),
     db: Session = Depends(get_db_with_user_context),
-    transaction_service: TransactionService = Depends(get_transaction_service)
+    transaction_service = Depends(get_transaction_service)
 ):
     """
     Dependency to fetch and validate transaction ownership.
@@ -169,7 +136,7 @@ def get_owned_budget(
     budget_id: str,
     current_user = Depends(get_current_active_user),
     db: Session = Depends(get_db_with_user_context),
-    budget_service: BudgetService = Depends(get_budget_service)
+    budget_service = Depends(get_budget_service)
 ):
     """
     Dependency to fetch and validate budget ownership.

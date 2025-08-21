@@ -16,8 +16,7 @@ from app.models.user import User
 from app.models.categorization_rule import CategorizationRule
 from app.models.categorization_rule_template import CategorizationRuleTemplate
 from app.models.transaction import Transaction
-from app.services.auto_categorization_service import AutoCategorizationService
-from app.services.rule_template_service import RuleTemplateService
+from app.dependencies import get_auto_categorization_service, get_rule_template_service
 from app.schemas.categorization_rule import (
     CategorizationRuleCreate,
     CategorizationRuleUpdate,
@@ -183,7 +182,8 @@ async def update_categorization_rule(
     rule_id: UUID,
     rule_update: CategorizationRuleUpdate,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
 ):
     """Update an existing categorization rule."""
     rule = db.query(CategorizationRule).filter(
@@ -206,7 +206,6 @@ async def update_categorization_rule(
                 setattr(rule, field, value)
         
         # Clear cache when rules are updated
-        auto_categorization_service = AutoCategorizationService(db)
         auto_categorization_service.clear_rule_cache(current_user.id)
         
         db.commit()
@@ -227,7 +226,8 @@ async def update_categorization_rule(
 async def delete_categorization_rule(
     rule_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
 ):
     """Delete a categorization rule."""
     rule = db.query(CategorizationRule).filter(
@@ -244,7 +244,6 @@ async def delete_categorization_rule(
         db.delete(rule)
         
         # Clear cache when rules are deleted
-        auto_categorization_service = AutoCategorizationService(db)
         auto_categorization_service.clear_rule_cache(current_user.id)
         
         db.commit()
@@ -266,7 +265,8 @@ async def test_categorization_rule(
     rule_id: UUID,
     limit: int = Query(100, ge=1, le=500, description="Number of transactions to test against"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
 ):
     """Test rule against historical transactions."""
     rule = db.query(CategorizationRule).filter(
@@ -280,9 +280,8 @@ async def test_categorization_rule(
         raise CategorizationRuleNotFoundError(str(rule_id))
     
     try:
-        auto_categorization_service = AutoCategorizationService(db)
-        
-        matching_transactions = auto_categorization_service.test_rule_against_transactions(
+        matching_transactions = await auto_categorization_service.test_rule_against_transactions(
+            db=db,
             rule_conditions=rule.conditions,
             user_id=current_user.id,
             limit=limit
@@ -309,13 +308,13 @@ async def test_rule_conditions(
     conditions: Dict[str, Any],
     limit: int = Query(100, ge=1, le=500, description="Number of transactions to test against"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
 ):
     """Test rule conditions against historical transactions."""
     try:
-        auto_categorization_service = AutoCategorizationService(db)
-        
-        matching_transactions = auto_categorization_service.test_rule_against_transactions(
+        matching_transactions = await auto_categorization_service.test_rule_against_transactions(
+            db=db,
             rule_conditions=conditions,
             user_id=current_user.id,
             limit=limit
@@ -341,13 +340,13 @@ async def apply_rules_to_transactions(
     transaction_ids: List[UUID],
     dry_run: bool = Query(False, description="Preview changes without applying them"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
 ):
     """Apply categorization rules to specific transactions."""
     try:
-        auto_categorization_service = AutoCategorizationService(db)
-        
-        result = auto_categorization_service.batch_apply_rules(
+        result = await auto_categorization_service.batch_apply_rules(
+            db=db,
             transaction_ids=transaction_ids,
             user_id=current_user.id,
             dry_run=dry_run
@@ -370,16 +369,15 @@ async def get_rule_templates(
     db: Session = Depends(get_db_with_user_context),
     category_filter: Optional[str] = Query(None, description="Filter by category"),
     official_only: bool = Query(False, description="Show only official templates"),
-    limit: int = Query(50, ge=1, le=100, description="Number of templates to return")
+    limit: int = Query(50, ge=1, le=100, description="Number of templates to return"),
+    template_service = Depends(get_rule_template_service)
 ):
     """Get available rule templates."""
     try:
-        template_service = RuleTemplateService(db)
-        
         if official_only:
-            templates = template_service.get_official_templates(category_filter)
+            templates = await template_service.get_official_templates(db, category_filter)
         else:
-            templates = template_service.get_popular_templates(limit, category_filter)
+            templates = await template_service.get_popular_templates(db, limit, category_filter)
         
         return templates
         
@@ -397,20 +395,20 @@ async def create_rule_from_template(
     template_id: UUID,
     customizations: Dict[str, Any],
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    template_service = Depends(get_rule_template_service),
+    auto_categorization_service = Depends(get_auto_categorization_service)
 ):
     """Create a categorization rule from a template."""
     try:
-        template_service = RuleTemplateService(db)
-        
-        rule = template_service.create_rule_from_template(
+        rule = await template_service.create_rule_from_template(
+            db=db,
             template_id=template_id,
             user_id=current_user.id,
             customizations=customizations
         )
         
         # Clear cache after creating new rule
-        auto_categorization_service = AutoCategorizationService(db)
         auto_categorization_service.clear_rule_cache(current_user.id)
         
         return RuleTemplateCreateResponse(
@@ -435,13 +433,12 @@ async def create_rule_from_template(
 )
 async def get_rule_statistics(
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
 ):
     """Get statistics about user's categorization rules."""
     try:
-        auto_categorization_service = AutoCategorizationService(db)
-        
-        statistics = auto_categorization_service.get_matching_statistics(current_user.id)
+        statistics = await auto_categorization_service.get_matching_statistics(db, current_user.id)
         
         return statistics
         
@@ -458,13 +455,13 @@ async def get_rule_statistics(
 async def get_rule_effectiveness(
     rule_id: UUID,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context)
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
 ):
     """Get effectiveness metrics for a specific rule."""
     try:
-        auto_categorization_service = AutoCategorizationService(db)
-        
-        effectiveness = auto_categorization_service.get_rule_effectiveness(
+        effectiveness = await auto_categorization_service.get_rule_effectiveness(
+            db=db,
             rule_id=rule_id,
             user_id=current_user.id
         )

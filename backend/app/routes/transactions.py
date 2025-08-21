@@ -12,10 +12,10 @@ import logging
 
 from app.core.exceptions import DataIntegrityError, BusinessLogicError, ValidationError
 
-from ..database import get_db
+from app.database import get_db
 from app.dependencies import get_transaction_service, get_websocket_manager_dep, get_owned_transaction
-from ..services.transaction_service import TransactionService
-from ..schemas.transaction import (
+from app.services.transaction_service import TransactionService
+from app.schemas.transaction import (
     TransactionCreate,
     TransactionUpdate,
     TransactionResponse,
@@ -24,8 +24,8 @@ from ..schemas.transaction import (
     TransactionListResponse
 )
 from app.auth.dependencies import get_current_user, get_db_with_user_context
-from ..models.user import User
-from ..models.transaction import Transaction
+from app.models.user import User
+from app.models.transaction import Transaction
 
 # Singleton pattern for the websocket manager and logger
 

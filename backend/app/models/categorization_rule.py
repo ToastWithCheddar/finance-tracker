@@ -1,5 +1,5 @@
 # Standard library imports
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from uuid import UUID
 
@@ -168,7 +168,7 @@ class CategorizationRule(BaseModel):
     def increment_application_count(self):
         """Increment the times_applied counter and update last_applied_at"""
         self.times_applied += 1
-        self.last_applied_at = datetime.utcnow()
+        self.last_applied_at = datetime.now(timezone.utc)
     
     def update_success_rate(self, new_feedback: bool):
         """Update success rate based on user feedback"""

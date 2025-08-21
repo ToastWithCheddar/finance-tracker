@@ -6,7 +6,7 @@ import { TransactionList } from '../components/transactions/TransactionList';
 import { TransactionFilters } from '../components/transactions/TransactionFilters';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { CSVImport } from '../components/transactions/CSVImport';
-import { useTransactions, useTransactionStats, useTransactionActions } from '../hooks/useTransactions';
+import { useTransactions, useTransactionsGrouped, useTransactionStats, useTransactionActions } from '../hooks/useTransactions';
 import type { 
   CreateTransactionRequest as TransactionCreate, 
   UpdateTransactionRequest as TransactionUpdate, 
@@ -141,8 +141,20 @@ export function Transactions() {
     per_page: itemsPerPage,
   };
 
-  // Data fetching with React Query
-  const { data: transactionData, isLoading, error } = useTransactions(queryFilters);
+  // Determine if we should use grouped or flat data fetching
+  const isGroupedView = filters.group_by && filters.group_by !== 'none';
+  
+  // Data fetching with React Query - conditionally use grouped or flat hooks
+  const flatQuery = useTransactions(queryFilters, !isGroupedView);
+  const groupedQuery = useTransactionsGrouped(
+    isGroupedView 
+      ? { ...queryFilters, group_by: filters.group_by as 'date' | 'category' | 'merchant' }
+      : { ...queryFilters, group_by: 'date' } // Provide default to avoid type issues
+  );
+  
+  // Select the appropriate query result
+  const activeQuery = isGroupedView ? groupedQuery : flatQuery;
+  const { data: transactionData, isLoading, error } = activeQuery;
   const { data: stats } = useTransactionStats(filters);
   
   // Mutations
@@ -161,46 +173,37 @@ export function Transactions() {
     isExporting 
   } = useTransactionActions();
 
-  // Extract data from the response - handle both grouped and flat responses
-  const isGroupedResponse = (transactionData as any)?.grouped;
-  const groups = (transactionData as any)?.groups || [];
-  const transactions = transactionData?.items || [];
+  // Extract data from the response based on the view type
+  const groups = isGroupedView ? (transactionData as any)?.groups || [] : [];
+  const transactions = !isGroupedView ? transactionData?.items || [] : [];
   const totalCount = transactionData?.total || 0;
   const totalPages = transactionData?.pages || 1;
   
-  // Debug logging for data structure issues
+  // Debug logging for data structure
   console.log('🔍 Transaction data structure:', {
     hasData: !!transactionData,
-    isGrouped: isGroupedResponse,
+    isGroupedView,
     groupsCount: groups.length,
     transactionsCount: transactions.length,
-    sampleTransaction: transactions[0]
+    activeGroupBy: filters.group_by
   });
   
-  // Group transactions by date using useMemo for performance (legacy fallback)
+  // For flat view, create legacy grouped format for TransactionList component compatibility
   const groupedTransactions = useMemo(() => {
-    if (isGroupedResponse) return {}; // Don't group if already grouped by server
-    
-    // Add defensive programming to prevent crashes
-    if (!Array.isArray(transactions) || transactions.length === 0) {
-      console.warn('⚠️ No transactions to group or transactions is not an array');
+    if (isGroupedView || !Array.isArray(transactions) || transactions.length === 0) {
       return {};
     }
     
     return transactions.reduce((acc: GroupedTransactions, tx) => {
-      // Defensive check for transaction date - handle both camelCase and snake_case
       const transactionDate = tx.transactionDate || tx.transaction_date;
       if (!tx || !transactionDate) {
-        console.warn('⚠️ Transaction missing transactionDate/transaction_date:', tx);
-        return acc; // Skip this transaction
+        console.warn('⚠️ Transaction missing transactionDate:', tx);
+        return acc;
       }
       
-      // Convert date to string if it's not already (backend might send Date object)
       const dateStr = typeof transactionDate === 'string' 
         ? transactionDate 
         : transactionDate.toString();
-      
-      // Handle both full datetime strings and date-only strings
       const date = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
       
       if (!acc[date]) {
@@ -210,7 +213,7 @@ export function Transactions() {
       acc[date].total += (tx.amountCents || tx.amount_cents || 0);
       return acc;
     }, {});
-  }, [transactions, isGroupedResponse]);
+  }, [transactions, isGroupedView]);
   
   // Determine grouping type from filters
   const groupType = filters.group_by || 'date';
@@ -228,13 +231,19 @@ export function Transactions() {
     });
   };
   
-  // Initialize with the most recent date expanded
+  // Initialize with the most recent group expanded
   useEffect(() => {
-    const dates = Object.keys(groupedTransactions).sort((a, b) => b.localeCompare(a));
-    if (dates.length > 0) {
-      setExpandedGroups(new Set([dates[0]]));
+    if (isGroupedView && groups.length > 0) {
+      // For grouped view, expand the first group
+      setExpandedGroups(new Set([groups[0].key]));
+    } else if (!isGroupedView) {
+      // For flat view with date grouping, expand the most recent date
+      const dates = Object.keys(groupedTransactions).sort((a, b) => b.localeCompare(a));
+      if (dates.length > 0) {
+        setExpandedGroups(new Set([dates[0]]));
+      }
     }
-  }, [groupedTransactions]);
+  }, [isGroupedView, groups, groupedTransactions]);
 
   // Handle click outside for export dropdown
   useEffect(() => {
@@ -252,11 +261,15 @@ export function Transactions() {
     }
   }, [isExportDropdownOpen]);
 
-  // Get unique categories for filter dropdown (from current transactions)
+  // Get unique categories for filter dropdown (from current transactions or all transactions from groups)
+  const allTransactionsForCategories = isGroupedView
+    ? groups.flatMap(group => group.transactions)
+    : transactions;
+  
   const categories = Array.from(
     new Set(
-      Array.isArray(transactions) 
-        ? transactions.map(t => t?.categoryId).filter((c): c is string => !!c)
+      Array.isArray(allTransactionsForCategories) 
+        ? allTransactionsForCategories.map(t => t?.categoryId).filter((c): c is string => !!c)
         : []
     )
   ).sort();
@@ -484,8 +497,8 @@ export function Transactions() {
             {!isLoading && (
               <div className="mb-8">
                 <TransactionList
-                  groupedTransactions={isGroupedResponse ? undefined : groupedTransactions}
-                  groups={isGroupedResponse ? groups : undefined}
+                  groupedTransactions={isGroupedView ? undefined : groupedTransactions}
+                  groups={isGroupedView ? groups : undefined}
                   expandedGroups={expandedGroups}
                   onToggleGroup={toggleGroup}
                   stats={stats}

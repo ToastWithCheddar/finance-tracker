@@ -46,33 +46,6 @@ export interface DashboardFilters {
   account_id?: string;
 }
 
-export interface MoneyFlowNode {
-  id: string;
-  label?: string;
-  color?: string;
-}
-
-export interface MoneyFlowLink {
-  source: string;
-  target: string;
-  value: number;
-}
-
-export interface MoneyFlowData {
-  nodes: MoneyFlowNode[];
-  links: MoneyFlowLink[];
-  metadata: {
-    total_income: number;
-    total_expenses: number;
-    net_savings: number;
-    date_range: {
-      start_date: string;
-      end_date: string;
-    };
-    income_sources_count: number;
-    expense_categories_count: number;
-  };
-}
 
 export interface SpendingHeatmapData {
   day: string;
@@ -136,18 +109,6 @@ export class DashboardService extends BaseService {
     };
   }
 
-  async getMoneyFlow(params: { start_date: string; end_date: string }, options?: { context?: ErrorContext }): Promise<MoneyFlowData> {
-    const response = await this.get<{ success: boolean; data: MoneyFlowData; message?: string }>(
-      '/money-flow',
-      { start_date: params.start_date, end_date: params.end_date },
-      { context: options?.context, useCache: true, cacheTtl: 10 * 60 * 1000 } // Cache for 10 mins
-    );
-
-    if (response && response.success && response.data) {
-      return response.data;
-    }
-    throw new Error(response?.message || 'Failed to fetch money flow data or data is invalid.');
-  }
 
   async getSpendingHeatmap(params: { start_date: string; end_date: string }, options?: { context?: ErrorContext }): Promise<SpendingHeatmapData[]> {
     const response = await this.get<{ success: boolean; data: SpendingHeatmapData[] }>(

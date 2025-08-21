@@ -1,7 +1,7 @@
 # Standard library imports
 import json
 import logging
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 from decimal import Decimal
 from typing import List, Optional, Tuple, Dict, Any
 from uuid import UUID
@@ -32,7 +32,7 @@ from ..schemas.transaction import (
     TransactionResponse
 )
 from .ml_service import get_ml_client, MLServiceError
-from .merchant_service import merchant_service
+from .merchant_service import get_merchant_service
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ class TransactionService:
         # Enrich merchant if not provided but description exists
         if not transaction.merchant and transaction.description:
             try:
-                merchant_result = merchant_service.recognize_merchant(transaction.description)
+                merchant_result = get_merchant_service().recognize_merchant(transaction.description)
                 if merchant_result.recognized_merchant and merchant_result.confidence_score >= 0.6:
                     transaction.merchant = merchant_result.recognized_merchant
                     logger.info(f"Auto-enriched merchant: '{transaction.description}' -> '{transaction.merchant}' (confidence: {merchant_result.confidence_score})")
@@ -156,7 +156,7 @@ class TransactionService:
             if feedback_response.success:
                 # Update transaction metadata to record feedback submission
                 metadata["ml_feedback_submitted"] = True
-                metadata["ml_feedback_timestamp"] = datetime.utcnow().isoformat()
+                metadata["ml_feedback_timestamp"] = datetime.now(timezone.utc).isoformat()
                 transaction.metadata_json = metadata
                 db.commit()
                 return True
@@ -190,7 +190,7 @@ class TransactionService:
         for field, value in update_data.items():
             setattr(transaction, field, value)
         
-        transaction.updated_at = datetime.utcnow()
+        transaction.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(transaction)
         return transaction
@@ -476,17 +476,28 @@ class TransactionService:
     @staticmethod
     def get_dashboard_analytics(db: Session, user_id: UUID, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Dict[str, Any]:
         """Get comprehensive dashboard analytics for a user - delegated to analytics service"""
-        from .transaction_analytics_service import transaction_analytics_service
-        return transaction_analytics_service.get_dashboard_analytics(db, user_id, start_date, end_date)
+        from .transaction_analytics_service import get_transaction_analytics_service
+        return get_transaction_analytics_service().get_dashboard_analytics(db, user_id, start_date, end_date)
 
     @staticmethod
     def get_transaction_summary(db: Session, user_id: UUID, start_date: Optional[date] = None, end_date: Optional[date] = None, category_id: Optional[UUID] = None, search_query: Optional[str] = None) -> Dict[str, Any]:
         """Get transaction summary statistics - delegated to analytics service"""
-        from .transaction_analytics_service import transaction_analytics_service
-        return transaction_analytics_service.get_transaction_summary(db, user_id, start_date, end_date, category_id, search_query)
+        from .transaction_analytics_service import get_transaction_analytics_service
+        return get_transaction_analytics_service().get_transaction_summary(db, user_id, start_date, end_date, category_id, search_query)
 
     @staticmethod
     def get_spending_trends(db: Session, user_id: UUID, period: str = "monthly") -> List[Dict[str, Any]]:
         """Get spending trends over time - delegated to analytics service"""
-        from .transaction_analytics_service import transaction_analytics_service
-        return transaction_analytics_service.get_spending_trends(db, user_id, period) 
+        from .transaction_analytics_service import get_transaction_analytics_service
+        return get_transaction_analytics_service().get_spending_trends(db, user_id, period)
+
+
+# Provider function with lazy caching
+_transaction_service_instance = None
+
+def get_transaction_service() -> TransactionService:
+    """Get the global TransactionService instance with lazy initialization"""
+    global _transaction_service_instance
+    if _transaction_service_instance is None:
+        _transaction_service_instance = TransactionService()
+    return _transaction_service_instance 

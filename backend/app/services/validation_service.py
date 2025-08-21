@@ -198,5 +198,12 @@ class DataValidationService:
         
         return report
 
-# Create global validation service
-validation_service = DataValidationService()
+# Provider function with lazy caching
+_validation_service_instance = None
+
+def get_validation_service() -> DataValidationService:
+    """Get the global DataValidationService instance with lazy initialization"""
+    global _validation_service_instance
+    if _validation_service_instance is None:
+        _validation_service_instance = DataValidationService()
+    return _validation_service_instance

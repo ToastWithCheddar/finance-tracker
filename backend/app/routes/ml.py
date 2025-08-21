@@ -7,12 +7,12 @@ from typing import Dict, Any
 from uuid import UUID
 import logging
 
-from ..database import get_db
-from ..auth.dependencies import get_current_user, get_db_with_user_context
-from ..models.user import User
-from ..services.transaction_service import TransactionService
-from ..services.ml_service import get_ml_client
-from ..schemas.ml import (
+from app.database import get_db
+from app.auth.dependencies import get_current_user, get_db_with_user_context
+from app.models.user import User
+from app.services.transaction_service import TransactionService
+from app.services.ml_service import get_ml_client
+from app.schemas.ml import (
     MLCategorizationRequest,
     MLCategorizationResponse,
     MLFeedbackRequest,
@@ -23,7 +23,7 @@ from ..schemas.ml import (
     MLModelExportResponse,
     MLBatchCategorizationRequest
 )
-from ..core.exceptions import (
+from app.core.exceptions import (
     MLServiceError,
     ValidationError,
     DataIntegrityError
@@ -132,7 +132,7 @@ async def get_ml_stats(
     try:
         # Query user's ML-categorized transactions
         from sqlalchemy import func, and_
-        from ..models.transaction import Transaction
+        from app.models.transaction import Transaction
         
         # Count ML-predicted transactions
         ml_predicted_count = db.query(func.count(Transaction.id)).filter(

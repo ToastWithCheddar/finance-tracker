@@ -393,5 +393,12 @@ class MerchantService:
         
         return results
 
-# Global instance
-merchant_service = MerchantService()
+# Provider function with lazy caching
+_merchant_service_instance = None
+
+def get_merchant_service() -> MerchantService:
+    """Get the global MerchantService instance with lazy initialization"""
+    global _merchant_service_instance
+    if _merchant_service_instance is None:
+        _merchant_service_instance = MerchantService()
+    return _merchant_service_instance

@@ -3,45 +3,60 @@ Services module initialization
 Handles service dependencies and prevents circular imports
 """
 
-# Import base services that don't depend on others
+# Import base services
 from .base_service import BaseService
-from .validation_service import DataValidationService, validation_service
+from .validation_service import get_validation_service
 
-# Import user service (base dependency for others)
+# Import service provider functions
 from .user_service import UserService
-
-# Import other services that depend on user service
 from .category_service import CategoryService
-from .transaction_service import TransactionService
+from .transaction_service import get_transaction_service
 from .budget_service import BudgetService
-from .goal_service import GoalService
+from .goal_service import get_goal_service
+from .account_service import get_account_service
+from .analytics_service import get_analytics_service
+from .merchant_service import get_merchant_service
+from .encryption_service import get_encryption_service
+from .monitoring_service import get_monitoring_service
+from .account_insights_service import get_account_insights_service
+from .transaction_analytics_service import get_transaction_analytics_service
 
-# Import Plaid services - centralized to prevent circular imports
-from .plaid_client_service import PlaidClientService, plaid_client_service
-from .plaid_account_service import PlaidAccountService, plaid_account_service
-from .plaid_transaction_service import PlaidTransactionService, plaid_transaction_service
-from .plaid_webhook_service import PlaidWebhookService, plaid_webhook_service
-from .plaid_orchestration_service import PlaidOrchestrationService
+# Import Plaid service providers
+from .plaid_client_service import get_plaid_client_service
+from .plaid_account_service import get_plaid_account_service
+from .plaid_transaction_service import get_plaid_transaction_service
+from .plaid_webhook_service import get_plaid_webhook_service
+from .plaid_orchestration_service import get_plaid_service
+from .transaction_sync_service import get_transaction_sync_service
+from .reconciliation_service import get_reconciliation_service, get_enhanced_reconciliation_service
+from .account_sync_monitor import get_account_sync_monitor
 
 # Import utilities
 from .utils import plaid_utils
 
-# Create centralized Plaid service instances to prevent circular imports
-plaid_service = PlaidOrchestrationService()
-
 __all__ = [
     'BaseService',
-    'DataValidationService',
-    'validation_service',
+    'get_validation_service',
     'UserService',
     'CategoryService', 
-    'TransactionService',
+    'get_transaction_service',
     'BudgetService',
-    'GoalService',
-    'plaid_client_service',
-    'plaid_account_service',
-    'plaid_transaction_service',
-    'plaid_webhook_service',
-    'plaid_service',
+    'get_goal_service',
+    'get_account_service',
+    'get_analytics_service',
+    'get_merchant_service',
+    'get_encryption_service',
+    'get_monitoring_service',
+    'get_account_insights_service',
+    'get_transaction_analytics_service',
+    'get_plaid_client_service',
+    'get_plaid_account_service',
+    'get_plaid_transaction_service',
+    'get_plaid_webhook_service',
+    'get_plaid_service',
+    'get_transaction_sync_service',
+    'get_reconciliation_service',
+    'get_enhanced_reconciliation_service',
+    'get_account_sync_monitor',
     'plaid_utils',
 ]

@@ -47,6 +47,7 @@ gunicorn==23.0.0
 # Utilities
 python-dateutil==2.9.0
 pytz==2024.2
+cachetools==5.5.0
 
 # Monitoring
 prometheus-client==0.21.0

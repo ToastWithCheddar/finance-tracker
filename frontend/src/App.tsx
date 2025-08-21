@@ -15,7 +15,6 @@ import { Recurring } from './pages/Recurring';
 import { Categories } from './pages/Categories';
 import { Budgets } from './pages/Budgets';
 import Goals from './pages/Goals';
-import { Timeline } from './pages/Timeline';
 import { AdminBypassButton } from './components/dev-tools/AdminBypassButton';
 import { Layout } from './components/layout/Layout';
 import { CommandPalette } from './components/layout/CommandPalette';
@@ -99,16 +98,6 @@ function App() {
                   }
                 />
                 
-                <Route
-                  path="/timeline"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Timeline />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
                 
                 <Route
                   path="/settings"

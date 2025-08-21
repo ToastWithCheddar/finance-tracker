@@ -15,8 +15,6 @@ from app.dependencies import (
     get_plaid_service,
     get_transaction_sync_service,
     get_account_sync_monitor,
-    get_automatic_sync_scheduler,
-    get_websocket_manager_dep,
     get_owned_account
 )
 from app.models.user import User
@@ -44,7 +42,6 @@ async def sync_account_balances(
     db: Session = Depends(get_db_with_user_context),
     account_service: AccountService = Depends(get_account_service),
     plaid_service=Depends(get_plaid_service),
-    websocket_manager=Depends(get_websocket_manager_dep)
 ):
     """Manually trigger account balance sync"""
     try:
@@ -215,92 +212,47 @@ async def get_account_sync_status(
         raise ExternalServiceError("Sync Service", "Unable to retrieve account sync status")
 
 
-@router.post("/sync/schedule-automatic", response_model=Dict[str, Any])
-async def schedule_automatic_sync(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db_with_user_context),
-    automatic_sync_scheduler=Depends(get_automatic_sync_scheduler)
-):
-    """Start automatic sync scheduling for user's accounts"""
-    try:
-        # Start the scheduler if not running
-        if not automatic_sync_scheduler.is_running:
-            await automatic_sync_scheduler.start_scheduler()
-        
-        # Get scheduler status
-        status = automatic_sync_scheduler.get_scheduler_status()
-        
-        return {
-            "success": True,
-            "message": "Automatic sync scheduler is active",
-            "data": status
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to start automatic sync scheduler: {e}", exc_info=True)
-        raise ConfigurationError("Unable to start automatic sync scheduler")
+# TODO: Re-implement automatic sync scheduling
+# @router.post("/sync/schedule-automatic", response_model=Dict[str, Any])
+# async def schedule_automatic_sync(
+#     current_user: User = Depends(get_current_active_user),
+#     db: Session = Depends(get_db_with_user_context)
+# ):
+#     """Start automatic sync scheduling for user's accounts"""
+#     try:
+#         return {"message": "Automatic sync scheduler not available"}
+#     except Exception as e:
+#         logger.error(f"Failed to start automatic sync scheduler: {e}", exc_info=True)
+#         raise ConfigurationError("Unable to start automatic sync scheduler")
 
 
-@router.get("/sync/scheduler-status", response_model=Dict[str, Any])
-async def get_scheduler_status(
-    current_user: User = Depends(get_current_active_user),
-    automatic_sync_scheduler=Depends(get_automatic_sync_scheduler)
-):
-    """Get current scheduler status"""
-    try:
-        status = automatic_sync_scheduler.get_scheduler_status()
-        return {
-            "success": True,
-            "data": status
-        }
-    except Exception as e:
-        logger.error(f"Failed to get scheduler status: {e}", exc_info=True)
-        raise ConfigurationError("Unable to retrieve scheduler status")
+# TODO: Re-implement scheduler status endpoint
+# @router.get("/sync/scheduler-status", response_model=Dict[str, Any])
+# async def get_scheduler_status(
+#     current_user: User = Depends(get_current_active_user)
+# ):
+#     """Get current scheduler status"""
+#     return {"message": "Scheduler status not available"}
 
 
-@router.post("/{account_id}/sync/immediate", response_model=Dict[str, Any])
-async def trigger_immediate_sync(
-    account = Depends(get_owned_account),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db_with_user_context),
-    automatic_sync_scheduler=Depends(get_automatic_sync_scheduler)
-):
-    """Trigger immediate sync for a specific account"""
-    try:        
-        result = await automatic_sync_scheduler.schedule_immediate_sync(
-            str(account.id), str(current_user.id)
-        )
-        
-        return {
-            "success": result['success'],
-            "message": result['message'],
-            "data": result.get('result', result.get('error'))
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to trigger immediate sync: {e}", exc_info=True)
-        raise ExternalServiceError("Sync Service", "Unable to trigger immediate sync")
+# TODO: Re-implement immediate sync endpoint
+# @router.post("/{account_id}/sync/immediate", response_model=Dict[str, Any])
+# async def trigger_immediate_sync(
+#     account = Depends(get_owned_account),
+#     current_user: User = Depends(get_current_active_user),
+#     db: Session = Depends(get_db_with_user_context)
+# ):
+#     """Trigger immediate sync for a specific account"""  
+#     return {"message": "Immediate sync not available"}
 
 
-@router.put("/{account_id}/sync-frequency", response_model=Dict[str, Any])
-async def update_sync_frequency(
-    frequency: str,
-    account = Depends(get_owned_account),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db_with_user_context),
-    automatic_sync_scheduler=Depends(get_automatic_sync_scheduler)
-):
-    """Update sync frequency for an account"""
-    try:        
-        result = await automatic_sync_scheduler.update_account_sync_frequency(
-            str(account.id), frequency, db
-        )
-        
-        return {
-            "success": result['success'],
-            "message": result['message']
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to update sync frequency: {e}", exc_info=True)
-        raise ValidationError("Unable to update sync frequency")
+# TODO: Re-implement sync frequency update endpoint  
+# @router.put("/{account_id}/sync-frequency", response_model=Dict[str, Any])
+# async def update_sync_frequency(
+#     frequency: str,
+#     account = Depends(get_owned_account),
+#     current_user: User = Depends(get_current_active_user),
+#     db: Session = Depends(get_db_with_user_context)
+# ):
+#     """Update sync frequency for an account"""
+#     return {"message": "Sync frequency update not available"}

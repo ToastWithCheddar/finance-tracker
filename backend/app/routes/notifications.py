@@ -4,17 +4,17 @@ from typing import List, Optional
 import uuid
 import logging
 
-from ..database import get_db
-from ..auth.dependencies import get_current_user
-from ..models.user import User
-from ..models.notification import Notification, NotificationType
-from ..services.notification_service import NotificationService
-from ..schemas.notification import (
+from app.database import get_db
+from app.auth.dependencies import get_current_user
+from app.models.user import User
+from app.models.notification import Notification, NotificationType
+from app.services.notification_service import NotificationService
+from app.schemas.notification import (
     NotificationResponse, NotificationListResponse, NotificationStatsResponse,
     NotificationFilter, BulkMarkReadRequest, BulkMarkReadResponse,
     NotificationUpdate
 )
-from ..core.exceptions import (
+from app.core.exceptions import (
     DataIntegrityError,
     ResourceNotFoundError,
     ValidationError

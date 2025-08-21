@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, desc, func
@@ -204,7 +204,7 @@ class NotificationService:
         days_to_keep: int = 90
     ) -> int:
         """Clean up old notifications (system maintenance)"""
-        cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
         
         deleted_count = db.query(Notification).filter(
             Notification.created_at < cutoff_date

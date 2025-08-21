@@ -221,5 +221,12 @@ class DatabaseMonitoringService:
         
         return suggestions
 
-# Create global monitoring service
-monitoring_service = DatabaseMonitoringService()
+# Provider function with lazy caching
+_monitoring_service_instance = None
+
+def get_monitoring_service() -> DatabaseMonitoringService:
+    """Get the global DatabaseMonitoringService instance with lazy initialization"""
+    global _monitoring_service_instance
+    if _monitoring_service_instance is None:
+        _monitoring_service_instance = DatabaseMonitoringService()
+    return _monitoring_service_instance

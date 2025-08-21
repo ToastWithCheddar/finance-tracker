@@ -1,4 +1,4 @@
-import { LayoutDashboard, ReceiptText, Tags, Wallet, Target, CalendarClock, Settings as SettingsIcon } from 'lucide-react';
+import { LayoutDashboard, ReceiptText, Tags, Wallet, Target, Settings as SettingsIcon } from 'lucide-react';
 
 export interface NavigationItem {
   path: string;
@@ -49,14 +49,6 @@ export const navigationItems: NavigationItem[] = [
     description: 'Plan and monitor financial goals', 
     color: 'text-yellow-600 dark:text-yellow-400', 
     hoverColor: 'hover:bg-yellow-50 dark:hover:bg-yellow-900/30' 
-  },
-  { 
-    path: '/timeline', 
-    label: 'Timeline', 
-    icon: CalendarClock, 
-    description: 'See a chronological view of key financial events', 
-    color: 'text-indigo-600 dark:text-indigo-400', 
-    hoverColor: 'hover:bg-indigo-50 dark:hover:bg-indigo-900/30' 
   },
   { 
     path: '/settings', 

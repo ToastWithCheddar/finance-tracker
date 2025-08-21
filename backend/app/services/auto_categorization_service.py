@@ -13,29 +13,29 @@ from uuid import UUID
 from collections import defaultdict
 from cachetools import TTLCache
 
-from app.config import settings
+from app.config import settings, Settings
 
 from app.models.categorization_rule import CategorizationRule
 from app.models.transaction import Transaction
 from app.models.account import Account
 from app.models.category import Category
-from app.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
-class AutoCategorizationService(BaseService):
-    """Service for automated transaction categorization using rules"""
+class AutoCategorizationService:
+    """Engine service for automated transaction categorization using rules"""
     
-    def __init__(self, db: Session):
-        super().__init__(db)
+    def __init__(self, settings: Optional[Settings] = None):
+        self.settings = settings or get_settings()
         # Cache compiled rules for performance with TTL to prevent memory leaks
         self._rule_cache: TTLCache[str, List] = TTLCache(
-            maxsize=settings.RULE_CACHE_MAX_SIZE,
-            ttl=settings.RULE_CACHE_TTL
+            maxsize=self.settings.RULE_CACHE_MAX_SIZE,
+            ttl=self.settings.RULE_CACHE_TTL
         )
         
-    def apply_rules_to_transaction(
+    async def apply_rules_to_transaction(
         self, 
+        db: Session,
         transaction: Transaction, 
         user_id: UUID,
         dry_run: bool = False
@@ -44,7 +44,7 @@ class AutoCategorizationService(BaseService):
         
         try:
             # Get user's active rules sorted by priority
-            rules = self._get_user_rules(user_id)
+            rules = self._get_user_rules(db, user_id)
             
             if not rules:
                 return {
@@ -79,9 +79,9 @@ class AutoCategorizationService(BaseService):
                 
                 # Update rule performance tracking
                 matching_rule.increment_application_count()
-                self.db.add(matching_rule)
-                self.db.add(transaction)
-                self.db.commit()
+                db.add(matching_rule)
+                db.add(transaction)
+                db.commit()
             else:
                 # For dry run, just show what would change
                 changes = self._preview_rule_actions(matching_rule, transaction)
@@ -105,8 +105,9 @@ class AutoCategorizationService(BaseService):
                 "changes": {}
             }
     
-    def batch_apply_rules(
+    async def batch_apply_rules(
         self, 
+        db: Session,
         transaction_ids: List[UUID], 
         user_id: UUID,
         dry_run: bool = False
@@ -115,7 +116,7 @@ class AutoCategorizationService(BaseService):
         
         try:
             # Batch load transactions
-            transactions = self.db.query(Transaction).filter(
+            transactions = db.query(Transaction).filter(
                 and_(
                     Transaction.id.in_(transaction_ids),
                     Transaction.user_id == user_id
@@ -131,7 +132,7 @@ class AutoCategorizationService(BaseService):
                 }
             
             # Get user's rules once
-            rules = self._get_user_rules(user_id)
+            rules = self._get_user_rules(db, user_id)
             
             results = []
             rules_applied_count = 0
@@ -171,9 +172,9 @@ class AutoCategorizationService(BaseService):
             
             # Batch commit changes
             if not dry_run and transactions_changed:
-                self.db.add_all(transactions_changed)
-                self.db.add_all(rules)  # For updated application counts
-                self.db.commit()
+                db.add_all(transactions_changed)
+                db.add_all(rules)  # For updated application counts
+                db.commit()
             
             return {
                 "success": True,
@@ -186,7 +187,7 @@ class AutoCategorizationService(BaseService):
         except Exception as e:
             logger.error(f"Failed to batch apply rules: {e}")
             if not dry_run:
-                self.db.rollback()
+                db.rollback()
             return {
                 "success": False,
                 "error": str(e),
@@ -195,8 +196,9 @@ class AutoCategorizationService(BaseService):
                 "results": []
             }
     
-    def test_rule_against_transactions(
+    async def test_rule_against_transactions(
         self, 
+        db: Session,
         rule_conditions: Dict[str, Any], 
         user_id: UUID,
         limit: int = 100
@@ -214,7 +216,7 @@ class AutoCategorizationService(BaseService):
             )
             
             # Get recent transactions for user
-            transactions = self.db.query(Transaction).filter(
+            transactions = db.query(Transaction).filter(
                 Transaction.user_id == user_id
             ).order_by(desc(Transaction.transaction_date)).limit(limit).all()
             
@@ -238,7 +240,7 @@ class AutoCategorizationService(BaseService):
             logger.error(f"Failed to test rule conditions: {e}")
             return []
     
-    def _get_user_rules(self, user_id: UUID) -> List[CategorizationRule]:
+    def _get_user_rules(self, db: Session, user_id: UUID) -> List[CategorizationRule]:
         """Get user's active rules sorted by priority, with caching"""
         
         cache_key = f"user_rules_{user_id}"
@@ -248,7 +250,7 @@ class AutoCategorizationService(BaseService):
             return self._rule_cache[cache_key]
         
         # Load from database
-        rules = self.db.query(CategorizationRule).filter(
+        rules = db.query(CategorizationRule).filter(
             and_(
                 CategorizationRule.user_id == user_id,
                 CategorizationRule.is_active == True
@@ -398,10 +400,10 @@ class AutoCategorizationService(BaseService):
         
         return changes
     
-    def get_rule_effectiveness(self, rule_id: UUID, user_id: UUID) -> Dict[str, Any]:
+    async def get_rule_effectiveness(self, db: Session, rule_id: UUID, user_id: UUID) -> Dict[str, Any]:
         """Calculate how effective a rule has been"""
         
-        rule = self.db.query(CategorizationRule).filter(
+        rule = db.query(CategorizationRule).filter(
             and_(
                 CategorizationRule.id == rule_id,
                 CategorizationRule.user_id == user_id
@@ -463,10 +465,10 @@ class AutoCategorizationService(BaseService):
             'cache_ttl_seconds': self._rule_cache.ttl
         }
     
-    def get_matching_statistics(self, user_id: UUID) -> Dict[str, Any]:
+    async def get_matching_statistics(self, db: Session, user_id: UUID) -> Dict[str, Any]:
         """Get statistics about rule matching for a user"""
         
-        rules = self._get_user_rules(user_id)
+        rules = self._get_user_rules(db, user_id)
         
         if not rules:
             return {

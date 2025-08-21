@@ -57,10 +57,6 @@ class Goal(BaseModel):
     target_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     completed_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
-    # Auto-contribution settings
-    auto_contribute: Mapped[bool] = mapped_column(Boolean, default=False)
-    auto_contribution_amount_cents: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
-    auto_contribution_source: Mapped[Optional[str]] = mapped_column(String(100))  # e.g., "checking_account"
 
     # Progress tracking
     last_contribution_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)

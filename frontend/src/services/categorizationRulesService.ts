@@ -20,13 +20,13 @@ export const categorizationRulesService = {
    * Get paginated categorization rules with filtering
    */
   getCategorizationRules: async (
-    page = 1,
-    perPage = 20,
+    skip = 0,
+    limit = 20,
     filters?: CategorizationRuleFilter
   ): Promise<PaginatedCategorizationRulesResponse> => {
     const params = new URLSearchParams();
-    params.append('page', page.toString());
-    params.append('per_page', perPage.toString());
+    params.append('skip', skip.toString());
+    params.append('limit', limit.toString());
     
     if (filters) {
       Object.entries(filters).forEach(([key, value]) => {

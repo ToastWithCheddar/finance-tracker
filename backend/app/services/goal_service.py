@@ -6,11 +6,14 @@ from ..models.goal import Goal, GoalContribution, GoalMilestone, GoalStatus, Goa
 from ..schemas.goal import GoalCreate, GoalUpdate, GoalContributionCreate, MilestoneAlert
 from ..websocket.manager import RedisWebSocketManager
 from .notification_service import NotificationService
+from .base_service import BaseService
 import json
 from uuid import UUID
 
-class GoalService:
+class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
+    """CRUD service for Goal entities with business logic for contributions and milestones."""
     def __init__(self, websocket_manager: RedisWebSocketManager = None):
+        super().__init__(Goal)
         self.websocket_manager = websocket_manager
 
     def create_goal(self, db: Session, user_id: UUID, goal_data: GoalCreate) -> Goal:
@@ -131,8 +134,7 @@ class GoalService:
         user_id: UUID, 
         goal_id: UUID, 
         contribution_data: GoalContributionCreate,
-        transaction_id: Optional[UUID] = None,
-        is_automatic: bool = False
+        transaction_id: Optional[UUID] = None
     ) -> Optional[GoalContribution]:
         """Add a contribution to a goal"""
         goal = db.query(Goal).options(
@@ -151,8 +153,7 @@ class GoalService:
             goal_id=goal_id,
             amount=contribution_data.amount,
             note=contribution_data.note,
-            transaction_id=transaction_id,
-            is_automatic=is_automatic
+            transaction_id=transaction_id
         )
         
         # Update goal progress
@@ -202,38 +203,6 @@ class GoalService:
         
         return stats
 
-    def process_automatic_contributions(self, db: Session) -> Dict[str, int]:
-        """Process automatic contributions for all eligible goals"""
-        today = datetime.now(datetime.timezone.utc).date()
-        processed = {"success": 0, "failed": 0}
-        
-        # Get goals with automatic contributions enabled
-        auto_goals = db.query(Goal).filter(
-            and_(
-                Goal.auto_contribute == True,
-                Goal.status == GoalStatus.ACTIVE,
-                Goal.auto_contribution_amount_cents > 0
-            )
-        ).all()
-        
-        for goal in auto_goals:
-            try:
-                # Check if contribution is due based on frequency
-                if self._is_contribution_due(goal, today):
-                    contribution_data = GoalContributionCreate(
-                        amount=goal.auto_contribution_amount_cents,
-                        note=f"Automatic contribution - {goal.contribution_frequency}"
-                    )
-                    
-                    self.add_contribution(
-                        db, goal.user_id, goal.id, contribution_data, is_automatic=True
-                    )
-                    processed["success"] += 1
-            except Exception as e:
-                print(f"Failed to process automatic contribution for goal {goal.id}: {e}")
-                processed["failed"] += 1
-        
-        return processed
 
     def _calculate_goal_stats(self, goals: List[Goal]) -> Dict[str, Any]:
         """Calculate comprehensive statistics for goals"""
@@ -401,22 +370,6 @@ class GoalService:
         }
         return messages.get(percentage, f"Milestone reached: {percentage}% of '{goal_name}'")
 
-    def _is_contribution_due(self, goal: Goal, today: datetime.date) -> bool:
-        """Check if automatic contribution is due based on frequency"""
-        if not goal.last_contribution_date:
-            return True
-        
-        last_contribution = goal.last_contribution_date.date()
-        days_since = (today - last_contribution).days
-        
-        frequency_days = {
-            "daily": 1,
-            "weekly": 7,
-            "monthly": 30  # Approximate
-        }
-        
-        required_days = frequency_days.get(goal.contribution_frequency, 30)
-        return days_since >= required_days
 
     def _send_goal_update(self, user_id: UUID, event_type: str, data: Any):
         """Send real-time goal updates via WebSocket"""
@@ -459,3 +412,14 @@ class GoalService:
                 }
             }
             self.websocket_manager.send_to_user(user_id, json.dumps(message))
+
+
+# Provider function with lazy caching
+_goal_service_instance = None
+
+def get_goal_service() -> GoalService:
+    """Get the global GoalService instance with lazy initialization"""
+    global _goal_service_instance
+    if _goal_service_instance is None:
+        _goal_service_instance = GoalService()
+    return _goal_service_instance

@@ -14,6 +14,7 @@ import type {
   CreateBudgetRequest,
   BudgetCalendarResponse
 } from '../types/budgets';
+import { toBudgetList } from '../api/adapters/budget';
 
 // Enhanced types from standardized service
 export interface BudgetAnalytics {
@@ -64,7 +65,8 @@ class BudgetService extends BaseService {
     if (filters?.skip) params.skip = filters.skip;
     if (filters?.limit) params.limit = filters.limit;
 
-    return apiClient.get<BudgetListResponse>('/budgets', params);
+    const response = await apiClient.get('/budgets', params);
+    return toBudgetList(response);
   }
 
   // ServiceResponse wrapper variant

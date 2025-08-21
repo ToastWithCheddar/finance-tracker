@@ -13,8 +13,8 @@ from sqlalchemy.orm import Session
 from app.models.account import Account
 from app.models.transaction import Transaction
 from app.schemas.transaction import TransactionCreate
-from app.services.transaction_service import TransactionService
-from app.services.plaid_client_service import plaid_client_service
+from app.services.transaction_service import get_transaction_service
+from app.services.plaid_client_service import get_plaid_client_service
 from app.services.utils.plaid_utils import group_accounts_by_token
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
@@ -26,7 +26,7 @@ class PlaidTransactionService:
     """Service for managing Plaid transaction synchronization"""
     
     def __init__(self):
-        self.transaction_service = TransactionService()
+        self.transaction_service = get_transaction_service()
     
     async def sync_transactions_for_user(self, db: Session, user_id: str) -> Dict[str, Any]:
         """
@@ -157,7 +157,7 @@ class PlaidTransactionService:
         
         try:
             while True:
-                result = await plaid_client_service.fetch_transactions(
+                result = await get_plaid_client_service().fetch_transactions(
                     access_token=access_token,
                     start_date=start_date.date().isoformat(),
                     end_date=end_date.date().isoformat(),
@@ -397,5 +397,12 @@ class PlaidTransactionService:
     
 
 
-# Create singleton instance
-plaid_transaction_service = PlaidTransactionService()
+# Provider function with lazy caching
+_plaid_transaction_service_instance = None
+
+def get_plaid_transaction_service() -> PlaidTransactionService:
+    """Get the global PlaidTransactionService instance with lazy initialization"""
+    global _plaid_transaction_service_instance
+    if _plaid_transaction_service_instance is None:
+        _plaid_transaction_service_instance = PlaidTransactionService()
+    return _plaid_transaction_service_instance

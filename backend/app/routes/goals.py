@@ -1,14 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from ..database import get_db
-from ..auth.dependencies import get_current_user, get_db_with_user_context
-from ..schemas.goal import (
+from app.database import get_db
+from app.auth.dependencies import get_current_user, get_db_with_user_context
+from app.schemas.goal import (
     Goal, GoalCreate, GoalUpdate, GoalContribution, GoalContributionCreate,
     GoalsResponse, GoalStats, GoalStatus, GoalType, GoalPriority
 )
 from app.dependencies import get_goal_service, get_owned_goal
-from ..services.goal_service import GoalService
+from app.services.goal_service import GoalService
 from uuid import UUID
 
 router = APIRouter(prefix="/goals", tags=["goals"])
@@ -117,23 +117,6 @@ async def get_goal_contributions(
     
     contributions = goal.contributions[skip:skip+limit] if goal.contributions else []
     return contributions
-
-@router.post("/process-auto-contributions")
-async def process_automatic_contributions(
-    # BackgroundTasks is a FastAPI dependency that allows us to run tasks in the background
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db_with_user_context),
-    current_user: dict = Depends(get_current_user),
-    goal_service: GoalService = Depends(get_goal_service)
-):
-    """Process automatic contributions (admin/system endpoint)"""
-    # This would typically be called by a scheduled job
-    # For demo purposes, allowing manual trigger
-    result = goal_service.process_automatic_contributions(db)
-    return {
-        "message": "Automatic contributions processed",
-        "results": result
-    }
 
 @router.get("/types/options")
 async def get_goal_type_options():

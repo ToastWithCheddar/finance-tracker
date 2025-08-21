@@ -176,35 +176,6 @@ export function useAddContribution() {
   });
 }
 
-// Process automatic contributions mutation
-export function useProcessAutoContributions() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: goalService.processAutoContributions,
-    onSuccess: (result) => {
-      queryClient.invalidateQueries({ queryKey: goalKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: goalKeys.stats() });
-      
-      if (result.results.success > 0) {
-        toast.success(
-          `Processed ${result.results.success} automatic contributions`,
-          { duration: 4000 }
-        );
-      }
-      
-      if (result.results.failed > 0) {
-        toast.error(
-          `${result.results.failed} automatic contributions failed`,
-          { duration: 4000 }
-        );
-      }
-    },
-    onError: (error: { response?: { data?: { detail?: string } } }) => {
-      toast.error(error.response?.data?.detail || 'Failed to process automatic contributions');
-    },
-  });
-}
 
 // Custom hook for goal progress animations
 export function useGoalProgress(goal: Goal) {

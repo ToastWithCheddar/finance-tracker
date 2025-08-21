@@ -15,8 +15,8 @@ from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.transaction import TransactionCreate
-from app.services import plaid_service
-from app.services.transaction_service import TransactionService
+from app.services.plaid_orchestration_service import get_plaid_service
+from app.services.transaction_service import get_transaction_service
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
 from app.core.redis_client import redis_client
@@ -38,8 +38,8 @@ class TransactionSyncService:
     """Service for synchronizing transactions with Plaid"""
     
     def __init__(self):
-        self.transaction_service = TransactionService()
-        self.plaid_service = plaid_service
+        self.transaction_service = get_transaction_service()
+        self.plaid_service = get_plaid_service()
         
         # Sync configuration
         self.max_sync_days = 365  # Maximum days to sync in one operation
@@ -992,5 +992,12 @@ class TransactionSyncService:
             logger.warning(f"Unknown account type '{account_type}' - using default amount conversion")
             return -amount_cents
 
-# Create global service instance
-transaction_sync_service = TransactionSyncService()
+# Provider function with lazy caching
+_transaction_sync_service_instance = None
+
+def get_transaction_sync_service() -> TransactionSyncService:
+    """Get the global TransactionSyncService instance with lazy initialization"""
+    global _transaction_sync_service_instance
+    if _transaction_sync_service_instance is None:
+        _transaction_sync_service_instance = TransactionSyncService()
+    return _transaction_sync_service_instance

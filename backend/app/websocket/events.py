@@ -1,6 +1,6 @@
 # backend/app/websocket/events.py
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from enum import Enum
 
@@ -41,7 +41,7 @@ class WebSocketEvent:
     def __init__(self, event_type: EventType, data: Dict[str, Any]):
         self.type = event_type
         self.data = data
-        self.timestamp = datetime.utcnow().isoformat()
+        self.timestamp = datetime.now(timezone.utc).isoformat()
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -67,7 +67,7 @@ class WebSocketEvents:
             recent_transactions=dashboard_data.get("recent_transactions", [])[:5],
             account_summary=dashboard_data.get("account_summary"),
             spending_by_category=dashboard_data.get("spending_by_category", []),
-            updated_at=datetime.utcnow()
+            updated_at=datetime.now(timezone.utc)
         )
         message = create_dashboard_update_message(user_id, payload)
         await manager.send_to_user(user_id, message.model_dump())
@@ -81,12 +81,12 @@ class WebSocketEvents:
             old_balance_cents=old_balance,
             new_balance_cents=new_balance,
             change_cents=new_balance - old_balance,
-            updated_at=datetime.utcnow()
+            updated_at=datetime.now(timezone.utc)
         )
         message = {
-            "id": f"balance_{datetime.utcnow().timestamp()}",
+            "id": f"balance_{datetime.now(timezone.utc).timestamp()}",
             "type": MessageType.BALANCE_UPDATE,
-            "timestamp": datetime.utcnow(),
+            "timestamp": datetime.now(timezone.utc),
             "user_id": user_id,
             "payload": payload.model_dump()
         }
@@ -125,7 +125,7 @@ class WebSocketEvents:
                 "account_id": account_id,
                 "account_name": account_name,
                 "transaction_count": count,
-                "imported_at": datetime.utcnow().isoformat()
+                "imported_at": datetime.now(timezone.utc).isoformat()
             }
         }
         await manager.send_to_user(user_id, message)
@@ -203,7 +203,7 @@ class WebSocketEvents:
                 "goal_name": goal_data.get("name"),
                 "target_amount_cents": goal_data.get("target_amount_cents"),
                 "achieved_amount_cents": goal_data.get("current_amount_cents"),
-                "achievement_date": datetime.utcnow().isoformat(),
+                "achievement_date": datetime.now(timezone.utc).isoformat(),
                 "celebration_message": f"🎉 Congratulations! You've achieved your '{goal_data.get('name')}' goal!",
                 "priority": NotificationPriority.HIGH
             }
@@ -224,7 +224,7 @@ class WebSocketEvents:
                 "balance_updated": sync_result.get("balance_updated", False),
                 "new_balance_cents": sync_result.get("new_balance_cents"),
                 "sync_duration_ms": sync_result.get("sync_duration_ms"),
-                "synced_at": datetime.utcnow().isoformat(),
+                "synced_at": datetime.now(timezone.utc).isoformat(),
                 "success": True
             }
         }
@@ -241,7 +241,7 @@ class WebSocketEvents:
                 "error_message": error_details.get("error_message"),
                 "error_code": error_details.get("error_code"),
                 "retry_suggested": error_details.get("retry_suggested", True),
-                "failed_at": datetime.utcnow().isoformat(),
+                "failed_at": datetime.now(timezone.utc).isoformat(),
                 "priority": NotificationPriority.MEDIUM
             }
         }
@@ -264,7 +264,7 @@ class WebSocketEvents:
                 "actionable": insight_data.get("actionable", False),
                 "action_items": insight_data.get("action_items", []),
                 "priority": insight_data.get("priority", NotificationPriority.MEDIUM),
-                "generated_at": datetime.utcnow().isoformat()
+                "generated_at": datetime.now(timezone.utc).isoformat()
             }
         }
         await manager.send_to_user(user_id, message)
@@ -282,7 +282,7 @@ class WebSocketEvents:
                 "frequency": pattern_data.get("frequency"),
                 "confidence": pattern_data.get("confidence"),
                 "suggestion": pattern_data.get("suggestion"),
-                "detected_at": datetime.utcnow().isoformat()
+                "detected_at": datetime.now(timezone.utc).isoformat()
             }
         }
         await manager.send_to_user(user_id, message)
@@ -303,14 +303,14 @@ class WebSocketEvents:
         notification_message = {
             "type": MessageType.NOTIFICATION,
             "payload": {
-                "id": f"notif_{datetime.utcnow().timestamp()}",
+                "id": f"notif_{datetime.now(timezone.utc).timestamp()}",
                 "title": title,
                 "message": message,
                 "notification_type": notification_type,  # success, error, warning, info
                 "priority": priority,
                 "action_url": action_url,
                 "metadata": metadata or {},
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "read": False
             }
         }
@@ -331,7 +331,7 @@ class WebSocketEvents:
                 "message": message,
                 "priority": priority,
                 "system_wide": True,
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
         }
         await manager.broadcast_to_users(user_ids, alert_message)
@@ -346,7 +346,7 @@ class WebSocketEvents:
             "payload": {
                 "events": events,
                 "count": len(events),
-                "batch_id": f"batch_{datetime.utcnow().timestamp()}"
+                "batch_id": f"batch_{datetime.now(timezone.utc).timestamp()}"
             }
         }
         await manager.send_to_user(user_id, batch_message)
@@ -357,7 +357,7 @@ class WebSocketEvents:
         message = {
             "type": MessageType.PING,
             "payload": {
-                "server_time": datetime.utcnow().isoformat(),
+                "server_time": datetime.now(timezone.utc).isoformat(),
                 "connection_status": "active"
             }
         }
@@ -379,14 +379,14 @@ class WebSocketEvents:
         message = {
             "type": "user_activity_created",
             "payload": {
-                "id": f"activity_{datetime.utcnow().timestamp()}_{user_id}",
+                "id": f"activity_{datetime.now(timezone.utc).timestamp()}_{user_id}",
                 "type": activity_type,
                 "title": title,
                 "description": description,
                 "table_name": table_name,
                 "record_id": record_id,
                 "metadata": metadata or {},
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
         }
         await manager.send_to_user(user_id, message)

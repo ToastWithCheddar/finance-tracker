@@ -77,15 +77,6 @@ export class GoalService {
     }>(`${this.baseEndpoint}/types/options`);
   }
 
-  async processAutoContributions(): Promise<{
-    message: string;
-    results: { success: number; failed: number };
-  }> {
-    return apiClient.post<{
-      message: string;
-      results: { success: number; failed: number };
-    }>(`${this.baseEndpoint}/process-auto-contributions`);
-  }
 
   // Helper methods for frontend calculations
   calculateProgress(currentAmount: number, targetAmount: number): number {

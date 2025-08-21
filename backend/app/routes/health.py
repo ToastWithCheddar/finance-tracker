@@ -4,12 +4,13 @@ from sqlalchemy import text
 import redis
 import logging
 from typing import Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db, check_database_health
 from app.config import settings
 from app.auth.supabase_client import supabase_client
 from app.core.exceptions import ExternalServiceError
+from app.core.redis_client import get_redis_client
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ async def health_check(detailed: bool = False, db: Session = Depends(get_db)):
         "service": "finance-tracker-api",
         "version": "1.0.0",
         "environment": settings.ENVIRONMENT,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.now(timezone.utc).isoformat()
     }
     
     # Return basic health if detailed is False
@@ -47,8 +48,8 @@ async def health_check(detailed: bool = False, db: Session = Depends(get_db)):
     
     # Check Redis
     try:
-        r = redis.from_url(settings.REDIS_URL)
-        r.ping()
+        redis_client = await get_redis_client()
+        await redis_client.ping()
         health_status["checks"]["redis"] = {"status": "healthy"}
     except Exception as e:
         logger.error(f"Redis health check failed: {e}")

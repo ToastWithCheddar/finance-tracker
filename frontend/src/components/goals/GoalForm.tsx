@@ -4,7 +4,6 @@ import { Input } from '../ui/Input';
 import { Modal } from '../ui/Modal';
 import { Card } from '../ui/Card';
 import { useCreateGoal, useUpdateGoal, useGoalOptions } from '../../hooks/useGoals';
-import { useAccounts } from '../../hooks/useAccounts';
 import type { Goal, GoalCreate, GoalUpdate } from '../../types/goals';
 
 interface GoalFormProps {
@@ -24,16 +23,12 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     target_date: '',
     contribution_frequency: '',
     monthly_target_cents: '',
-    auto_contribute: false,
-    auto_contribution_amount_cents: '',
-    auto_contribution_source: '',
     milestone_percentage: '25',
   });
 
   const createGoal = useCreateGoal();
   const updateGoal = useUpdateGoal();
   const { data: options } = useGoalOptions();
-  const { data: accounts } = useAccounts();
 
   const isEditing = !!goal;
   const isLoading = createGoal.isPending || updateGoal.isPending;
@@ -50,9 +45,6 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
         target_date: goal.target_date ? goal.target_date.split('T')[0] : '',
         contribution_frequency: goal.contribution_frequency || '',
         monthly_target_cents: goal.monthly_target_cents?.toString() || '',
-        auto_contribute: goal.auto_contribute,
-        auto_contribution_amount_cents: goal.auto_contribution_amount_cents?.toString() || '',
-        auto_contribution_source: goal.auto_contribution_source || '',
         milestone_percentage: goal.milestone_percentage.toString(),
       });
     } else {
@@ -66,9 +58,6 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
         target_date: '',
         contribution_frequency: '',
         monthly_target_cents: '',
-        auto_contribute: false,
-        auto_contribution_amount_cents: '',
-        auto_contribution_source: '',
         milestone_percentage: '25',
       });
     }
@@ -87,10 +76,6 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
         target_date: formData.target_date || undefined,
         contribution_frequency: formData.contribution_frequency || undefined,
         monthly_target_cents: formData.monthly_target_cents ? Math.round(parseFloat(formData.monthly_target_cents) * 100) : undefined,
-        auto_contribute: formData.auto_contribute,
-        auto_contribution_amount_cents: formData.auto_contribution_amount_cents ? 
-          Math.round(parseFloat(formData.auto_contribution_amount_cents) * 100) : undefined,
-        auto_contribution_source: formData.auto_contribution_source || undefined,
         milestone_percentage: parseFloat(formData.milestone_percentage),
       };
 
@@ -114,11 +99,6 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  // Filter accounts to show only valid funding sources
-  const validFundingAccounts = accounts?.filter(account => 
-    account.is_active && 
-    (account.account_type === 'checking' || account.account_type === 'savings')
-  ) || [];
 
   const calculateMonthlyTarget = () => {
     const targetAmount = Math.round(parseFloat(formData.target_amount_cents) * 100);
@@ -301,85 +281,6 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
           </div>
         </Card>
 
-        {/* Automatic Contributions */}
-        <Card className="p-4">
-          <h3 className="text-lg font-semibold mb-4 text-[hsl(var(--text))]">Automatic Contributions</h3>
-          
-          <div className="space-y-4">
-            <div className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                id="auto_contribute"
-                checked={formData.auto_contribute}
-                onChange={(e) => handleInputChange('auto_contribute', e.target.checked)}
-                className="rounded border-[hsl(var(--border))] text-[hsl(var(--brand))] focus:ring-[hsl(var(--brand))]"
-              />
-              <label htmlFor="auto_contribute" className="text-sm font-medium text-[hsl(var(--text))]">
-                Enable automatic contributions
-              </label>
-            </div>
-            
-            {formData.auto_contribute && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 ml-6">
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
-                    Amount
-                  </label>
-                  <Input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={formData.auto_contribution_amount_cents}
-                    onChange={(e) => handleInputChange('auto_contribution_amount_cents', e.target.value)}
-                    placeholder="0.00"
-                    className="w-full"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
-                    Frequency
-                  </label>
-                  <select
-                    value={formData.contribution_frequency}
-                    onChange={(e) => handleInputChange('contribution_frequency', e.target.value)}
-                    className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))] bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))]"
-                  >
-                    <option value="">Select frequency</option>
-                    {options?.frequencies.map((freq) => (
-                      <option key={freq.value} value={freq.value}>
-                        {freq.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium mb-1 text-[hsl(var(--text))] opacity-80">
-                    Source Account
-                  </label>
-                  <select
-                    value={formData.auto_contribution_source}
-                    onChange={(e) => handleInputChange('auto_contribution_source', e.target.value)}
-                    className="w-full px-3 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-[hsl(var(--brand))] bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))]"
-                  >
-                    <option value="">Select account</option>
-                    {validFundingAccounts.map((account) => (
-                      <option key={account.id} value={account.id}>
-                        {account.name} ({account.account_type === 'checking' ? 'Checking' : 'Savings'})
-                      </option>
-                    ))}
-                  </select>
-                  {validFundingAccounts.length === 0 && (
-                    <p className="text-xs text-red-500 mt-1">
-                      No valid funding accounts available. Please add a checking or savings account first.
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        </Card>
 
         {/* Form Actions */}
         <div className="flex justify-end space-x-3 pt-4 border-t border-[hsl(var(--border))]">

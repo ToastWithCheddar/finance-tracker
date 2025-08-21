@@ -10,9 +10,8 @@ from app.core.exceptions import ValidationError, BusinessLogicError
 from app.auth.dependencies import get_current_active_user, get_db_with_user_context
 from app.database import get_db
 from app.models.user import User
-from app.services.analytics_service import analytics_service
+from app.services.analytics_service import get_analytics_service
 from app.services.transaction_service import TransactionService
-from app.schemas.timeline_annotation import TimelineEventsList
 
 logger = logging.getLogger(__name__)
 
@@ -26,49 +25,9 @@ async def get_dashboard_analytics(
     """
     Get aggregated analytics data for the main dashboard.
     """
-    analytics_data = await analytics_service.get_dashboard_summary(db, current_user.id)
+    analytics_data = await get_analytics_service().get_dashboard_summary(db, current_user.id)
     return {"success": True, "data": analytics_data}
 
-
-@router.get("/money-flow")
-async def get_money_flow(
-    start_date: date = Query(..., description="Start date for money flow analysis (YYYY-MM-DD)"),
-    end_date: date = Query(..., description="End date for money flow analysis (YYYY-MM-DD)"),
-    db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Get money flow data for Sankey diagram visualization.
-    
-    Returns nodes and links structure showing how money flows from income sources
-    through total income to expense categories and savings.
-    """
-    try:
-        # Validate date range
-        if start_date > end_date:
-            raise ValidationError("Start date must be before end date")
-        
-        # Validate date range isn't too large (max 1 year)
-        if (end_date - start_date).days > 365:
-            raise ValidationError("Date range cannot exceed 365 days")
-        
-        flow_data = await analytics_service.get_money_flow_data(db, current_user.id, start_date, end_date)
-        
-        # Check if there's any data to show
-        if not flow_data.get("links") or len(flow_data["links"]) == 0:
-            return {
-                "success": True,
-                "data": flow_data,
-                "message": "No transaction data available for the selected period"
-            }
-        
-        return {"success": True, "data": flow_data}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get money flow data for user {current_user.id}: {e}", exc_info=True)
-        raise BusinessLogicError("Could not process money flow data")
 
 
 @router.get("/spending-heatmap")
@@ -93,7 +52,7 @@ async def get_spending_heatmap(
         if (end_date - start_date).days > 366:
             raise ValidationError("Date range cannot exceed one year")
         
-        heatmap_data = await analytics_service.get_spending_heatmap_data(db, current_user.id, start_date, end_date)
+        heatmap_data = await get_analytics_service().get_spending_heatmap_data(db, current_user.id, start_date, end_date)
         
         return {"success": True, "data": heatmap_data}
         
@@ -103,47 +62,6 @@ async def get_spending_heatmap(
         logger.error(f"Failed to get spending heatmap data for user {current_user.id}: {e}", exc_info=True)
         raise BusinessLogicError("Could not process spending heatmap data")
 
-
-@router.get("/timeline", response_model=TimelineEventsList)
-async def get_financial_timeline(
-    start_date: date = Query(..., description="Start date for timeline (YYYY-MM-DD)"),
-    end_date: date = Query(..., description="End date for timeline (YYYY-MM-DD)"),
-    db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Get financial timeline events combining annotations, goals, and significant transactions.
-    
-    Returns a chronological view of important financial events including:
-    - User-created timeline annotations
-    - Goal creation and completion events
-    - Significant transactions (over $500)
-    """
-    try:
-        # Validate date range
-        if start_date > end_date:
-            raise ValidationError("Start date must be before end date")
-        
-        # Validate date range isn't too large (max 2 years)
-        if (end_date - start_date).days > 730:
-            raise ValidationError("Date range cannot exceed 2 years")
-        
-        timeline_data = await analytics_service.get_financial_timeline(
-            db, current_user.id, start_date, end_date
-        )
-        
-        return TimelineEventsList(
-            events=timeline_data["events"],
-            total_count=timeline_data["total_count"],
-            start_date=timeline_data["start_date"],
-            end_date=timeline_data["end_date"]
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get financial timeline for user {current_user.id}: {e}", exc_info=True)
-        raise BusinessLogicError("Could not process financial timeline data")
 
 
 @router.get("/net-worth-trend")
@@ -167,7 +85,7 @@ async def get_net_worth_trend(
         if period not in valid_periods:
             raise ValidationError(f"Invalid period. Must be one of: {', '.join(valid_periods)}")
         
-        trend_data = await analytics_service.get_net_worth_trend(db, current_user.id, period)
+        trend_data = await get_analytics_service().get_net_worth_trend(db, current_user.id, period)
         
         # Check if there's any data to show
         if not trend_data:
@@ -208,7 +126,7 @@ async def get_cash_flow_waterfall(
         if (end_date - start_date).days > 365:
             raise ValidationError("Date range cannot exceed 365 days")
         
-        waterfall_data = await analytics_service.get_cash_flow_waterfall(
+        waterfall_data = await get_analytics_service().get_cash_flow_waterfall(
             db, current_user.id, start_date, end_date
         )
         

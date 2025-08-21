@@ -111,5 +111,12 @@ class EncryptionService:
         return Fernet.generate_key().decode()
 
 
-# Global instance
-encryption_service = EncryptionService()
+# Provider function with lazy caching
+_encryption_service_instance = None
+
+def get_encryption_service() -> EncryptionService:
+    """Get the global EncryptionService instance with lazy initialization"""
+    global _encryption_service_instance
+    if _encryption_service_instance is None:
+        _encryption_service_instance = EncryptionService()
+    return _encryption_service_instance

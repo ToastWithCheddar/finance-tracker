@@ -16,7 +16,7 @@ from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.transaction import TransactionCreate
-from app.services.transaction_service import TransactionService
+from app.services.transaction_service import get_transaction_service
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
 
@@ -65,7 +65,7 @@ class ReconciliationService:
     """Enhanced reconciliation service with intelligent discrepancy detection"""
     
     def __init__(self):
-        self.transaction_service = TransactionService()
+        self.transaction_service = get_transaction_service()
         
         # Reconciliation configuration
         self.tolerance_cents = 1  # 1 cent tolerance for floating point errors
@@ -875,8 +875,17 @@ class ReconciliationService:
             }
 
 
-# Global service instance
-reconciliation_service = ReconciliationService()
+# Provider function with lazy caching
+_reconciliation_service_instance = None
+
+def get_reconciliation_service() -> ReconciliationService:
+    """Get the global ReconciliationService instance with lazy initialization"""
+    global _reconciliation_service_instance
+    if _reconciliation_service_instance is None:
+        _reconciliation_service_instance = ReconciliationService()
+    return _reconciliation_service_instance
 
 # Maintain backward compatibility
-enhanced_reconciliation_service = reconciliation_service
+def get_enhanced_reconciliation_service() -> ReconciliationService:
+    """Alias for get_reconciliation_service() for backward compatibility"""
+    return get_reconciliation_service()

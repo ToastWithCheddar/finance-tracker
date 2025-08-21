@@ -304,5 +304,12 @@ class PlaidClientService:
         }
 
 
-# Create singleton instance
-plaid_client_service = PlaidClientService()
+# Provider function with lazy caching
+_plaid_client_service_instance = None
+
+def get_plaid_client_service() -> PlaidClientService:
+    """Get the global PlaidClientService instance with lazy initialization"""
+    global _plaid_client_service_instance
+    if _plaid_client_service_instance is None:
+        _plaid_client_service_instance = PlaidClientService()
+    return _plaid_client_service_instance

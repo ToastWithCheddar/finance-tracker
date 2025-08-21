@@ -22,13 +22,14 @@ const TRANSACTION_KEYS = {
 } as const;
 
 // Get transactions with filters and pagination
-export function useTransactions(filters?: Partial<TransactionFilters>) {
+export function useTransactions(filters?: Partial<TransactionFilters>, enabled: boolean = true) {
   return useQuery({
     queryKey: TRANSACTION_KEYS.list(filters),
     queryFn: () => {
       console.log('🔍 Fetching transactions with filters:', filters);
       return transactionService.getTransactions(filters);
     },
+    enabled: enabled,
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
     meta: {
@@ -38,6 +39,34 @@ export function useTransactions(filters?: Partial<TransactionFilters>) {
       },
       onError: (error: any) => {
         console.error('❌ Failed to fetch transactions:', error);
+      },
+    },
+  });
+}
+
+// Get grouped transactions with filters and pagination
+export function useTransactionsGrouped(
+  filters?: TransactionFilters & { group_by: 'date' | 'category' | 'merchant' }
+) {
+  return useQuery({
+    queryKey: [...TRANSACTION_KEYS.lists(), 'grouped', filters],
+    queryFn: () => {
+      if (!filters) {
+        throw new Error('Filters are required for grouped transactions');
+      }
+      console.log('🔍 Fetching grouped transactions with filters:', filters);
+      return transactionService.getTransactionsGrouped(filters);
+    },
+    enabled: !!filters && !!filters.group_by,
+    staleTime: 2 * 60 * 1000, // 2 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    meta: {
+      onSuccess: (data: any) => {
+        console.log('✅ Grouped transactions fetched successfully:', data);
+        console.log(`📊 Found ${data?.groups?.length || 0} groups`);
+      },
+      onError: (error: any) => {
+        console.error('❌ Failed to fetch grouped transactions:', error);
       },
     },
   });

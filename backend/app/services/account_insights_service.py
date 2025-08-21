@@ -3,7 +3,7 @@ Account categorization and insights service
 """
 import logging
 from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_, desc
 
@@ -78,7 +78,7 @@ class AccountInsightsService:
         """Analyze individual account patterns and health"""
         try:
             # Get transaction history for the last 90 days
-            cutoff_date = datetime.utcnow() - timedelta(days=90)
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=90)
             
             transactions = db.query(Transaction).filter(
                 Transaction.account_id == account.id,
@@ -374,5 +374,12 @@ class AccountInsightsService:
         return recommendations[:6]  # Limit to top 6 recommendations
     
 
-# Create global service instance
-account_insights_service = AccountInsightsService()
+# Provider function with lazy caching
+_account_insights_service_instance = None
+
+def get_account_insights_service() -> AccountInsightsService:
+    """Get the global AccountInsightsService instance with lazy initialization"""
+    global _account_insights_service_instance
+    if _account_insights_service_instance is None:
+        _account_insights_service_instance = AccountInsightsService()
+    return _account_insights_service_instance

@@ -9,23 +9,23 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, func
 from uuid import UUID
 
+from app.config import Settings, settings
 from app.models.categorization_rule_template import CategorizationRuleTemplate
 from app.models.categorization_rule import CategorizationRule
 from app.models.category import Category
-from app.services.base_service import BaseService
 
 logger = logging.getLogger(__name__)
 
-class RuleTemplateService(BaseService):
-    """Service for managing categorization rule templates"""
+class RuleTemplateService:
+    """Engine service for managing categorization rule templates"""
     
-    def __init__(self, db: Session):
-        super().__init__(db)
+    def __init__(self, settings: Optional[Settings] = None):
+        self.settings = settings or get_settings()
     
-    def get_official_templates(self, category_filter: Optional[str] = None) -> List[CategorizationRuleTemplate]:
+    async def get_official_templates(self, db: Session, category_filter: Optional[str] = None) -> List[CategorizationRuleTemplate]:
         """Get official rule templates"""
         
-        query = self.db.query(CategorizationRuleTemplate).filter(
+        query = db.query(CategorizationRuleTemplate).filter(
             CategorizationRuleTemplate.is_official == True
         )
         
@@ -36,10 +36,10 @@ class RuleTemplateService(BaseService):
             desc(CategorizationRuleTemplate.popularity_score)
         ).all()
     
-    def get_popular_templates(self, limit: int = 20, category_filter: Optional[str] = None) -> List[CategorizationRuleTemplate]:
+    async def get_popular_templates(self, db: Session, limit: int = 20, category_filter: Optional[str] = None) -> List[CategorizationRuleTemplate]:
         """Get most popular community templates"""
         
-        query = self.db.query(CategorizationRuleTemplate)
+        query = db.query(CategorizationRuleTemplate)
         
         if category_filter:
             query = query.filter(CategorizationRuleTemplate.category == category_filter)
@@ -49,10 +49,10 @@ class RuleTemplateService(BaseService):
             desc(CategorizationRuleTemplate.times_used)
         ).limit(limit).all()
     
-    def get_templates_by_category(self) -> Dict[str, List[CategorizationRuleTemplate]]:
+    async def get_templates_by_category(self, db: Session) -> Dict[str, List[CategorizationRuleTemplate]]:
         """Get templates grouped by category"""
         
-        templates = self.db.query(CategorizationRuleTemplate).order_by(
+        templates = db.query(CategorizationRuleTemplate).order_by(
             CategorizationRuleTemplate.category,
             desc(CategorizationRuleTemplate.popularity_score)
         ).all()
@@ -65,22 +65,23 @@ class RuleTemplateService(BaseService):
         
         return grouped
     
-    def get_template_by_id(self, template_id: UUID) -> Optional[CategorizationRuleTemplate]:
+    async def get_template_by_id(self, db: Session, template_id: UUID) -> Optional[CategorizationRuleTemplate]:
         """Get a specific template by ID"""
         
-        return self.db.query(CategorizationRuleTemplate).filter(
+        return db.query(CategorizationRuleTemplate).filter(
             CategorizationRuleTemplate.id == template_id
         ).first()
     
-    def create_rule_from_template(
+    async def create_rule_from_template(
         self, 
+        db: Session,
         template_id: UUID, 
         user_id: UUID, 
         customizations: Optional[Dict[str, Any]] = None
     ) -> CategorizationRule:
         """Create a user rule from a template"""
         
-        template = self.get_template_by_id(template_id)
+        template = await self.get_template_by_id(db, template_id)
         if not template:
             raise ValueError(f"Template {template_id} not found")
         
@@ -97,7 +98,7 @@ class RuleTemplateService(BaseService):
         # Validate that target category exists and belongs to user
         target_category_id = actions.get("set_category_id")
         if target_category_id:
-            category = self.db.query(Category).filter(
+            category = db.query(Category).filter(
                 and_(
                     Category.id == target_category_id,
                     Category.user_id == user_id
@@ -119,20 +120,20 @@ class RuleTemplateService(BaseService):
             is_active=True
         )
         
-        self.db.add(rule)
+        db.add(rule)
         
         # Update template usage tracking
         template.increment_usage()
-        self.db.add(template)
+        db.add(template)
         
-        self.db.commit()
-        self.db.refresh(rule)
+        db.commit()
+        db.refresh(rule)
         
         logger.info(f"Created rule {rule.id} from template {template.id} for user {user_id}")
         
         return rule
     
-    def suggest_templates_for_user(self, user_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
+    async def suggest_templates_for_user(self, db: Session, user_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
         """Suggest templates based on user's transaction patterns"""
         
         try:
@@ -141,7 +142,7 @@ class RuleTemplateService(BaseService):
             # to find patterns and suggest relevant templates
             
             # For now, return popular templates with some basic scoring
-            popular_templates = self.get_popular_templates(limit * 2)
+            popular_templates = await self.get_popular_templates(db, limit * 2)
             
             suggestions = []
             for template in popular_templates[:limit]:
@@ -177,8 +178,9 @@ class RuleTemplateService(BaseService):
         else:
             return "Popular community template"
     
-    def create_template(
+    async def create_template(
         self,
+        db: Session,
         name: str,
         description: str,
         category: str,
@@ -203,18 +205,18 @@ class RuleTemplateService(BaseService):
             tags=tags or []
         )
         
-        self.db.add(template)
-        self.db.commit()
-        self.db.refresh(template)
+        db.add(template)
+        db.commit()
+        db.refresh(template)
         
         logger.info(f"Created template {template.id}: {name}")
         
         return template
     
-    def update_template_rating(self, template_id: UUID, rating: float) -> CategorizationRuleTemplate:
+    async def update_template_rating(self, db: Session, template_id: UUID, rating: float) -> CategorizationRuleTemplate:
         """Update template success rating with user feedback"""
         
-        template = self.get_template_by_id(template_id)
+        template = await self.get_template_by_id(db, template_id)
         if not template:
             raise ValueError(f"Template {template_id} not found")
         
@@ -222,29 +224,30 @@ class RuleTemplateService(BaseService):
             raise ValueError("Rating must be between 0.0 and 1.0")
         
         template.update_success_rating(rating)
-        self.db.add(template)
-        self.db.commit()
-        self.db.refresh(template)
+        db.add(template)
+        db.commit()
+        db.refresh(template)
         
         logger.info(f"Updated template {template_id} rating to {rating}")
         
         return template
     
-    def get_template_categories(self) -> List[str]:
+    async def get_template_categories(self, db: Session) -> List[str]:
         """Get list of all template categories"""
         
-        result = self.db.query(CategorizationRuleTemplate.category).distinct().all()
+        result = db.query(CategorizationRuleTemplate.category).distinct().all()
         return [row[0] for row in result]
     
-    def search_templates(
+    async def search_templates(
         self, 
+        db: Session,
         query: str, 
         category_filter: Optional[str] = None,
         limit: int = 20
     ) -> List[CategorizationRuleTemplate]:
         """Search templates by name or description"""
         
-        search_query = self.db.query(CategorizationRuleTemplate)
+        search_query = db.query(CategorizationRuleTemplate)
         
         # Text search
         if query:
@@ -266,21 +269,21 @@ class RuleTemplateService(BaseService):
             desc(CategorizationRuleTemplate.popularity_score)
         ).limit(limit).all()
     
-    def get_template_statistics(self) -> Dict[str, Any]:
+    async def get_template_statistics(self, db: Session) -> Dict[str, Any]:
         """Get overall template statistics"""
         
-        total_templates = self.db.query(CategorizationRuleTemplate).count()
-        official_templates = self.db.query(CategorizationRuleTemplate).filter(
+        total_templates = db.query(CategorizationRuleTemplate).count()
+        official_templates = db.query(CategorizationRuleTemplate).filter(
             CategorizationRuleTemplate.is_official == True
         ).count()
         
         # Most popular template
-        most_popular = self.db.query(CategorizationRuleTemplate).order_by(
+        most_popular = db.query(CategorizationRuleTemplate).order_by(
             desc(CategorizationRuleTemplate.popularity_score)
         ).first()
         
         # Category distribution
-        category_counts = self.db.query(
+        category_counts = db.query(
             CategorizationRuleTemplate.category,
             func.count(CategorizationRuleTemplate.id)
         ).group_by(CategorizationRuleTemplate.category).all()
@@ -301,7 +304,7 @@ class RuleTemplateService(BaseService):
             } if most_popular else None
         }
     
-    def create_default_templates(self) -> List[CategorizationRuleTemplate]:
+    async def create_default_templates(self, db: Session) -> List[CategorizationRuleTemplate]:
         """Create default official templates for common transaction patterns"""
         
         default_templates = [
@@ -377,7 +380,8 @@ class RuleTemplateService(BaseService):
         created_templates = []
         for template_data in default_templates:
             try:
-                template = self.create_template(
+                template = await self.create_template(
+                    db=db,
                     name=template_data["name"],
                     description=template_data["description"],
                     category=template_data["category"],

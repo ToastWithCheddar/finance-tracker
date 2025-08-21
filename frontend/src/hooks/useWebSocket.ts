@@ -31,6 +31,10 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
   const socketRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const heartbeatIntervalRef = useRef<number | null>(null);
+  const reconnectTimeoutRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef<number>(0);
+  const lastPongRef = useRef<number | null>(null);
   
   // Get token from secure storage
   const accessToken = secureStorage.getAccessToken();
@@ -49,8 +53,19 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
         socketRef.current.close();
         socketRef.current = null;
       }
+      // Clear timers
+      if (heartbeatIntervalRef.current !== null) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      if (reconnectTimeoutRef.current !== null) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      reconnectAttemptsRef.current = 0;
       setIsConnected(false);
       setIsConnecting(false);
+      updateConnectionStatus('disconnected', 0);
       return;
     }
 
@@ -61,6 +76,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
 
     const connect = () => {
       setIsConnecting(true);
+      updateConnectionStatus('connecting', reconnectAttemptsRef.current);
       const socketUrl = `${WEBSOCKET_URL_BASE}?token=${accessToken}`;
       const socket = new WebSocket(socketUrl);
       socketRef.current = socket;
@@ -69,11 +85,32 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
         console.log('🔌 WebSocket connection established');
         setIsConnected(true);
         setIsConnecting(false);
-        updateConnectionStatus('connected');
+        reconnectAttemptsRef.current = 0;
+        updateConnectionStatus('connected', 0);
         toast.info('Real-time updates connected.');
+
+        // Start heartbeat: send literal 'ping' every 30s
+        if (heartbeatIntervalRef.current !== null) {
+          clearInterval(heartbeatIntervalRef.current);
+        }
+        heartbeatIntervalRef.current = window.setInterval(() => {
+          if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+            try {
+              socketRef.current.send('ping');
+            } catch (e) {
+              console.warn('Heartbeat ping send failed:', e);
+            }
+          }
+        }, 30_000);
       };
 
       socket.onmessage = (event) => {
+        // Heartbeat pong handling
+        if (event.data === 'pong') {
+          lastPongRef.current = Date.now();
+          return;
+        }
+
         try {
           const message = JSON.parse(event.data);
           console.log('📬 WebSocket message received:', message);
@@ -101,13 +138,29 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
         socketRef.current = null;
         setIsConnected(false);
         setIsConnecting(false);
-        updateConnectionStatus('disconnected');
+        updateConnectionStatus('disconnected', reconnectAttemptsRef.current);
         
-        // Optional: implement a reconnect strategy
+        // Clear heartbeat timer
+        if (heartbeatIntervalRef.current !== null) {
+          clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = null;
+        }
+        
+        // Exponential backoff reconnect on abnormal close
         if (!event.wasClean) {
           toast.warning('Real-time connection lost. Attempting to reconnect...');
-          updateConnectionStatus('connecting');
-          setTimeout(connect, 5000); // Reconnect after 5 seconds
+          const nextAttempt = reconnectAttemptsRef.current + 1;
+          reconnectAttemptsRef.current = nextAttempt;
+          const delay = Math.min(1000 * Math.pow(2, nextAttempt - 1), 30_000);
+          updateConnectionStatus('connecting', reconnectAttemptsRef.current);
+          if (reconnectTimeoutRef.current !== null) {
+            clearTimeout(reconnectTimeoutRef.current);
+          }
+          reconnectTimeoutRef.current = window.setTimeout(() => {
+            if (!socketRef.current) {
+              connect();
+            }
+          }, delay);
         }
       };
 
@@ -115,8 +168,34 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
         console.error('🔌 WebSocket error:', error);
         setIsConnected(false);
         setIsConnecting(false);
-        updateConnectionStatus('disconnected');
+        updateConnectionStatus('disconnected', reconnectAttemptsRef.current);
         toast.error('Real-time connection error.');
+
+        // Clear heartbeat timer
+        if (heartbeatIntervalRef.current !== null) {
+          clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = null;
+        }
+
+        // Mirror close behavior for reconnection
+        if (socketRef.current) {
+          try {
+            socketRef.current.close();
+          } catch {}
+          socketRef.current = null;
+        }
+        const nextAttempt = reconnectAttemptsRef.current + 1;
+        reconnectAttemptsRef.current = nextAttempt;
+        const delay = Math.min(1000 * Math.pow(2, nextAttempt - 1), 30_000);
+        updateConnectionStatus('connecting', reconnectAttemptsRef.current);
+        if (reconnectTimeoutRef.current !== null) {
+          clearTimeout(reconnectTimeoutRef.current);
+        }
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          if (!socketRef.current) {
+            connect();
+          }
+        }, delay);
       };
     };
 
@@ -127,9 +206,18 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
         socketRef.current.close();
         socketRef.current = null;
       }
+      if (heartbeatIntervalRef.current !== null) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      if (reconnectTimeoutRef.current !== null) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      reconnectAttemptsRef.current = 0;
       setIsConnected(false);
       setIsConnecting(false);
-      updateConnectionStatus('disconnected');
+      updateConnectionStatus('disconnected', 0);
     };
   }, [isAuthenticated, user?.id, accessToken, handleWebSocketMessage, updateConnectionStatus, options?.onMessage]);
 

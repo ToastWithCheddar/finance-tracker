@@ -13,8 +13,8 @@ import asyncio
 
 from app.models.account import Account
 from app.models.user import User
-from app.services import plaid_service
-from app.services.transaction_sync_service import transaction_sync_service
+from app.services.plaid_orchestration_service import get_plaid_service
+from app.services.transaction_sync_service import get_transaction_sync_service
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
 
@@ -58,8 +58,8 @@ class AccountSyncMonitor:
     """Monitor and track account synchronization status"""
     
     def __init__(self):
-        self.plaid_service = plaid_service
-        self.sync_service = transaction_sync_service
+        self.plaid_service = get_plaid_service()
+        self.sync_service = get_transaction_sync_service()
         
         # Health check thresholds
         self.health_thresholds = {
@@ -468,5 +468,12 @@ class AccountSyncMonitor:
                 )
             )
 
-# Global monitor instance
-account_sync_monitor = AccountSyncMonitor()
+# Provider function with lazy caching
+_account_sync_monitor_instance = None
+
+def get_account_sync_monitor() -> AccountSyncMonitor:
+    """Get the global AccountSyncMonitor instance with lazy initialization"""
+    global _account_sync_monitor_instance
+    if _account_sync_monitor_instance is None:
+        _account_sync_monitor_instance = AccountSyncMonitor()
+    return _account_sync_monitor_instance

@@ -41,7 +41,6 @@ export const GoalStatus = {
     amount: number; // Computed property for backwards compatibility
     contribution_date: string;
     note?: string;
-    is_automatic: boolean;
     transaction_id?: string;
     created_at: string;
   }
@@ -73,9 +72,6 @@ export const GoalStatus = {
     last_contribution_date?: string;
     contribution_frequency?: ContributionFrequency;
     monthly_target_cents?: number;
-    auto_contribute: boolean;
-    auto_contribution_amount_cents?: number;
-    auto_contribution_source?: string;
     milestone_percentage: number;
     last_milestone_reached: number;
     created_at: string;
@@ -102,9 +98,6 @@ export const GoalStatus = {
     target_date?: string;
     contribution_frequency?: ContributionFrequency;
     monthly_target_cents?: number;
-    auto_contribute?: boolean;
-    auto_contribution_amount_cents?: number;
-    auto_contribution_source?: string;
     milestone_percentage?: number;
     [key: string]: unknown;
   }
@@ -119,9 +112,6 @@ export const GoalStatus = {
     target_date?: string;
     contribution_frequency?: ContributionFrequency;
     monthly_target_cents?: number;
-    auto_contribute?: boolean;
-    auto_contribution_amount_cents?: number;
-    auto_contribution_source?: string;
     milestone_percentage?: number;
     [key: string]: unknown;
   }

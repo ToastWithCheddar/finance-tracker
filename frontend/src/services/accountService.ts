@@ -1,4 +1,5 @@
 import { BaseService } from './base/BaseService';
+import { apiClient } from './api';
 import type { ErrorContext } from '../types/errors';
 
 export interface Account {
@@ -88,6 +89,37 @@ export interface ReconciliationAdjustment {
 
 export class AccountService extends BaseService {
   protected baseEndpoint = '/accounts';
+
+  // Minimal dashboard summary subset useful for account-related widgets
+  async getAccountSummary(options?: { context?: ErrorContext }): Promise<{
+    total_income: number;
+    total_expenses: number;
+    net_amount: number;
+    transaction_count: number;
+    average_transaction?: number;
+    transaction_count_by_type?: { income: number; expense: number };
+  }> {
+    try {
+      // Prefer analytics dashboard which includes a `summary` block
+      const res = await apiClient.get<any>('/analytics/dashboard', undefined, options?.context);
+      // Support both wrapped and direct responses
+      const summary = res?.data?.summary || res?.summary;
+      if (!summary) {
+        throw new Error('Invalid analytics summary response');
+      }
+      return {
+        total_income: Number(summary.total_income) || 0,
+        total_expenses: Number(summary.total_expenses) || 0,
+        net_amount: Number(summary.net_amount) || 0,
+        transaction_count: Number(summary.transaction_count) || 0,
+        average_transaction: summary.average_transaction !== undefined ? Number(summary.average_transaction) : undefined,
+        transaction_count_by_type: summary.transaction_count_by_type,
+      };
+    } catch (error) {
+      if (error instanceof Error) throw error;
+      throw new Error('Failed to fetch account summary');
+    }
+  }
 
   async getAccounts(options?: { context?: ErrorContext }): Promise<Account[]> {
     try {

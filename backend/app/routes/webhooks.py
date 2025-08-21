@@ -8,8 +8,8 @@ from app.database import get_db
 from app.dependencies import get_user_service
 from app.auth.dependencies import verify_supabase_webhook, verify_plaid_webhook
 from app.services.user_service import UserService
-from app.services.transaction_sync_service import transaction_sync_service
-from app.services import plaid_service
+from app.services.transaction_sync_service import get_transaction_sync_service
+from app.services.plaid_orchestration_service import get_plaid_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
@@ -140,7 +140,7 @@ async def handle_plaid_webhook(
 async def sync_transactions_for_item(db: Session, item_id: str):
     """Syncs transactions for all accounts connected to a specific Plaid Item."""
     try:
-        result = await transaction_sync_service.sync_transactions_for_item(
+        result = await get_transaction_sync_service().sync_transactions_for_item(
             db=db, 
             item_id=item_id, 
             days=30  # Sync last 30 days
@@ -208,7 +208,7 @@ async def handle_recurring_transactions_update(db: Session, item_id: str, accoun
         user_id = accounts[0].user_id
         
         # Use the enhanced Plaid service to sync recurring transactions
-        result = await plaid_service.sync_recurring_transactions_for_user(
+        result = await get_plaid_service().sync_recurring_transactions_for_user(
             db=db, 
             user_id=user_id
         )

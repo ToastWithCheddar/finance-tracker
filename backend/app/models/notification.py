@@ -31,7 +31,7 @@ class Notification(BaseModel):
     priority: Mapped[NotificationPriority] = mapped_column(SAEnum(NotificationPriority), default=NotificationPriority.MEDIUM)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     action_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
-    metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    notification_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
     
     # Relationships
     user = relationship("User", back_populates="notifications")

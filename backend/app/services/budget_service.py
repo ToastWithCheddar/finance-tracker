@@ -1,4 +1,4 @@
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timedelta, timezone
 from typing import List, Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func, text
@@ -8,7 +8,6 @@ import uuid
 from ..models.budget import Budget
 from ..models.transaction import Transaction
 from ..models.category import Category
-from ..models.insight import Insight
 from ..schemas.budget import (
     BudgetCreate, BudgetUpdate, BudgetResponse, BudgetUsage, 
     BudgetAlert, BudgetSummary, BudgetProgress, BudgetFilter,
@@ -152,7 +151,7 @@ class BudgetService:
         for field, value in update_data.items():
             setattr(budget, field, value)
         
-        budget.updated_at = datetime.utcnow()
+        budget.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(budget)
         return budget

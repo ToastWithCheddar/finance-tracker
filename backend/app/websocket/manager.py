@@ -3,12 +3,12 @@ from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, List, Optional, Any, Set
 import asyncio
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import uuid 
 import logging
 
 from .schemas import TypedWebSocketMessage, validate_websocket_message 
-from ..core.redis_client import redis_client
+from app.core.redis_client import redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class RedisWebSocketManager:
 
         # Connection tracking for statistics
         self.total_connections_count = 0
-        self.connection_start_time = datetime.utcnow()
+        self.connection_start_time = datetime.now(timezone.utc)
         
         # Active subscriber tasks for cleanup
         self.subscriber_tasks: Dict[str, asyncio.Task] = {}
@@ -131,17 +131,17 @@ class RedisWebSocketManager:
     async def send_full_sync(self, user_id: str, websocket: WebSocket):
         """Send complete dashboard state to a specific WebSocket connection"""
         try:
-            from ..services.analytics_service import analytics_service
+            from ..services.analytics_service import get_analytics_service
             from ..database import get_db
 
             # Get dashboard data
             db = next(get_db())
-            dashboard_data = await analytics_service.get_dashboard_summary(db, user_id)
+            dashboard_data = await get_analytics_service().get_dashboard_summary(db, user_id)
 
             sync_message = {
                 "type": "full_sync",
                 "payload": dashboard_data,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
             # Send directly to the specific WebSocket (not via Redis)
@@ -158,7 +158,7 @@ class RedisWebSocketManager:
             missed_messages = await self.redis_client.get_missed_messages(user_id, limit=20)
             
             # Filter messages that are less than 1 hour old
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             recent_messages = []
             
             for message in missed_messages:
@@ -264,7 +264,7 @@ class RedisWebSocketManager:
             return {
                 **message,
                 "id": str(uuid.uuid4()),
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "user_id": user_id,
             }
 
@@ -293,7 +293,7 @@ class RedisWebSocketManager:
                 "active_connections": self.get_total_connections(),
                 "connected_users": len(self.get_connected_users()),
                 "total_connections_since_start": self.total_connections_count,
-                "uptime_seconds": (datetime.utcnow() - self.connection_start_time).total_seconds(),
+                "uptime_seconds": (datetime.now(timezone.utc) - self.connection_start_time).total_seconds(),
                 "active_subscribers": len(self.subscriber_tasks),
                 "redis_stats": redis_stats
             }
@@ -314,7 +314,7 @@ class RedisWebSocketManager:
             
             # Check for stale WebSocket connections
             stale_connections = []
-            current_time = datetime.utcnow()
+            current_time = datetime.now(timezone.utc)
             
             for websocket, user_id in self.connection_user_map.items():
                 try:

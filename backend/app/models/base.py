@@ -43,11 +43,3 @@ class BaseModel(Base):
         # NOTE: this is not JSON-safe; for JSON serialization you may need to
         # isoformat datetimes, etc.
         return {column.name: getattr(self, column.name) for column in self.__table__.columns}
-
-
-# Optional: also update timestamp on the Python side before UPDATE.
-# Not strictly needed because 'onupdate=func.now()' handles it server-side,
-# but harmless if you want both.
-#@event.listens_for(BaseModel, "before_update", propagate=True)
-#def timestamp_before_update(mapper, connection, target) -> None:
-#    target.updated_at = datetime.now(timezone.utc)

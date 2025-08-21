@@ -40,7 +40,8 @@ export function useBudgetSummary() {
   return useQuery({
     queryKey: budgetKeys.summary(),
     queryFn: () => budgetService.getBudgetSummary(),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 30 * 1000, // 30 seconds for fresher totals
+    refetchOnWindowFocus: false,
   });
 }
 

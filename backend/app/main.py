@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 import logging
 import time
+import asyncio
 from datetime import datetime, timezone
 
 from app.config import settings
@@ -89,9 +90,28 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠️ Financial health service initialization failed: {e}")
     
+    # Start WebSocket cleanup background task
+    try:
+        from app.routes.websockets import cleanup_stale_connections
+        cleanup_task = asyncio.create_task(cleanup_stale_connections())
+        logger.info("✅ WebSocket cleanup background task started")
+    except Exception as e:
+        logger.warning(f"⚠️ WebSocket cleanup task failed to start: {e}")
+    
     logger.info("🎉 Finance Tracker API started successfully!")
     
     yield
+    
+    # Shutdown: Cancel background tasks
+    try:
+        if 'cleanup_task' in locals():
+            cleanup_task.cancel()
+            await cleanup_task
+        logger.info("✅ Background tasks cancelled")
+    except asyncio.CancelledError:
+        logger.info("✅ Background tasks cancelled")
+    except Exception as e:
+        logger.warning(f"⚠️ Error cancelling background tasks: {e}")
     
     # Shutdown
     logger.info("🛑 Shutting down Finance Tracker API...")
@@ -107,7 +127,7 @@ app = FastAPI(
     lifespan=lifespan,
     contact={
         "name": "Finance Tracker Development",
-        "email": "dev@financetracker.local",
+        "email": "dev@example.com",
     },
     license_info={
         "name": "MIT License",

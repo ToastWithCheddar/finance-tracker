@@ -3,7 +3,7 @@ WebSocket message schemas for type-safe real-time communication
 """
 from typing import Dict, Any, Optional, List, Union, Literal
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 # Message Types Enum
@@ -222,45 +222,45 @@ class TypedWebSocketMessage(WebSocketMessage):
 # Message factory functions for type safety
 def create_dashboard_update_message(user_id: str, payload: DashboardUpdatePayload) -> TypedWebSocketMessage:
     return TypedWebSocketMessage(
-        id=f"dashboard_{datetime.utcnow().timestamp()}",
+        id=f"dashboard_{datetime.now(timezone.utc).timestamp()}",
         type=MessageType.DASHBOARD_UPDATE,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         user_id=user_id,
         payload=payload
     )
 
 def create_transaction_message(user_id: str, payload: TransactionPayload) -> TypedWebSocketMessage:
     return TypedWebSocketMessage(
-        id=f"transaction_{datetime.utcnow().timestamp()}",
+        id=f"transaction_{datetime.now(timezone.utc).timestamp()}",
         type=MessageType.NEW_TRANSACTION,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         user_id=user_id,
         payload=payload
     )
 
 def create_budget_alert_message(user_id: str, payload: BudgetAlertPayload) -> TypedWebSocketMessage:
     return TypedWebSocketMessage(
-        id=f"budget_alert_{datetime.utcnow().timestamp()}",
+        id=f"budget_alert_{datetime.now(timezone.utc).timestamp()}",
         type=MessageType.BUDGET_ALERT,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         user_id=user_id,
         payload=payload
     )
 
 def create_goal_progress_message(user_id: str, payload: GoalProgressPayload) -> TypedWebSocketMessage:
     return TypedWebSocketMessage(
-        id=f"goal_progress_{datetime.utcnow().timestamp()}",
+        id=f"goal_progress_{datetime.now(timezone.utc).timestamp()}",
         type=MessageType.GOAL_PROGRESS_UPDATE,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         user_id=user_id,
         payload=payload
     )
 
 def create_notification_message(user_id: str, payload: NotificationPayload) -> TypedWebSocketMessage:
     return TypedWebSocketMessage(
-        id=f"notification_{datetime.utcnow().timestamp()}",
+        id=f"notification_{datetime.now(timezone.utc).timestamp()}",
         type=MessageType.NOTIFICATION,
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(timezone.utc),
         user_id=user_id,
         payload=payload
     )

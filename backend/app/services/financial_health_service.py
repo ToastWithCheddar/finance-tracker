@@ -82,7 +82,7 @@ class FinancialHealthService:
             if last_sync:
                 try:
                     last_sync_dt = datetime.fromisoformat(last_sync.replace('Z', ''))
-                    hours_since_sync = (datetime.utcnow() - last_sync_dt).total_seconds() / 3600
+                    hours_since_sync = (datetime.now(timezone.utc) - last_sync_dt).total_seconds() / 3600
                     if hours_since_sync < self.config.activity.sync_hours_threshold:
                         bonus = self.config.activity.sync_bonus
                         score += bonus

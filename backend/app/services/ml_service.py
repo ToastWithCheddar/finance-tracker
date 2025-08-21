@@ -5,7 +5,7 @@ import httpx
 import logging
 import asyncio
 from typing import Optional, List, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 import random
 
@@ -172,7 +172,7 @@ class MLServiceClient:
                 user_id=user_id
             )
             
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             response = await self._make_request_with_retry(
                 method="POST",
@@ -182,7 +182,7 @@ class MLServiceClient:
                 headers={"Content-Type": "application/json"}
             )
             
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
             
             if response.status_code == 200:
                 response_data = response.json()
@@ -301,7 +301,7 @@ class MLServiceClient:
                 user_id=user_id
             )
             
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             response = await self._make_request_with_retry(
                 method="POST",
@@ -311,32 +311,32 @@ class MLServiceClient:
                 headers={"Content-Type": "application/json"}
             )
             
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
                 
-                if response.status_code == 200:
-                    response_data = response.json()
-                    feedback_result = MLFeedbackResponse.model_validate(response_data)
-                    
-                    return MLServiceResponse(
-                        success=True,
-                        data=feedback_result,
-                        request_duration_ms=duration_ms
+            if response.status_code == 200:
+                response_data = response.json()
+                feedback_result = MLFeedbackResponse.model_validate(response_data)
+                
+                return MLServiceResponse(
+                    success=True,
+                    data=feedback_result,
+                    request_duration_ms=duration_ms
+                )
+            else:
+                try:
+                    error_data = response.json()
+                    error = MLErrorResponse.model_validate(error_data)
+                except Exception:
+                    error = MLErrorResponse(
+                        error="http_error",
+                        message=f"HTTP {response.status_code}: {response.text}"
                     )
-                else:
-                    try:
-                        error_data = response.json()
-                        error = MLErrorResponse.model_validate(error_data)
-                    except Exception:
-                        error = MLErrorResponse(
-                            error="http_error",
-                            message=f"HTTP {response.status_code}: {response.text}"
-                        )
-                    
-                    return MLServiceResponse(
-                        success=False,
-                        error=error,
-                        request_duration_ms=duration_ms
-                    )
+                
+                return MLServiceResponse(
+                    success=False,
+                    error=error,
+                    request_duration_ms=duration_ms
+                )
                     
         except httpx.TimeoutException as e:
             logger.error(f"ML service feedback timeout after all retries: {str(e)}")
@@ -409,7 +409,7 @@ class MLServiceClient:
                 user_id=user_id
             )
             
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             response = await self._make_request_with_retry(
                 method="POST",
@@ -419,32 +419,32 @@ class MLServiceClient:
                 headers={"Content-Type": "application/json"}
             )
             
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
                 
-                if response.status_code == 200:
-                    response_data = response.json()
-                    batch_result = MLBatchCategorizationResponse.model_validate(response_data)
-                    
-                    return MLServiceResponse(
-                        success=True,
-                        data=batch_result,
-                        request_duration_ms=duration_ms
+            if response.status_code == 200:
+                response_data = response.json()
+                batch_result = MLBatchCategorizationResponse.model_validate(response_data)
+                
+                return MLServiceResponse(
+                    success=True,
+                    data=batch_result,
+                    request_duration_ms=duration_ms
+                )
+            else:
+                try:
+                    error_data = response.json()
+                    error = MLErrorResponse.model_validate(error_data)
+                except Exception:
+                    error = MLErrorResponse(
+                        error="http_error",
+                        message=f"HTTP {response.status_code}: {response.text}"
                     )
-                else:
-                    try:
-                        error_data = response.json()
-                        error = MLErrorResponse.model_validate(error_data)
-                    except Exception:
-                        error = MLErrorResponse(
-                            error="http_error",
-                            message=f"HTTP {response.status_code}: {response.text}"
-                        )
-                    
-                    return MLServiceResponse(
-                        success=False,
-                        error=error,
-                        request_duration_ms=duration_ms
-                    )
+                
+                return MLServiceResponse(
+                    success=False,
+                    error=error,
+                    request_duration_ms=duration_ms
+                )
                     
         except httpx.TimeoutException as e:
             logger.error(f"ML service batch timeout after all retries: {str(e)}")
@@ -494,7 +494,7 @@ class MLServiceClient:
             MLServiceResponse with health status
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             response = await self._make_request_with_retry(
                 method="GET",
@@ -503,26 +503,26 @@ class MLServiceClient:
                 max_retries=2  # Fewer retries for health checks
             )
             
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
                 
-                if response.status_code == 200:
-                    response_data = response.json()
-                    health_result = MLHealthResponse.model_validate(response_data)
-                    
-                    return MLServiceResponse(
-                        success=True,
-                        data=health_result,
-                        request_duration_ms=duration_ms
-                    )
-                else:
-                    return MLServiceResponse(
-                        success=False,
-                        error=MLErrorResponse(
-                            error="health_check_failed",
-                            message=f"Health check failed with status {response.status_code}"
-                        ),
-                        request_duration_ms=duration_ms
-                    )
+            if response.status_code == 200:
+                response_data = response.json()
+                health_result = MLHealthResponse.model_validate(response_data)
+                
+                return MLServiceResponse(
+                    success=True,
+                    data=health_result,
+                    request_duration_ms=duration_ms
+                )
+            else:
+                return MLServiceResponse(
+                    success=False,
+                    error=MLErrorResponse(
+                        error="health_check_failed",
+                        message=f"Health check failed with status {response.status_code}"
+                    ),
+                    request_duration_ms=duration_ms
+                )
                     
         except httpx.TimeoutException as e:
             logger.error(f"ML service health check timeout after all retries: {str(e)}")
@@ -582,7 +582,7 @@ class MLServiceClient:
                 example=example
             )
             
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             response = await self._make_request_with_retry(
                 method="POST",
@@ -592,31 +592,31 @@ class MLServiceClient:
                 headers={"Content-Type": "application/json"}
             )
             
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
                 
-                if response.status_code in [200, 201]:
-                    response_data = response.json()
-                    
-                    return MLServiceResponse(
-                        success=True,
-                        data=response_data,
-                        request_duration_ms=duration_ms
+            if response.status_code in [200, 201]:
+                response_data = response.json()
+                
+                return MLServiceResponse(
+                    success=True,
+                    data=response_data,
+                    request_duration_ms=duration_ms
+                )
+            else:
+                try:
+                    error_data = response.json()
+                    error = MLErrorResponse.model_validate(error_data)
+                except Exception:
+                    error = MLErrorResponse(
+                        error="http_error",
+                        message=f"HTTP {response.status_code}: {response.text}"
                     )
-                else:
-                    try:
-                        error_data = response.json()
-                        error = MLErrorResponse.model_validate(error_data)
-                    except Exception:
-                        error = MLErrorResponse(
-                            error="http_error",
-                            message=f"HTTP {response.status_code}: {response.text}"
-                        )
-                    
-                    return MLServiceResponse(
-                        success=False,
-                        error=error,
-                        request_duration_ms=duration_ms
-                    )
+                
+                return MLServiceResponse(
+                    success=False,
+                    error=error,
+                    request_duration_ms=duration_ms
+                )
                     
         except httpx.TimeoutException as e:
             logger.error(f"ML service add example timeout after all retries: {str(e)}")
@@ -666,7 +666,7 @@ class MLServiceClient:
             MLServiceResponse with export result
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             response = await self._make_request_with_retry(
                 method="POST",
@@ -675,32 +675,32 @@ class MLServiceClient:
                 max_retries=1  # Fewer retries for long-running operations
             )
             
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
                 
-                if response.status_code == 200:
-                    response_data = response.json()
-                    export_result = MLModelExportResponse.model_validate(response_data)
-                    
-                    return MLServiceResponse(
-                        success=True,
-                        data=export_result,
-                        request_duration_ms=duration_ms
+            if response.status_code == 200:
+                response_data = response.json()
+                export_result = MLModelExportResponse.model_validate(response_data)
+                
+                return MLServiceResponse(
+                    success=True,
+                    data=export_result,
+                    request_duration_ms=duration_ms
+                )
+            else:
+                try:
+                    error_data = response.json()
+                    error = MLErrorResponse.model_validate(error_data)
+                except Exception:
+                    error = MLErrorResponse(
+                        error="http_error",
+                        message=f"HTTP {response.status_code}: {response.text}"
                     )
-                else:
-                    try:
-                        error_data = response.json()
-                        error = MLErrorResponse.model_validate(error_data)
-                    except Exception:
-                        error = MLErrorResponse(
-                            error="http_error",
-                            message=f"HTTP {response.status_code}: {response.text}"
-                        )
-                    
-                    return MLServiceResponse(
-                        success=False,
-                        error=error,
-                        request_duration_ms=duration_ms
-                    )
+                
+                return MLServiceResponse(
+                    success=False,
+                    error=error,
+                    request_duration_ms=duration_ms
+                )
                     
         except httpx.TimeoutException as e:
             logger.error(f"ML service export timeout after all retries: {str(e)}")
@@ -750,7 +750,7 @@ class MLServiceClient:
             MLServiceResponse with performance metrics
         """
         try:
-            start_time = datetime.utcnow()
+            start_time = datetime.now(timezone.utc)
             
             response = await self._make_request_with_retry(
                 method="GET",
@@ -758,32 +758,32 @@ class MLServiceClient:
                 timeout=self.config.timeout_seconds
             )
             
-            duration_ms = int((datetime.utcnow() - start_time).total_seconds() * 1000)
+            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
                 
-                if response.status_code == 200:
-                    response_data = response.json()
-                    performance_result = MLModelPerformanceResponse.model_validate(response_data)
-                    
-                    return MLServiceResponse(
-                        success=True,
-                        data=performance_result,
-                        request_duration_ms=duration_ms
+            if response.status_code == 200:
+                response_data = response.json()
+                performance_result = MLModelPerformanceResponse.model_validate(response_data)
+                
+                return MLServiceResponse(
+                    success=True,
+                    data=performance_result,
+                    request_duration_ms=duration_ms
+                )
+            else:
+                try:
+                    error_data = response.json()
+                    error = MLErrorResponse.model_validate(error_data)
+                except Exception:
+                    error = MLErrorResponse(
+                        error="http_error",
+                        message=f"HTTP {response.status_code}: {response.text}"
                     )
-                else:
-                    try:
-                        error_data = response.json()
-                        error = MLErrorResponse.model_validate(error_data)
-                    except Exception:
-                        error = MLErrorResponse(
-                            error="http_error",
-                            message=f"HTTP {response.status_code}: {response.text}"
-                        )
-                    
-                    return MLServiceResponse(
-                        success=False,
-                        error=error,
-                        request_duration_ms=duration_ms
-                    )
+                
+                return MLServiceResponse(
+                    success=False,
+                    error=error,
+                    request_duration_ms=duration_ms
+                )
                     
         except httpx.TimeoutException as e:
             logger.error(f"ML service performance timeout after all retries: {str(e)}")

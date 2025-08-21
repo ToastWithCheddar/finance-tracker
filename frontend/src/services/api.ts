@@ -90,7 +90,29 @@ class ApiClient {
 
     const contentType = response.headers.get('content-type');
     if (contentType && contentType.includes('application/json')) {
-      return response.json();
+      const body = await response.json();
+
+      // Centralized envelope error parsing: detect { error: true, message, error_code }
+      if (body && typeof body === 'object' && (body.error === true || body.success === false)) {
+        const timestamp = new Date().toISOString();
+        const statusCode = response.status;
+        const code = body.error_code || body.code || this.getErrorCodeFromStatus(statusCode);
+        const message = body.message || 'Request failed';
+
+        const structuredError: NetworkError = {
+          code,
+          message,
+          timestamp,
+          requestId: response.headers.get('x-request-id') || undefined,
+          statusCode,
+          retryable: this.isRetryableStatus(statusCode),
+          retryAfter: this.getRetryAfter(response),
+          details: body.details || body.error?.details,
+        } as NetworkError;
+        throw structuredError;
+      }
+
+      return body as T;
     }
 
     return response.text() as unknown as T;
@@ -431,3 +453,57 @@ export const api = apiClient;
 
 // Export the class for testing or creating custom instances
 export { ApiClient };
+
+// ===== Helpers: list envelope normalization and snake->camel mapping =====
+
+export interface NormalizedList<T> {
+  items: T[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export function normalizeListEnvelope<T = any>(res: any): NormalizedList<T> {
+  // Determine items array
+  const items: T[] = Array.isArray(res)
+    ? (res as T[])
+    : (res?.items as T[]) || (res?.transactions as T[]) || [];
+
+  // Determine total
+  const totalRaw = typeof res?.total === 'number' ? res.total : items.length;
+
+  // Determine per_page
+  const perPage = typeof res?.limit === 'number'
+    ? res.limit
+    : (typeof res?.per_page === 'number' ? res.per_page : items.length);
+
+  // Determine page
+  let page = 1;
+  if (typeof res?.page === 'number') {
+    page = res.page;
+  } else if (typeof res?.offset === 'number' && typeof res?.limit === 'number' && res.limit > 0) {
+    page = Math.floor(res.offset / res.limit) + 1;
+  }
+
+  // Determine pages
+  const pages = typeof res?.pages === 'number' ? res.pages : (perPage > 0 ? Math.ceil(totalRaw / perPage) : 1);
+
+  return {
+    items,
+    total: totalRaw,
+    page,
+    per_page: perPage,
+    pages,
+  };
+}
+
+export function snakeToCamelShallow<T extends Record<string, any>>(obj: T): any {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(obj)) {
+    const camelKey = key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+    out[camelKey] = value;
+  }
+  return out;
+}

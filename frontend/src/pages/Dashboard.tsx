@@ -13,6 +13,7 @@ import { AccountsList } from '../components/accounts/AccountsList';
 import { SpendingTrendsChart } from '../components/dashboard/SpendingTrendsChart';
 import MonthlyComparisonChart from '../components/dashboard/MonthlyComparisonChart';
 import { NetWorthTrendChart } from '../components/dashboard/NetWorthTrendChart';
+import BudgetSummaryWidget from '../components/budgets/BudgetSummaryWidget';
 import { CashFlowWaterfallChart } from '../components/dashboard/CashFlowWaterfallChart';
 import { RealtimeTransactionFeed } from '../components/dashboard/RealtimeTransactionFeed';
 import { NotificationPanel } from '../components/dashboard/NotificationPanel';
@@ -158,8 +159,8 @@ export function Dashboard() {
       {/* Bank Connections - First Priority */}
       <AccountsList />
 
-      {/* Key Metrics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+  {/* Key Metrics */}
+  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Total Balance"
           value={formatCurrency((data?.totalBalance ?? 0) * 100)}
@@ -170,7 +171,10 @@ export function Dashboard() {
           value={data?.totalTransactions.toLocaleString() ?? '0'}
           icon={ArrowRightLeft}
         />
-      </div>
+  </div>
+
+  {/* Budget Summary */}
+  <BudgetSummaryWidget />
 
       {/* Trends and Money Flow */}
       <div className="grid gap-6 lg:grid-cols-2">

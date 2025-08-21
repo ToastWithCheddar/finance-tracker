@@ -11,10 +11,10 @@ from sqlalchemy.orm import Session
 from uuid import UUID
 
 from app.models.account import Account
-from app.services.plaid_client_service import plaid_client_service
-from app.services.plaid_account_service import plaid_account_service
-from app.services.plaid_transaction_service import plaid_transaction_service
-from app.services.plaid_webhook_service import plaid_webhook_service
+from app.services.plaid_client_service import get_plaid_client_service
+from app.services.plaid_account_service import get_plaid_account_service
+from app.services.plaid_transaction_service import get_plaid_transaction_service
+from app.services.plaid_webhook_service import get_plaid_webhook_service
 
 logger = logging.getLogger(__name__)
 
@@ -26,12 +26,16 @@ class PlaidOrchestrationService:
     """
     
     def __init__(self):
-        self.enabled = plaid_client_service.enabled
+        self.client_service = get_plaid_client_service()
+        self.account_service = get_plaid_account_service()
+        self.transaction_service = get_plaid_transaction_service()
+        self.webhook_service = get_plaid_webhook_service()
+        self.enabled = self.client_service.enabled
     
     # Token and Link Management (delegated to client service)
     async def create_link_token(self, user_id: str, update_mode: bool = False) -> Dict[str, Any]:
         """Create a link token for Plaid Link initialization or update"""
-        return await plaid_client_service.create_link_token(user_id, update_mode)
+        return await self.client_service.create_link_token(user_id, update_mode)
     
     async def exchange_public_token(self, public_token: str, user_id: UUID, db: Session) -> Dict[str, Any]:
         """Exchange public token for access token and create accounts with robust error handling"""
@@ -51,7 +55,7 @@ class PlaidOrchestrationService:
         try:
             # Step 1: Exchange token via client service
             logger.debug("Step 1: Exchanging public token")
-            exchange_result = await plaid_client_service.exchange_public_token(public_token)
+            exchange_result = await self.client_service.exchange_public_token(public_token)
             
             if not exchange_result.get('success'):
                 logger.error(f"Token exchange failed: {exchange_result.get('error', 'Unknown error')}")
@@ -80,7 +84,7 @@ class PlaidOrchestrationService:
             
             # Step 2: Get accounts and institution info via client service
             logger.debug("Step 2: Fetching accounts and institution information")
-            accounts_info = await plaid_client_service.fetch_accounts_and_institution(access_token)
+            accounts_info = await self.client_service.fetch_accounts_and_institution(access_token)
             
             if not accounts_info or not accounts_info.get('accounts'):
                 logger.error("No accounts found in Plaid response")
@@ -101,7 +105,7 @@ class PlaidOrchestrationService:
             # Process each account within the database transaction
             for account_data in accounts_info.get('accounts', []):
                 logger.info(f"Processing account: {account_data.get('account_id', 'unknown')}")
-                account = await plaid_account_service.create_or_update_account(
+                account = await self.account_service.create_or_update_account(
                     account_data, access_token, item_id, user_id, db, institution_info
                 )
                 created_accounts.append(account)
@@ -114,7 +118,7 @@ class PlaidOrchestrationService:
             # Step 4: Initial sync of recent transactions (non-critical, don't fail on errors)
             logger.debug("Step 4: Running initial transaction sync")
             try:
-                await plaid_transaction_service.initial_transaction_sync(created_accounts, access_token, db)
+                await self.transaction_service.initial_transaction_sync(created_accounts, access_token, db)
                 logger.info("Initial transaction sync completed successfully")
             except Exception as sync_error:
                 logger.warning(f"Initial transaction sync failed, but accounts were created successfully: {sync_error}")
@@ -199,13 +203,13 @@ class PlaidOrchestrationService:
         if not self.enabled:
             return self._disabled_response()
         
-        return await plaid_account_service.sync_account_balances(
+        return await self.account_service.sync_account_balances(
             db, account_ids, user_id, force_sync
         )
     
     async def fetch_accounts_and_institution(self, access_token: str) -> Dict[str, Any]:
         """Fetch comprehensive account and institution information"""
-        return await plaid_client_service.fetch_accounts_and_institution(access_token)
+        return await self.client_service.fetch_accounts_and_institution(access_token)
     
     # Transaction Management (delegated to transaction service)
     async def sync_transactions_for_user(self, db: Session, user_id: str) -> Dict[str, Any]:
@@ -216,7 +220,7 @@ class PlaidOrchestrationService:
         if not self.enabled:
             return self._disabled_response()
         
-        return await plaid_transaction_service.sync_transactions_for_user(db, user_id)
+        return await self.transaction_service.sync_transactions_for_user(db, user_id)
     
     async def fetch_transactions(
         self, 
@@ -227,7 +231,7 @@ class PlaidOrchestrationService:
         count: int = 500
     ) -> Dict[str, Any]:
         """Fetch transactions from Plaid with pagination"""
-        return await plaid_transaction_service.fetch_transactions(
+        return await self.transaction_service.fetch_transactions(
             access_token, start_date, end_date, account_ids, count
         )
     
@@ -237,7 +241,7 @@ class PlaidOrchestrationService:
         if not self.enabled:
             return self._disabled_response()
         
-        return await plaid_client_service.fetch_recurring_transactions(access_token)
+        return await self.client_service.fetch_recurring_transactions(access_token)
     
     async def sync_recurring_transactions_for_user(self, db: Session, user_id: UUID) -> Dict[str, Any]:
         """Sync all recurring transactions for a user's accounts"""
@@ -248,7 +252,7 @@ class PlaidOrchestrationService:
         if not self.enabled:
             return self._disabled_response()
         
-        return await plaid_webhook_service.sync_recurring_transactions_for_user(db, user_id)
+        return await self.webhook_service.sync_recurring_transactions_for_user(db, user_id)
     
     # Connection Status and Health
     async def get_connection_status(self, db: Session, user_id: UUID) -> Dict[str, Any]:
@@ -289,7 +293,7 @@ class PlaidOrchestrationService:
             for access_token, token_accounts in token_groups.items():
                 try:
                     # Check connection status via client service
-                    status_result = await plaid_client_service.get_connection_status(access_token)
+                    status_result = await self.client_service.get_connection_status(access_token)
                     
                     if not status_result.get('success'):
                         overall_healthy = False
@@ -350,11 +354,20 @@ class PlaidOrchestrationService:
     # Webhook Handling (delegated to webhook service)
     async def handle_webhook(self, webhook_data: Dict[str, Any], db: Session) -> Dict[str, Any]:
         """Handle incoming Plaid webhook"""
-        return await plaid_webhook_service.handle_webhook(webhook_data, db)
+        return await self.webhook_service.handle_webhook(webhook_data, db)
     
     # Utility methods
     def _disabled_response(self) -> Dict[str, Any]:
         """Standard response when Plaid is disabled"""
-        return plaid_client_service._disabled_response()
+        return self.client_service._disabled_response()
 
 
+# Provider function with lazy caching
+_plaid_orchestration_service_instance = None
+
+def get_plaid_service() -> PlaidOrchestrationService:
+    """Get the global PlaidOrchestrationService instance with lazy initialization"""
+    global _plaid_orchestration_service_instance
+    if _plaid_orchestration_service_instance is None:
+        _plaid_orchestration_service_instance = PlaidOrchestrationService()
+    return _plaid_orchestration_service_instance

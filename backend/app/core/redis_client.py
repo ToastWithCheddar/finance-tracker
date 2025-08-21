@@ -4,9 +4,9 @@ import asyncio
 import json
 import logging
 from typing import Optional, Dict, Any, Callable, Awaitable
-from datetime import datetime
+from datetime import datetime, timezone
 
-from ..config import settings
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ class RedisClient:
             # Serialize message to JSON
             message_json = json.dumps({
                 **message,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
                 "channel": channel
             })
             
@@ -207,7 +207,7 @@ class RedisClient:
             
             # Add timestamp if not present
             if "timestamp" not in message:
-                message["timestamp"] = datetime.utcnow().isoformat()
+                message["timestamp"] = datetime.now(timezone.utc).isoformat()
             
             # Store as JSON in a list (FIFO queue)
             await conn.lpush(key, json.dumps(message))
@@ -263,7 +263,7 @@ class RedisClient:
                 try:
                     # Get all messages
                     messages = await conn.lrange(key, 0, -1)
-                    current_time = datetime.utcnow()
+                    current_time = datetime.now(timezone.utc)
                     
                     # Filter out old messages
                     valid_messages = []

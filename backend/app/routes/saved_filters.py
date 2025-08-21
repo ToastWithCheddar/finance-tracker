@@ -7,11 +7,11 @@ import logging
 
 from app.core.exceptions import DuplicateResourceError, DataIntegrityError, BusinessLogicError
 
-from ..database import get_db
-from ..models.saved_filter import SavedFilter
-from ..schemas.saved_filter import SavedFilterCreate, SavedFilterUpdate, SavedFilterResponse
-from ..auth.dependencies import get_current_user, get_db_with_user_context
-from ..models.user import User
+from app.database import get_db
+from app.models.saved_filter import SavedFilter
+from app.schemas.saved_filter import SavedFilterCreate, SavedFilterUpdate, SavedFilterResponse
+from app.auth.dependencies import get_current_user, get_db_with_user_context
+from app.models.user import User
 
 logger = logging.getLogger(__name__)
 

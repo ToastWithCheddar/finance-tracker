@@ -9,7 +9,7 @@ class User(BaseModel):
     __tablename__ = "users"
 
     # Supabase link (for authentication without hashed or locally stored password)
-    supabase_user_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), unique=True, index=True, default=uuid4)
+    supabase_user_id: Mapped[Optional[UUID]] = mapped_column(PG_UUID(as_uuid=True), unique=True, index=True, nullable=True)
     
     # Basic Information
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)

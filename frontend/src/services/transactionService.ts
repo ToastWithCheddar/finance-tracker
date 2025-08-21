@@ -1,12 +1,14 @@
 import { BaseService } from './base/BaseService';
-import { apiClient } from './api';
+import { apiClient, normalizeListEnvelope } from './api';
+import { toTransactionView } from '../api/adapters/transaction';
 import type { 
   Transaction, 
   CreateTransactionRequest, 
   UpdateTransactionRequest, 
   TransactionFilters,
   TransactionSummary,
-  TransactionStats
+  TransactionStats,
+  TransactionGroupedResponse
 } from '../types/transaction';
 
 // Re-export types for use in other files
@@ -68,12 +70,12 @@ export class TransactionService extends BaseService {
       currency: transaction.currency || 'USD',
       description: transaction.description || '',
       merchant: transaction.merchant,
-      // Handle transaction date - convert Date objects to ISO string format
+      // Handle transaction date - convert Date objects to YYYY-MM-DD string
       transactionDate: (() => {
         const date = transaction.transaction_date || transaction.transactionDate;
         if (!date) return '';
         if (typeof date === 'string') return date;
-        if (date instanceof Date) return date.toISOString();
+        if (date instanceof Date) return date.toISOString().slice(0, 10);
         // Handle case where backend returns date as object
         return date.toString();
       })(),
@@ -96,21 +98,31 @@ export class TransactionService extends BaseService {
   ): Promise<TransactionListResponse> {
     const params: Record<string, string | number | boolean> = {};
     
-    // Pagination params
-    if (filters?.page) params.page = filters.page;
-    if (filters?.per_page) params.per_page = filters.per_page;
+    // Pagination params: support both page/per_page and offset/limit
+    const page = filters?.page ?? 1;
+    const perPage = (filters?.per_page ?? filters?.limit) as number | undefined;
+    if (page) params.page = page;
+    if (perPage !== undefined) {
+      params.per_page = perPage;
+      params.limit = perPage; // also send limit for backends expecting limit/offset
+      const offset = (page - 1) * perPage;
+      params.offset = offset;
+    }
     
     // Filter params - map from new TransactionFilters to API parameters
     if (filters?.dateFrom) params.start_date = filters.dateFrom;
     if (filters?.dateTo) params.end_date = filters.dateTo;
+    if (filters?.accountId) params.account_id = filters.accountId;
     if (filters?.categoryId) params.category_id = filters.categoryId;
     if (filters?.merchant) params.merchant = filters.merchant;
-    if (filters?.amountMinCents !== undefined) params.min_amount = filters.amountMinCents;
-    if (filters?.amountMaxCents !== undefined) params.max_amount = filters.amountMaxCents;
+    if (filters?.amountMinCents !== undefined) params.min_amount_cents = filters.amountMinCents;
+    if (filters?.amountMaxCents !== undefined) params.max_amount_cents = filters.amountMaxCents;
     if (filters?.search) params.search_query = filters.search;
+    if (filters?.group_by) params.group_by = filters.group_by;
+    if (filters?.transaction_type) params.transaction_type = filters.transaction_type;
 
-    console.log('🎯 TransactionService fetching from endpoint:', this.baseEndpoint);
-    console.log('📦 With params:', params);
+    // Debug-level logging
+    console.debug?.('TransactionService fetching:', this.baseEndpoint, params);
     
     const response = await this.get<any>(
       '/',
@@ -122,19 +134,85 @@ export class TransactionService extends BaseService {
       }
     );
     
-    console.log('📤 TransactionService raw response:', response);
+    console.debug?.('TransactionService raw response:', response);
 
-    // Normalize the response structure and transaction field names
+    // Normalize list envelope first, then normalize each transaction item
+    const list = normalizeListEnvelope<any>(response);
     const normalizedResponse: TransactionListResponse = {
-      items: (response.items || []).map((transaction: any) => this.normalizeTransaction(transaction)),
-      total: response.total || 0,
-      page: response.page || 1,
-      per_page: response.per_page || 25,
-      pages: response.pages || 1
+      items: (list.items || []).map(toTransactionView),
+      total: list.total || 0,
+      page: list.page || 1,
+      per_page: list.per_page || (list.items?.length ?? 0),
+      pages: list.pages || 1,
     };
     
-    console.log('✨ TransactionService normalized response:', normalizedResponse);
+    console.debug?.('TransactionService normalized response:', normalizedResponse);
     return normalizedResponse;
+  }
+
+  async getTransactionsGrouped(
+    filters: TransactionFilters & { group_by: 'date' | 'category' | 'merchant' },
+    options?: { useCache?: boolean; context?: ErrorContext }
+  ): Promise<TransactionGroupedResponse> {
+    const params: Record<string, string | number | boolean> = {};
+    
+    // Pagination params: support both page/per_page and offset/limit
+    const page = filters?.page ?? 1;
+    const perPage = (filters?.per_page ?? filters?.limit) as number | undefined;
+    if (page) params.page = page;
+    if (perPage !== undefined) {
+      params.per_page = perPage;
+      params.limit = perPage; // also send limit for backends expecting limit/offset
+      const offset = (page - 1) * perPage;
+      params.offset = offset;
+    }
+    
+    // Filter params - map from new TransactionFilters to API parameters
+    if (filters?.dateFrom) params.start_date = filters.dateFrom;
+    if (filters?.dateTo) params.end_date = filters.dateTo;
+    if (filters?.accountId) params.account_id = filters.accountId;
+    if (filters?.categoryId) params.category_id = filters.categoryId;
+    if (filters?.merchant) params.merchant = filters.merchant;
+    if (filters?.amountMinCents !== undefined) params.min_amount_cents = filters.amountMinCents;
+    if (filters?.amountMaxCents !== undefined) params.max_amount_cents = filters.amountMaxCents;
+    if (filters?.search) params.search_query = filters.search;
+    if (filters?.transaction_type) params.transaction_type = filters.transaction_type;
+    
+    // Required group_by parameter
+    params.group_by = filters.group_by;
+
+    // Debug-level logging
+    console.debug?.('TransactionService fetching grouped:', this.baseEndpoint, params);
+    
+    const response = await this.get<any>(
+      '/',
+      params,
+      {
+        useCache: options?.useCache ?? true,
+        cacheTtl: 2 * 60 * 1000, // 2 minutes cache for transactions
+        context: options?.context
+      }
+    );
+    
+    console.debug?.('TransactionService raw grouped response:', response);
+
+    // Process the grouped response
+    const groupedResponse: TransactionGroupedResponse = {
+      groups: (response.groups || []).map((group: any) => ({
+        key: group.key,
+        total_amount_cents: group.total_amount_cents || 0,
+        count: group.count || 0,
+        transactions: (group.transactions || []).map(toTransactionView),
+      })),
+      total: response.total || 0,
+      page: response.page || 1,
+      per_page: response.per_page || (response.groups?.reduce((sum: number, g: any) => sum + (g.transactions?.length || 0), 0) ?? 0),
+      pages: response.pages || 1,
+      grouped: true,
+    };
+    
+    console.debug?.('TransactionService normalized grouped response:', groupedResponse);
+    return groupedResponse;
   }
 
   async getTransaction(
@@ -153,13 +231,31 @@ export class TransactionService extends BaseService {
 
   async createTransaction(
     transaction: CreateTransactionRequest,
-    options?: { context?: ErrorContext }
+    options?: { context?: ErrorContext; notify?: boolean }
   ): Promise<Transaction> {
-    return this.post<Transaction>(
-      '/',
-      transaction,
-      { context: options?.context }
-    );
+    // Ensure transaction_date is snake_case and formatted YYYY-MM-DD if Date provided via convenience fields
+    const payload: any = { ...transaction };
+    if (!payload.transaction_date && payload.transactionDate) {
+      const d = payload.transactionDate;
+      payload.transaction_date = d instanceof Date ? d.toISOString().slice(0, 10) : d;
+      delete payload.transactionDate;
+    }
+
+    // Build query parameters
+    const queryParams: Record<string, any> = {};
+    if (options?.notify !== undefined) {
+      queryParams.notify = options.notify;
+    }
+
+    // Make the request with query parameters
+    const endpoint = Object.keys(queryParams).length > 0 
+      ? `/?${new URLSearchParams(queryParams).toString()}`
+      : '/';
+    
+    const response = await this.post<any>(endpoint, payload, { context: options?.context });
+    
+    // Apply adapter to normalize the response
+    return toTransactionView(response);
   }
 
   async updateTransaction(
@@ -167,11 +263,17 @@ export class TransactionService extends BaseService {
     transaction: UpdateTransactionRequest,
     options?: { context?: ErrorContext }
   ): Promise<Transaction> {
-    return this.put<Transaction>(
-      `/${transactionId}`,
-      transaction,
-      { context: options?.context }
-    );
+    const payload: any = { ...transaction };
+    if (!payload.transaction_date && payload.transactionDate) {
+      const d = payload.transactionDate;
+      payload.transaction_date = d instanceof Date ? d.toISOString().slice(0, 10) : d;
+      delete payload.transactionDate;
+    }
+    
+    const response = await this.put<any>(`/${transactionId}`, payload, { context: options?.context });
+    
+    // Apply adapter to normalize the response
+    return toTransactionView(response);
   }
 
   async deleteTransaction(
@@ -296,7 +398,7 @@ export class TransactionService extends BaseService {
     // Map frontend filter field names to backend API parameter names
     if (filters.start_date) params.start_date = filters.start_date;
     if (filters.end_date) params.end_date = filters.end_date;
-    if (filters.category_id) params.category = filters.category_id; // Backend expects 'category' not 'category_id'
+    if (filters.category_id) params.category_id = filters.category_id;
     if (filters.transaction_type) params.transaction_type = filters.transaction_type;
 
     console.log('🎯 Exporting transactions with params:', params);

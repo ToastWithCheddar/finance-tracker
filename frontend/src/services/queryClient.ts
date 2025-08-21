@@ -2,6 +2,7 @@ import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import type { GoalFilters } from '../types/goals';
 import type { BudgetFilters } from '../types/budgets';
+import type { Transaction } from '../types/transaction';
 
 // Error handler for queries and mutations
 const errorHandler = (error: unknown) => {
@@ -111,3 +112,68 @@ export const queryKeys = {
 
   
 } as const;
+
+// ==========================
+// Cache Helper Utilities
+// ==========================
+
+// Invalidate dashboard-related queries (various keys used in codebase)
+export function invalidateDashboard() {
+  // Common dashboard keys used across hooks
+  queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+  queryClient.invalidateQueries({ queryKey: ['dashboardAnalytics'] });
+  queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+}
+
+// Upsert a transaction into any cached transaction list pages where it already exists
+export function upsertTransactionInCache(updated: Partial<Transaction> & { id: string }) {
+  const txId = String(updated.id);
+  // Get all queries under the 'transactions' namespace
+  const lists = queryClient.getQueriesData<any>({ queryKey: ['transactions'] });
+  lists.forEach(([key, data]) => {
+    if (!data) return;
+    // Support both normalized list envelopes and potential array responses
+    if (Array.isArray(data)) {
+      const idx = data.findIndex((t: any) => String(t?.id) === txId);
+      if (idx !== -1) {
+        const next = data.slice();
+        next[idx] = { ...next[idx], ...updated };
+        queryClient.setQueryData(key, next);
+      }
+      return;
+    }
+    if (Array.isArray(data.items)) {
+      const idx = data.items.findIndex((t: any) => String(t?.id) === txId);
+      if (idx !== -1) {
+        const nextItems = data.items.slice();
+        nextItems[idx] = { ...nextItems[idx], ...updated };
+        queryClient.setQueryData(key, { ...data, items: nextItems });
+      }
+    }
+  });
+}
+
+// Remove a transaction from any cached transaction list pages
+export function removeTransactionFromCache(id: string) {
+  const txId = String(id);
+  const lists = queryClient.getQueriesData<any>({ queryKey: ['transactions'] });
+  lists.forEach(([key, data]) => {
+    if (!data) return;
+    if (Array.isArray(data)) {
+      const before = data.length;
+      const next = data.filter((t: any) => String(t?.id) !== txId);
+      if (next.length !== before) {
+        queryClient.setQueryData(key, next);
+      }
+      return;
+    }
+    if (Array.isArray(data.items)) {
+      const before = data.items.length;
+      const nextItems = data.items.filter((t: any) => String(t?.id) !== txId);
+      if (nextItems.length !== before) {
+        // Leave totals/pages unchanged to avoid inconsistencies; server will correct on refetch
+        queryClient.setQueryData(key, { ...data, items: nextItems });
+      }
+    }
+  });
+}

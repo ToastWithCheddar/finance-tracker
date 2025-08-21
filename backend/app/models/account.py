@@ -5,7 +5,6 @@ from .base import BaseModel
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
-from app.services.encryption_service import encryption_service
 
 class Account(BaseModel):
     __tablename__ = "accounts"
@@ -47,7 +46,8 @@ class Account(BaseModel):
         """Get the decrypted Plaid access token"""
         if not self.plaid_access_token_encrypted:
             return None
-        return encryption_service.decrypt(self.plaid_access_token_encrypted)
+        from app.services.encryption_service import get_encryption_service
+        return get_encryption_service().decrypt(self.plaid_access_token_encrypted)
     
     @plaid_access_token.setter
     def plaid_access_token(self, value: Optional[str]) -> None:
@@ -55,7 +55,8 @@ class Account(BaseModel):
         if value is None:
             self.plaid_access_token_encrypted = None
         else:
-            self.plaid_access_token_encrypted = encryption_service.encrypt(value)
+            from app.services.encryption_service import get_encryption_service
+            self.plaid_access_token_encrypted = get_encryption_service().encrypt(value)
     
     @property
     def is_plaid_connected(self) -> bool:
