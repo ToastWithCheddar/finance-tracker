@@ -2,7 +2,6 @@ import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import type { GoalFilters } from '../types/goals';
 import type { BudgetFilters } from '../types/budgets';
-import type { Transaction } from '../types/transaction';
 
 // Error handler for queries and mutations
 const errorHandler = (error: unknown) => {
@@ -119,10 +118,11 @@ export const queryKeys = {
 
 // Invalidate dashboard-related queries (various keys used in codebase)
 export function invalidateDashboard() {
-  // Common dashboard keys used across hooks
-  queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
-  queryClient.invalidateQueries({ queryKey: ['dashboardAnalytics'] });
-  queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+  // Common dashboard keys actually in use
+  queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+  queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'category-breakdown' });
+  // Related aggregates
+  queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
 }
 
 // Upsert a transaction into any cached transaction list pages where it already exists

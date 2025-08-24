@@ -56,8 +56,8 @@ async def create_transaction(
     if notify and manager.is_user_connected(str(current_user.id)):
         try:
             await manager.send_to_user(str(current_user.id), {
-                # TODO "payload" : _serialize(new_transaction) write the function
-                "type": "transaction_created",
+                # Use standardized message type expected by frontend
+                "type": "new_transaction",
                 "payload": _serialize_transaction(new_transaction)
             })
         except Exception as e:
@@ -140,7 +140,8 @@ async def import_transactions(
     file: UploadFile = File(...),
     notify: bool = Query(default=True, description="Send real-time notification"),
     db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    manager = Depends(get_websocket_manager_dep)
 ):
     if not file.filename.endswith('.csv'):
         raise ValidationError("Only CSV files are supported")
@@ -190,7 +191,7 @@ async def import_transactions(
     if notify and manager.is_user_connected(str(current_user.id)):
         try:
             await manager.send_to_user(str(current_user.id), {
-                "type": "transactions_imported",
+                "type": "bulk_transactions_imported",
                 "payload": {
                     # TODO: Large Imports: For very large CSV imports, consider sending progress updates
                     "count": len(imported_transactions),
@@ -252,8 +253,8 @@ async def search_transactions(
     end_date: Optional[datetime] = Query(None, description="End date filter"),
     category: Optional[str] = Query(None, description="Category filter"),
     transaction_type: Optional[str] = Query(None, description="Transaction type filter"),
-    page: int = Query(1, ge=1, description="Page number"),
-    per_page: int = Query(25, ge=1, le=100, description="Items per page"),
+    limit: int = Query(25, ge=1, le=100, description="Items per page"),
+    offset: int = Query(0, ge=0, description="Number of items to skip"),
     db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
@@ -265,18 +266,21 @@ async def search_transactions(
         category=category,
         transaction_type=transaction_type
     )
-    pagination = TransactionPagination(page=page, per_page=per_page)
+    pagination = TransactionPagination(limit=limit, offset=offset)
     
     transactions, total_count = TransactionService.get_transactions_with_filters(
         db, current_user.id, filters, pagination
     )
     
+    # Calculate pagination info
+    has_more = total_count > pagination.offset + len(transactions)
+    
     return {
         "items": transactions,
         "total": total_count,
-        "page": pagination.page,
-        "per_page": pagination.per_page,
-        "pages": (total_count + pagination.per_page - 1) // pagination.per_page,
+        "limit": pagination.limit,
+        "offset": pagination.offset,
+        "has_more": has_more,
         "search_query": q
     }
 
@@ -394,14 +398,21 @@ async def export_transactions(
         )
 
 def _serialize_transaction(transaction: Transaction) -> dict:
-    """Serialize a transaction to a dictionary"""
+    """Serialize a Transaction model into a WS-friendly payload.
+
+    Matches frontend TransactionPayload expectations (amount_cents, ids, names, ISO dates).
+    """
     return {
-        "id": transaction.id,
-        "amount": transaction.amount,
-        "category": transaction.category,
+        "id": str(transaction.id),
+        "amount_cents": int(transaction.amount_cents),
         "description": transaction.description,
-        "transaction_date": transaction.transaction_date,
-        "transaction_type": transaction.transaction_type,
-        "created_at": transaction.created_at,
-        "updated_at": transaction.updated_at
+        "merchant": transaction.merchant,
+        "category_id": str(transaction.category_id) if transaction.category_id else None,
+        "category_name": getattr(transaction.category, 'name', None) if getattr(transaction, 'category', None) else None,
+        "category_emoji": getattr(transaction.category, 'emoji', None) if getattr(transaction, 'category', None) else None,
+        "account_id": str(transaction.account_id),
+        "account_name": getattr(transaction.account, 'name', None) if getattr(transaction, 'account', None) else None,
+        "transaction_date": transaction.transaction_date.isoformat() if transaction.transaction_date else None,
+        "created_at": transaction.created_at.isoformat() if transaction.created_at else None,
+        "is_income": transaction.amount_cents > 0,
     }

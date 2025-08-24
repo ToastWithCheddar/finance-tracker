@@ -1,4 +1,4 @@
-from sqlalchemy import String, Boolean, Index
+from sqlalchemy import String, Boolean, Integer, Index
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from typing import Optional
@@ -27,10 +27,14 @@ class User(BaseModel):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
-    # Preferences
-    
-    notification_push: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    # Preferences (simplified notifications)
+    notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     theme: Mapped[str] = mapped_column(String(20), default="light", nullable=False)
+    
+    # Additional User Preferences
+    default_items_per_page: Mapped[int] = mapped_column(Integer, default=25, nullable=False)
+    auto_categorization_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    spending_alert_threshold_cents: Mapped[Optional[int]] = mapped_column(Integer, default=None, nullable=True)
    
     # Relationships
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
@@ -42,7 +46,6 @@ class User(BaseModel):
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
     categories = relationship("Category", back_populates="user", cascade="all, delete-orphan")
     
-    saved_filters = relationship("SavedFilter", back_populates="user", cascade="all, delete-orphan")
     sessions = relationship("UserSession", back_populates="user", cascade="all, delete-orphan")
     budget_alert_settings = relationship("BudgetAlertSettings", back_populates="user", cascade="all, delete-orphan")
 

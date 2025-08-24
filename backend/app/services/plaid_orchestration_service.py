@@ -220,19 +220,20 @@ class PlaidOrchestrationService:
         if not self.enabled:
             return self._disabled_response()
         
-        return await self.transaction_service.sync_transactions_for_user(db, user_id)
+        from app.services.transaction_sync_service import get_transaction_sync_service
+        sync_service = get_transaction_sync_service()
+        return await sync_service.sync_user_transactions(user_id, db)
     
     async def fetch_transactions(
         self, 
         access_token: str, 
         start_date: datetime, 
         end_date: datetime,
-        account_ids: Optional[List[str]] = None,
-        count: int = 500
+        account_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
-        """Fetch transactions from Plaid with pagination"""
+        """Fetch transactions from Plaid (simplified without pagination)"""
         return await self.transaction_service.fetch_transactions(
-            access_token, start_date, end_date, account_ids, count
+            access_token, start_date, end_date, account_ids
         )
     
     # Recurring Transactions (delegated to webhook service)

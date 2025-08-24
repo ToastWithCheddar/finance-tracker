@@ -27,6 +27,20 @@ export function CommandPalette() {
     },
   });
 
+  const items: CommandItem[] = useMemo(() => {
+    const navCommands = navigationItems.map(item => ({
+      label: `Go to ${item.label}`,
+      group: 'Navigation',
+      action: () => navigate(item.path)
+    }));
+    
+    const actionCommands = [
+      { label: 'Add Transaction', group: 'Actions', action: () => navigate('/transactions?new=1') },
+    ];
+    
+    return [...navCommands, ...actionCommands];
+  }, [navigate]);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -42,20 +56,6 @@ export function CommandPalette() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [isOpen, selected, items, toggle, close]);
-
-  const items: CommandItem[] = useMemo(() => {
-    const navCommands = navigationItems.map(item => ({
-      label: `Go to ${item.label}`,
-      group: 'Navigation',
-      action: () => navigate(item.path)
-    }));
-    
-    const actionCommands = [
-      { label: 'Add Transaction', group: 'Actions', action: () => navigate('/transactions?new=1') },
-    ];
-    
-    return [...navCommands, ...actionCommands];
-  }, [navigate]);
 
   const filtered = items.filter((it) => it.label.toLowerCase().includes(query.toLowerCase()));
   const boundedSelected = Math.min(selected, Math.max(0, filtered.length - 1));

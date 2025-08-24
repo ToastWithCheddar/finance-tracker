@@ -42,6 +42,9 @@ export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = fals
     control
   } = useForm<CreateBudgetRequest>();
 
+  // Local state for friendly currency input handling
+  const [amountInput, setAmountInput] = useState<string>('');
+
   // Get categories for the dropdown
   const { data: categories = [] } = useQuery<Category[]>({
     queryKey: ['categories'],
@@ -64,6 +67,7 @@ export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = fals
           alert_threshold: budget.alert_threshold,
           is_active: budget.is_active,
         });
+        setAmountInput(formatCurrencyDisplay(budget.amount_cents));
       } else {
         // Create mode - reset to defaults
         reset({
@@ -76,6 +80,7 @@ export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = fals
           alert_threshold: 0.8,
           is_active: true,
         });
+        setAmountInput('');
       }
     }
   }, [budget, isOpen, reset]);
@@ -182,18 +187,26 @@ export function BudgetForm({ budget, isOpen, onClose, onSubmit, isLoading = fals
                     required: 'Budget amount is required',
                     min: { value: 1, message: 'Amount must be greater than 0' }
                   }}
-                  render={({ field: { value, onChange, onBlur } }) => (
+                  render={({ field: { onChange, onBlur } }) => (
                     <Input
                       id="amount"
                       type="text"
-                      value={value ? formatCurrencyDisplay(value) : ''}
+                      inputMode="decimal"
+                      pattern="^\d*\.?\d{0,2}$"
+                      value={amountInput}
                       onChange={(e) => {
-                        const cents = parseCurrencyInput(e.target.value);
-                        onChange(cents);
+                        const input = e.target.value;
+                        // Allow only digits and a single decimal point with up to 2 decimals
+                        if (/^\d*(?:\.\d{0,2})?$/.test(input)) {
+                          setAmountInput(input);
+                          const cents = parseCurrencyInput(input);
+                          onChange(cents);
+                        }
                       }}
                       onBlur={(e) => {
                         // Format on blur for better UX
-                        const cents = parseCurrencyInput(e.target.value);
+                        const cents = parseCurrencyInput(amountInput);
+                        setAmountInput(cents ? formatCurrencyDisplay(cents) : '');
                         onChange(cents);
                         onBlur();
                       }}

@@ -5,6 +5,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from datetime import date
 from uuid import UUID
 import logging
+from sqlalchemy import or_
 
 from app.core.exceptions import CategoryNotFoundError, BudgetNotFoundError, DataIntegrityError, BusinessLogicError, ValidationError
 
@@ -33,9 +34,14 @@ def create_budget(
     """Create a new budget"""
     # Validate category exists if provided
     if budget.category_id:
+        # Allow either user's own categories or system categories
         category = db.query(Category).filter(
             Category.id == budget.category_id,
-            Category.user_id == current_user.id
+            Category.is_active == True,
+            or_(
+                Category.user_id == current_user.id,
+                Category.is_system == True
+            )
         ).first()
         if not category:
             raise CategoryNotFoundError(str(budget.category_id))
@@ -66,7 +72,7 @@ def create_budget(
         category_name=category_name,
         name=created_budget.name,
         amount_cents=created_budget.amount_cents,
-        period=created_budget.period,
+        period=(created_budget.period.name.lower() if hasattr(created_budget.period, 'name') else created_budget.period),
         start_date=created_budget.start_date,
         end_date=created_budget.end_date,
         alert_threshold=created_budget.alert_threshold,
@@ -118,7 +124,7 @@ def get_budgets(
             category_name=category_name,
             name=budget.name,
             amount_cents=budget.amount_cents,
-            period=budget.period,
+            period=(budget.period.name.lower() if hasattr(budget.period, 'name') else budget.period),
             start_date=budget.start_date,
             end_date=budget.end_date,
             alert_threshold=budget.alert_threshold,
@@ -159,7 +165,7 @@ def get_budget(
         category_name=category_name,
         name=budget.name,
         amount_cents=budget.amount_cents,
-        period=budget.period,
+        period=(budget.period.name.lower() if hasattr(budget.period, 'name') else budget.period),
         start_date=budget.start_date,
         end_date=budget.end_date,
         alert_threshold=budget.alert_threshold,
@@ -182,9 +188,14 @@ def update_budget(
     
     # Validate category exists if being updated
     if budget_update.category_id:
+        # Allow either user's own categories or system categories
         category = db.query(Category).filter(
             Category.id == budget_update.category_id,
-            Category.user_id == current_user.id
+            Category.is_active == True,
+            or_(
+                Category.user_id == current_user.id,
+                Category.is_system == True
+            )
         ).first()
         if not category:
             raise CategoryNotFoundError(str(budget_update.category_id))
@@ -208,7 +219,7 @@ def update_budget(
         category_name=category_name,
         name=updated_budget.name,
         amount_cents=updated_budget.amount_cents,
-        period=updated_budget.period,
+        period=(updated_budget.period.name.lower() if hasattr(updated_budget.period, 'name') else updated_budget.period),
         start_date=updated_budget.start_date,
         end_date=updated_budget.end_date,
         alert_threshold=updated_budget.alert_threshold,

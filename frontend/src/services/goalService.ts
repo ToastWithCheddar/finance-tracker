@@ -1,5 +1,6 @@
 import { apiClient } from './api';
 import { GoalStatus, GoalType, GoalPriority } from '../types/goals';
+import { BaseService } from './base/BaseService';
 import type {
   Goal,
   GoalCreate,
@@ -10,45 +11,44 @@ import type {
   GoalStats,
   GoalFilters,
   GoalTypeOption,
-  PriorityOption,
-  FrequencyOption
+  PriorityOption
 } from '../types/goals';
 
-export class GoalService {
-  private baseEndpoint = '/goals';
+export class GoalService extends BaseService {
+  protected baseEndpoint = '/goals';
 
   // Goal CRUD operations
   async createGoal(goalData: GoalCreate): Promise<Goal> {
-    return apiClient.post<Goal>(`${this.baseEndpoint}/`, goalData);
+    return apiClient.post<Goal>('/goals', goalData);
   }
 
   async getGoals(filters: GoalFilters = {}): Promise<GoalsResponse> {
-    const params = new URLSearchParams();
+    const params: Record<string, any> = {};
     
-    if (filters.status) params.append('status', filters.status);
-    if (filters.goal_type) params.append('goal_type', filters.goal_type);
-    if (filters.priority) params.append('priority', filters.priority);
-    if (filters.skip !== undefined) params.append('skip', filters.skip.toString());
-    if (filters.limit !== undefined) params.append('limit', filters.limit.toString());
+    if (filters.status) params.status = filters.status;
+    if (filters.goal_type) params.goal_type = filters.goal_type;
+    if (filters.priority) params.priority = filters.priority;
+    if (filters.skip !== undefined) params.skip = filters.skip;
+    if (filters.limit !== undefined) params.limit = filters.limit;
 
-    return apiClient.get<GoalsResponse>(`${this.baseEndpoint}/?${params.toString()}`);
+    return apiClient.get<GoalsResponse>('/goals', params);
   }
 
   async getGoal(goalId: string): Promise<Goal> {
-    return apiClient.get<Goal>(`${this.baseEndpoint}/${goalId}`);
+    return apiClient.get<Goal>(`/goals/${goalId}`);
   }
 
   async updateGoal(goalId: string, goalData: GoalUpdate): Promise<Goal> {
-    return apiClient.put<Goal>(`${this.baseEndpoint}/${goalId}`, goalData);
+    return apiClient.put<Goal>(`/goals/${goalId}`, goalData);
   }
 
   async deleteGoal(goalId: string): Promise<{ message: string }> {
-    return apiClient.delete<{ message: string }>(`${this.baseEndpoint}/${goalId}`);
+    return apiClient.delete<{ message: string }>(`/goals/${goalId}`);
   }
 
   // Contribution operations
   async addContribution(goalId: string, contributionData: GoalContributionCreate): Promise<GoalContribution> {
-    return apiClient.post<GoalContribution>(`${this.baseEndpoint}/${goalId}/contributions`, contributionData);
+    return apiClient.post<GoalContribution>(`/goals/${goalId}/contributions`, contributionData);
   }
 
   async getGoalContributions(
@@ -56,25 +56,23 @@ export class GoalService {
     skip: number = 0, 
     limit: number = 50
   ): Promise<GoalContribution[]> {
-    return apiClient.get<GoalContribution[]>(`${this.baseEndpoint}/${goalId}/contributions?skip=${skip}&limit=${limit}`);
+    return apiClient.get<GoalContribution[]>(`/goals/${goalId}/contributions`, { skip, limit });
   }
 
   // Analytics and statistics
   async getGoalStats(): Promise<GoalStats> {
-    return apiClient.get<GoalStats>(`${this.baseEndpoint}/stats`);
+    return apiClient.get<GoalStats>('/goals/stats');
   }
 
   // Utility endpoints
   async getGoalTypeOptions(): Promise<{
     goal_types: GoalTypeOption[];
     priorities: PriorityOption[];
-    frequencies: FrequencyOption[];
   }> {
     return apiClient.get<{
       goal_types: GoalTypeOption[];
       priorities: PriorityOption[];
-      frequencies: FrequencyOption[];
-    }>(`${this.baseEndpoint}/types/options`);
+    }>('/goals/types/options');
   }
 
 

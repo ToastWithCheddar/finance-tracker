@@ -105,6 +105,21 @@ class PlaidRecurringPotentialMatch(BaseModel):
     is_active: bool
     confidence_score: ConfidenceScore | None = None
 
+class PlaidRecurringTopSubscription(BaseModel):
+    """Schema for top subscription items"""
+    plaid_recurring_transaction_id: str
+    description: str
+    merchant_name: str | None = None
+    monthly_estimated_amount_cents: int
+    frequency: str
+
+class PlaidRecurringCostByAccount(BaseModel):
+    """Schema for cost breakdown by account"""
+    account_id: str
+    account_name: str
+    total_monthly_cents: int
+    subscription_count: int
+
 class PlaidRecurringInsightsResponse(BaseModel):
     """Response schema for recurring transaction insights"""
     
@@ -114,11 +129,10 @@ class PlaidRecurringInsightsResponse(BaseModel):
     active_subscriptions: int
     muted_subscriptions: int
     linked_subscriptions: int
-    mature_subscriptions: int
     frequency_breakdown: Dict[str, int]
     status_breakdown: Dict[str, int]
-    top_subscriptions: List[Dict[str, Any]]
-    cost_by_account: Dict[str, Dict[str, Any]]
+    top_subscriptions: List[PlaidRecurringTopSubscription]
+    cost_by_account: List[PlaidRecurringCostByAccount]
 
 class PlaidRecurringBulkMuteRequest(BaseModel):
     """Request schema for bulk muting/unmuting Plaid recurring transactions"""

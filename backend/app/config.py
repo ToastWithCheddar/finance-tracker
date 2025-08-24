@@ -1,7 +1,13 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import List, TYPE_CHECKING
+# Standard library imports
 import os
+import secrets
+import warnings
+import json
 from pathlib import Path
+from typing import List, TYPE_CHECKING
+
+# Third-party imports
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 if TYPE_CHECKING:
     from app.schemas.financial_health_config import FinancialHealthConfig
@@ -14,67 +20,90 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Database Configuration
+    # ===== DATABASE CONFIGURATION =====
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql+psycopg2://postgres:devpassword123@localhost:5432/postgres")
     
-    # Security Configuration - Must be set via environment variables
+    # ===== SECURITY CONFIGURATION =====
     SECRET_KEY: str = os.getenv("SECRET_KEY", "")
 
-    # Supabase Configuration - Must be set via environment variables
+    # ===== AUTHENTICATION & AUTHORIZATION =====
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
     SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
     SUPABASE_WEBHOOK_SECRET: str = os.getenv("SUPABASE_WEBHOOK_SECRET", "")
 
-    # Application Configuration
+    # ===== APPLICATION CONFIGURATION =====
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
     DEBUG: bool = os.getenv("DEBUG", "true").lower() in ("true", "1", "yes")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "debug")
-    
-    # Frontend Configuration
     FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-    # CORS Configuration
-    ALLOWED_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://localhost:3000",
-        "https://127.0.0.1:3000",
-    ]
-    ALLOWED_METHODS: List[str] = ["*"]
-    ALLOWED_HEADERS: List[str] = ["*"]
+    # ===== CORS CONFIGURATION =====
+    @property
+    def ALLOWED_ORIGINS(self) -> List[str]:
+        """Parse ALLOWED_ORIGINS from environment or use defaults"""
+        env_origins = os.getenv("ALLOWED_ORIGINS")
+        if env_origins:
+            try:
+                return json.loads(env_origins)
+            except json.JSONDecodeError:
+                warnings.warn(f"Invalid JSON in ALLOWED_ORIGINS: {env_origins}. Using defaults.")
+        return [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000", 
+            "https://localhost:3000",
+            "https://127.0.0.1:3000",
+        ]
+    
+    @property
+    def ALLOWED_METHODS(self) -> List[str]:
+        """Parse ALLOWED_METHODS from environment or use defaults"""
+        env_methods = os.getenv("ALLOWED_METHODS")
+        if env_methods:
+            try:
+                return json.loads(env_methods)
+            except json.JSONDecodeError:
+                warnings.warn(f"Invalid JSON in ALLOWED_METHODS: {env_methods}. Using defaults.")
+        return ["*"]
+    
+    @property  
+    def ALLOWED_HEADERS(self) -> List[str]:
+        """Parse ALLOWED_HEADERS from environment or use defaults"""
+        env_headers = os.getenv("ALLOWED_HEADERS")
+        if env_headers:
+            try:
+                return json.loads(env_headers)
+            except json.JSONDecodeError:
+                warnings.warn(f"Invalid JSON in ALLOWED_HEADERS: {env_headers}. Using defaults.")
+        return ["*"]
 
-    # Machine Learning Service
+    # ===== EXTERNAL SERVICES =====
     ML_SERVICE_URL: str = os.getenv("ML_SERVICE_URL", "http://localhost:8001")
     ML_CONFIDENCE_THRESHOLD: float = float(os.getenv("ML_CONFIDENCE_THRESHOLD", "0.6"))
-    
-    # Redis Configuration
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
     
-    # Security Settings
+    # ===== SECURITY SETTINGS =====
     ENABLE_ADMIN_BYPASS: bool = os.getenv("ENABLE_ADMIN_BYPASS", "true").lower() in ("true", "1", "yes")
     CSRF_PROTECTION: bool = os.getenv("CSRF_PROTECTION", "false").lower() in ("true", "1", "yes")
     RATE_LIMITING: bool = os.getenv("RATE_LIMITING", "false").lower() in ("true", "1", "yes")
     
-    # Feature Toggles
+    # ===== FEATURE TOGGLES =====
     ENABLE_DATABASE: bool = os.getenv("ENABLE_DATABASE", "true").lower() in ("true", "1", "yes")
     ENABLE_REDIS: bool = os.getenv("ENABLE_REDIS", "true").lower() in ("true", "1", "yes")
     ENABLE_ML_WORKER: bool = os.getenv("ENABLE_ML_WORKER", "true").lower() in ("true", "1", "yes")
     ENABLE_PLAID: bool = os.getenv("ENABLE_PLAID", "true").lower() in ("true", "1", "yes")
     
-    # Cache Configuration
+    # ===== CACHE CONFIGURATION =====
     CACHE_DEFAULT_TTL: int = int(os.getenv("CACHE_DEFAULT_TTL", "300"))  # 5 minutes
     CACHE_DEFAULT_MAX_SIZE: int = int(os.getenv("CACHE_DEFAULT_MAX_SIZE", "1000"))
     SYNC_JOBS_CACHE_MAX_SIZE: int = int(os.getenv("SYNC_JOBS_CACHE_MAX_SIZE", "500"))
     SYNC_JOBS_CACHE_TTL: int = int(os.getenv("SYNC_JOBS_CACHE_TTL", "900"))  # 15 minutes
-    MERCHANT_CACHE_MAX_SIZE: int = int(os.getenv("MERCHANT_CACHE_MAX_SIZE", "2000"))
-    MERCHANT_CACHE_TTL: int = int(os.getenv("MERCHANT_CACHE_TTL", "3600"))  # 1 hour
     RULE_CACHE_MAX_SIZE: int = int(os.getenv("RULE_CACHE_MAX_SIZE", "1000"))
     RULE_CACHE_TTL: int = int(os.getenv("RULE_CACHE_TTL", "300"))  # 5 minutes
     
-    # Application Scaling
+    # ===== APPLICATION SCALING =====
     UVICORN_WORKERS: int = int(os.getenv("UVICORN_WORKERS", "1"))
     
-    # Financial Health Configuration
+    # ===== FINANCIAL HEALTH CONFIGURATION =====
     # Balance thresholds (in cents)
     FINANCIAL_HEALTH_BALANCE_NEGATIVE_PENALTY: int = int(os.getenv("FINANCIAL_HEALTH_BALANCE_NEGATIVE_PENALTY", "30"))
     FINANCIAL_HEALTH_BALANCE_LOW_BALANCE_THRESHOLD: int = int(os.getenv("FINANCIAL_HEALTH_BALANCE_LOW_BALANCE_THRESHOLD", "10000"))
@@ -111,7 +140,7 @@ class Settings(BaseSettings):
     FINANCIAL_HEALTH_SCORING_USER_BASE_SCORE: int = int(os.getenv("FINANCIAL_HEALTH_SCORING_USER_BASE_SCORE", "70"))
     
     
-    # Plaid Configuration
+    # ===== PLAID CONFIGURATION =====
     PLAID_CLIENT_ID: str = os.getenv("PLAID_CLIENT_ID", "")
     PLAID_SECRET: str = os.getenv("PLAID_SECRET", "")
     PLAID_ENV: str = os.getenv("PLAID_ENV", "sandbox")
@@ -150,11 +179,9 @@ class Settings(BaseSettings):
                     missing_fields.append(field)
             
             if missing_fields:
-                import warnings
                 warnings.warn(f"Missing development environment variables (will use generated defaults): {', '.join(missing_fields)}")
                 
                 # Generate temporary secrets for development
-                import secrets
                 if not self.SECRET_KEY:
                     self.SECRET_KEY = secrets.token_urlsafe(32)
     
@@ -202,3 +229,7 @@ class Settings(BaseSettings):
 
 # Create settings instance
 settings = Settings()
+
+def get_settings() -> Settings:
+    """Get the global settings instance"""
+    return settings

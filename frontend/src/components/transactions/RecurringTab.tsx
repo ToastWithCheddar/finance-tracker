@@ -1,44 +1,41 @@
 import React, { useState } from 'react';
 import { RefreshCw, AlertCircle, Activity, TrendingUp } from 'lucide-react';
 import { Button } from '../ui/Button';
-import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
+import { Card, CardContent } from '../ui/Card';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { formatCurrency } from '../../utils/currency';
-import { usePlaidRecurringTransactions, usePlaidRecurringInsights, usePlaidRecurringActions } from '../../hooks/usePlaidRecurring';
+import { usePlaidRecurringTransactions, usePlaidRecurringInsights } from '../../hooks/usePlaidRecurring';
 import { PlaidSubscriptionsList } from './PlaidSubscriptionsList';
-import { PlaidRecurringInsights } from './PlaidRecurringInsights';
-import { SubscriptionManager } from '../subscriptions/SubscriptionManager';
+import { PlaidRecurringInsightsComponent } from './PlaidRecurringInsights';
 import type { 
-  PlaidRecurringFilter,
-  PlaidRecurringTransaction,
-  PlaidRecurringInsights as PlaidInsightsType
+  PlaidRecurringFilter
 } from '../../types/plaidRecurring';
 
 export const RecurringTab: React.FC = () => {
   const [activeSubTab, setActiveSubTab] = useState<'subscriptions' | 'insights'>('subscriptions');
   const [filter, setFilter] = useState<PlaidRecurringFilter>({
-    stream_status: 'active',
-    limit: 50
+    status_filter: 'MATURE'
   });
 
   const {
     data: recurringData,
-    loading: recurringLoading,
+    isPending: recurringLoading,
     error: recurringError,
     refetch: refetchRecurring
   } = usePlaidRecurringTransactions(filter);
 
   const {
     data: insights,
-    loading: insightsLoading,
+    isPending: insightsLoading,
     error: insightsError,
     refetch: refetchInsights
   } = usePlaidRecurringInsights();
 
-  const { refetchAll } = usePlaidRecurringActions();
+  // const actions = usePlaidRecurringActions(); // Unused for now
 
   const handleRefresh = async () => {
-    await refetchAll();
+    await refetchRecurring();
+    await refetchInsights();
   };
 
   if (recurringError || insightsError) {
@@ -48,7 +45,7 @@ export const RecurringTab: React.FC = () => {
         <div className="text-center">
           <h3 className="text-lg font-medium text-gray-900">Error loading recurring transactions</h3>
           <p className="text-sm text-gray-500 mt-1">
-            {recurringError || insightsError}
+            {recurringError?.message || insightsError?.message || 'An error occurred'}
           </p>
           <Button onClick={handleRefresh} className="mt-4">
             Try Again
@@ -87,7 +84,7 @@ export const RecurringTab: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Monthly</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(insights.totalMonthlyAmount)}
+                    {formatCurrency(insights.total_monthly_cost_dollars)}
                   </p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-blue-500" />
@@ -101,7 +98,7 @@ export const RecurringTab: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Active Subscriptions</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {insights.activeCount}
+                    {insights.active_subscriptions}
                   </p>
                 </div>
                 <Activity className="h-8 w-8 text-green-500" />
@@ -115,7 +112,7 @@ export const RecurringTab: React.FC = () => {
                 <div>
                   <p className="text-sm font-medium text-gray-600">Avg. Payment</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {formatCurrency(insights.averageAmount)}
+                    {formatCurrency(insights.total_subscriptions > 0 ? insights.total_monthly_cost_dollars / insights.total_subscriptions : 0)}
                   </p>
                 </div>
                 <AlertCircle className="h-8 w-8 text-orange-500" />
@@ -159,14 +156,11 @@ export const RecurringTab: React.FC = () => {
               <LoadingSpinner size="lg" />
             </div>
           ) : (
-            <>
-              <PlaidSubscriptionsList
-                data={recurringData}
-                onFilterChange={setFilter}
-                currentFilter={filter}
-              />
-              <SubscriptionManager />
-            </>
+            <PlaidSubscriptionsList
+              transactions={recurringData || []}
+              onFiltersChange={setFilter}
+              filters={filter}
+            />
           )}
         </div>
       )}
@@ -178,7 +172,7 @@ export const RecurringTab: React.FC = () => {
               <LoadingSpinner size="lg" />
             </div>
           ) : (
-            <PlaidRecurringInsights insights={insights} />
+            insights && <PlaidRecurringInsightsComponent insights={insights} />
           )}
         </div>
       )}

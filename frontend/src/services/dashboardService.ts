@@ -1,98 +1,64 @@
 import { BaseService } from './base/BaseService';
-import type { ErrorContext } from '../types/errors';
 
-export interface DashboardAnalytics {
-  totalBalance: number;
-  totalTransactions: number;
-  recentTransactions: Array<{
-    id: string;
-    description: string;
-    amountCents: number;
-    date: string;
-  }>;
-  spendingByCategory: Record<string, number>;
-  // Additional properties expected by RealtimeDashboard
-  summary?: {
-    total_income: number;
-    total_expenses: number;
-    net_amount: number;
-    transaction_count: number;
-  };
-  category_breakdown?: CategoryBreakdown[];
-  period?: string;
-}
-
-export interface CategoryBreakdown {
-  category: string;
-  amountCents: number;
-  transactionCount: number;
-  percentage: number;
-}
-
-export interface SpendingTrend {
-  period: string;
-  amountCents: number;
-  income: number;
-  expenses: number;
-  transactionCount: number;
-  date: string;
-}
-
+// Dashboard filter interface
 export interface DashboardFilters {
-  period?: 'week' | 'month' | 'quarter' | 'year';
   start_date?: string;
   end_date?: string;
   category_id?: string;
   account_id?: string;
+  amount_min?: number;
+  amount_max?: number;
 }
 
-
-export interface SpendingHeatmapData {
-  day: string;
-  value: number;
+// Category breakdown interface
+export interface CategoryBreakdown {
+  category_name: string;
+  category_id: string;
+  total_amount: number;
+  transaction_count: number;
+  percentage: number;
 }
 
-export interface NetWorthDataPoint {
+// Net worth trend data interface
+export interface NetWorthTrendData {
   date: string;
-  net_worth_cents: number;
   net_worth: number;
 }
 
-export interface CashFlowData {
-  start_balance_cents: number;
-  total_income_cents: number;
-  total_expenses_cents: number;
-  end_balance_cents: number;
-  start_balance: number;
-  total_income: number;
-  total_expenses: number;
-  end_balance: number;
+// Dashboard summary interface
+export interface DashboardSummary {
+  net_worth: number;
+  total_liquid: number;
+  total_debt: number;
+  total_investment: number;
+  financial_health_score: number;
+  financial_health_grade: string;
+  account_count: number;
+  recent_transactions: number;
+  recommendations: string[];
 }
 
 export class DashboardService extends BaseService {
-  protected baseEndpoint = '/analytics';
+  protected baseEndpoint = '/dashboard';
 
-  async getDashboardSummary(options?: { context?: ErrorContext }): Promise<DashboardAnalytics> {
-    const response = await this.get<{ success: boolean; data: DashboardAnalytics }>(
-      '/dashboard',
-      undefined,
-      { context: options?.context, useCache: true, cacheTtl: 5 * 60 * 1000 } // Cache for 5 mins
-    );
-
-    if (response && response.success && response.data) {
-      return response.data;
-    }
-    throw new Error('Failed to fetch dashboard summary or data is invalid.');
+  // Get dashboard data with filters
+  async getDashboardData(filters?: DashboardFilters) {
+    return this.get('', this.buildParams(filters || {}));
   }
 
-  async getDashboardAnalytics(filters?: DashboardFilters, options?: { context?: ErrorContext }): Promise<DashboardAnalytics> {
-    // For now, delegate to getDashboardSummary until proper filtered analytics are implemented
-    return this.getDashboardSummary(options);
+  // Get category breakdown  
+  async getCategoryBreakdown(filters?: DashboardFilters): Promise<CategoryBreakdown[]> {
+    return this.get('category-breakdown', this.buildParams(filters || {}));
   }
 
-  async getSpendingTrends(period: 'weekly' | 'monthly' = 'monthly', options?: { context?: ErrorContext }): Promise<SpendingTrend[]> {
-    // Placeholder implementation - would need actual API endpoint
-    return [];
+  // Get net worth trend data
+  async getNetWorthTrend(period: string = '90d'): Promise<NetWorthTrendData[]> {
+    return this.get('net-worth-trend', { period });
+  }
+
+  // Get dashboard summary
+  async getDashboardSummary(): Promise<DashboardSummary> {
+    return this.get('summary');
   }
 
   getDateRangePresets() {
@@ -107,46 +73,6 @@ export class DashboardService extends BaseService {
       'Last 30 days': { startDate: monthAgo, endDate: today },
       'Last year': { startDate: yearAgo, endDate: today },
     };
-  }
-
-
-  async getSpendingHeatmap(params: { start_date: string; end_date: string }, options?: { context?: ErrorContext }): Promise<SpendingHeatmapData[]> {
-    const response = await this.get<{ success: boolean; data: SpendingHeatmapData[] }>(
-      '/spending-heatmap',
-      { start_date: params.start_date, end_date: params.end_date },
-      { context: options?.context, useCache: true, cacheTtl: 10 * 60 * 1000 } // Cache for 10 mins
-    );
-
-    if (response && response.success && response.data) {
-      return response.data;
-    }
-    throw new Error('Failed to fetch spending heatmap data or data is invalid.');
-  }
-
-  async getNetWorthTrend(period: string = '90d', options?: { context?: ErrorContext }): Promise<NetWorthDataPoint[]> {
-    const response = await this.get<{ success: boolean; data: NetWorthDataPoint[]; message?: string }>(
-      '/net-worth-trend',
-      { period },
-      { context: options?.context, useCache: true, cacheTtl: 5 * 60 * 1000 } // Cache for 5 mins
-    );
-
-    if (response && response.success && response.data) {
-      return response.data;
-    }
-    throw new Error(response?.message || 'Failed to fetch net worth trend data or data is invalid.');
-  }
-
-  async getCashFlowWaterfall(params: { start_date: string; end_date: string }, options?: { context?: ErrorContext }): Promise<CashFlowData> {
-    const response = await this.get<{ success: boolean; data: CashFlowData }>(
-      '/cash-flow-waterfall',
-      { start_date: params.start_date, end_date: params.end_date },
-      { context: options?.context, useCache: true, cacheTtl: 10 * 60 * 1000 } // Cache for 10 mins
-    );
-
-    if (response && response.success && response.data) {
-      return response.data;
-    }
-    throw new Error('Failed to fetch cash flow waterfall data or data is invalid.');
   }
 }
 

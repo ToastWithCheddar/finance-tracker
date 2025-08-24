@@ -14,7 +14,6 @@ from .budget_alert_settings import BudgetAlertSettings
 from .goal import Goal
 from .notification import Notification, NotificationType, NotificationPriority
 from .ml_model import MLModelPerformance
-from .saved_filter import SavedFilter
 
 # Configure relationships after all models are loaded
 def configure_relationships():
@@ -42,5 +41,4 @@ __all__ = [
     "NotificationType",
     "NotificationPriority",
     "MLModelPerformance",
-    "SavedFilter",
 ]

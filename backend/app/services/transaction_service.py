@@ -290,8 +290,8 @@ class TransactionService:
 
         # Apply pagination
         query = query.order_by(Transaction.transaction_date.desc())
-        query = query.offset((pagination.page - 1) * pagination.per_page)
-        query = query.limit(pagination.per_page)
+        query = query.offset(pagination.offset)
+        query = query.limit(pagination.limit)
 
         return query.all(), total_count
 
@@ -352,8 +352,8 @@ class TransactionService:
 
         # Apply pagination to the query
         query = query.order_by(Transaction.transaction_date.desc())
-        query = query.offset((pagination.page - 1) * pagination.per_page)
-        query = query.limit(pagination.per_page)
+        query = query.offset(pagination.offset)
+        query = query.limit(pagination.limit)
         
         # Get the transactions
         transactions = query.all()
@@ -396,9 +396,9 @@ class TransactionService:
         return {
             "groups": sorted_groups,
             "total": total_count,
-            "page": pagination.page,
-            "per_page": pagination.per_page,
-            "pages": (total_count + pagination.per_page - 1) // pagination.per_page,
+            "limit": pagination.limit,
+            "offset": pagination.offset,
+            "has_more": total_count > pagination.offset + len(sorted_groups),
             "grouped": True
         }
 
@@ -473,23 +473,7 @@ class TransactionService:
             yield chunk
             offset += chunk_size
 
-    @staticmethod
-    def get_dashboard_analytics(db: Session, user_id: UUID, start_date: Optional[datetime] = None, end_date: Optional[datetime] = None) -> Dict[str, Any]:
-        """Get comprehensive dashboard analytics for a user - delegated to analytics service"""
-        from .transaction_analytics_service import get_transaction_analytics_service
-        return get_transaction_analytics_service().get_dashboard_analytics(db, user_id, start_date, end_date)
 
-    @staticmethod
-    def get_transaction_summary(db: Session, user_id: UUID, start_date: Optional[date] = None, end_date: Optional[date] = None, category_id: Optional[UUID] = None, search_query: Optional[str] = None) -> Dict[str, Any]:
-        """Get transaction summary statistics - delegated to analytics service"""
-        from .transaction_analytics_service import get_transaction_analytics_service
-        return get_transaction_analytics_service().get_transaction_summary(db, user_id, start_date, end_date, category_id, search_query)
-
-    @staticmethod
-    def get_spending_trends(db: Session, user_id: UUID, period: str = "monthly") -> List[Dict[str, Any]]:
-        """Get spending trends over time - delegated to analytics service"""
-        from .transaction_analytics_service import get_transaction_analytics_service
-        return get_transaction_analytics_service().get_spending_trends(db, user_id, period)
 
 
 # Provider function with lazy caching

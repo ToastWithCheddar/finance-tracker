@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from '@jest/globals';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Transactions } from '../Transactions';
@@ -6,7 +6,7 @@ import { renderWithProviders } from '../../__tests__/utils/testUtils';
 import * as transactionHooks from '../../hooks/useTransactions';
 
 // Mock the transaction hooks
-vi.mock('../../hooks/useTransactions');
+jest.mock('../../hooks/useTransactions');
 
 const mockTransactions = [
   {
@@ -54,12 +54,12 @@ const mockStats = {
 };
 
 const mockTransactionActions = {
-  create: vi.fn(),
-  update: vi.fn(),
-  delete: vi.fn(),
-  bulkDelete: vi.fn(),
-  importCSV: vi.fn(),
-  export: vi.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  delete: jest.fn(),
+  bulkDelete: jest.fn(),
+  importCSV: jest.fn(),
+  export: jest.fn(),
   isCreating: false,
   isUpdating: false,
   isDeleting: false,
@@ -70,24 +70,24 @@ const mockTransactionActions = {
 
 describe('Transactions Page', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    jest.clearAllMocks();
     
     // Mock useTransactions hook
-    vi.mocked(transactionHooks.useTransactions).mockReturnValue({
+    jest.mocked(transactionHooks.useTransactions).mockReturnValue({
       data: mockTransactionData,
       isLoading: false,
       error: null,
     } as any);
     
     // Mock useTransactionStats hook
-    vi.mocked(transactionHooks.useTransactionStats).mockReturnValue({
+    jest.mocked(transactionHooks.useTransactionStats).mockReturnValue({
       data: mockStats,
       isLoading: false,
       error: null,
     } as any);
     
     // Mock useTransactionActions hook
-    vi.mocked(transactionHooks.useTransactionActions).mockReturnValue(mockTransactionActions);
+    jest.mocked(transactionHooks.useTransactionActions).mockReturnValue(mockTransactionActions);
   });
 
   describe('Page Loading and Rendering', () => {
@@ -106,7 +106,7 @@ describe('Transactions Page', () => {
     });
 
     it('displays loading state when data is loading', () => {
-      vi.mocked(transactionHooks.useTransactions).mockReturnValue({
+      jest.mocked(transactionHooks.useTransactions).mockReturnValue({
         data: undefined,
         isLoading: true,
         error: null,
@@ -118,7 +118,7 @@ describe('Transactions Page', () => {
     });
 
     it('displays error state when there is an error', () => {
-      vi.mocked(transactionHooks.useTransactions).mockReturnValue({
+      jest.mocked(transactionHooks.useTransactions).mockReturnValue({
         data: undefined,
         isLoading: false,
         error: new Error('API Error'),
@@ -131,7 +131,7 @@ describe('Transactions Page', () => {
     });
 
     it('displays empty state when no transactions exist', () => {
-      vi.mocked(transactionHooks.useTransactions).mockReturnValue({
+      jest.mocked(transactionHooks.useTransactions).mockReturnValue({
         data: { items: [], total: 0, page: 1, pages: 1, per_page: 25 },
         isLoading: false,
         error: null,

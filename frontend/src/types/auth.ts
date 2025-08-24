@@ -31,11 +31,18 @@ export interface RegisterCredentials {
   [key: string]: unknown;
 }
 
+export interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  expires_in?: number;
+  expires_at?: number;
+  refresh_token?: string;
+  user_id?: string;
+}
+
 export interface AuthResponse {
   user: User;
-  accessToken: string;
-  refreshToken: string;
-  expiresIn?: number;
+  tokens: TokenResponse;
   // REMOVED: tokenType - Using Supabase-only authentication
 }
 

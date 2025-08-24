@@ -4,10 +4,12 @@ import { usePlaidActions } from '../../hooks/usePlaid';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
-import { Building2, RefreshCw } from 'lucide-react';
+import { Modal } from '../ui/Modal';
+import { PlaidLink } from '../plaid/PlaidLink';
+import { Building2, RefreshCw, AlertTriangle, ArrowLeft } from 'lucide-react';
 import { AccountTotals } from './AccountTotals';
 import { AccountListItem } from './AccountListItem';
-import { AddAccountModal } from './AddAccountModal';
+import { AccountReconciliation } from './AccountReconciliation';
 
 interface AccountsListProps {
   className?: string;
@@ -17,13 +19,14 @@ interface AccountsListProps {
 export function AccountsList({ className = '', showTitle = true }: AccountsListProps) {
   const [showModal, setShowModal] = useState(false);
   const [selectedTab, setSelectedTab] = useState<'all' | 'plaid' | 'manual'>('all');
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   
   // Single data source
   const { data: accounts, isLoading, error, refetch } = useAccounts();
   const { syncBalances, syncTransactions, isSyncingBalances, isSyncingTransactions } = usePlaidActions();
 
   // Derive filtered data locally
-  const { plaidAccounts, manualAccounts, displayAccounts } = useMemo(() => {
+  const { plaidAccounts, manualAccounts, displayAccounts, selectedAccount } = useMemo(() => {
     const plaid = accounts?.filter(account => !!account.plaid_account_id) || [];
     const manual = accounts?.filter(account => !account.plaid_account_id) || [];
     
@@ -31,23 +34,34 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
     if (selectedTab === 'plaid') display = plaid;
     else if (selectedTab === 'manual') display = manual;
 
+    const selected = accounts?.find(acc => acc.id === selectedAccountId) || null;
+
     return {
       plaidAccounts: plaid,
       manualAccounts: manual,
-      displayAccounts: display
+      displayAccounts: display,
+      selectedAccount: selected
     };
-  }, [accounts, selectedTab]);
+  }, [accounts, selectedTab, selectedAccountId]);
 
 
   // Modal handlers
   const openModal = () => setShowModal(true);
   const closeModal = () => setShowModal(false);
 
-  const handleAccountAdded = () => {
+  const handlePlaidSuccess = (accounts?: unknown[]) => {
+    console.log('✅ Successfully connected accounts:', accounts);
+    setShowModal(false);
     refetch();
   };
 
+  const handlePlaidError = () => {
+    setShowModal(false);
+  };
 
+  const handleReconciliationComplete = () => {
+    refetch(); // Refetch accounts to update balances
+  };
 
   if (isLoading) {
     return (
@@ -95,6 +109,30 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
     );
   }
 
+  if (selectedAccountId && selectedAccount) {
+    return (
+      <Card className={className}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="sm" onClick={() => setSelectedAccountId(null)}>
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Accounts
+            </Button>
+            <CardTitle className="flex items-center">
+              Reconcile: {selectedAccount.name}
+            </CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <AccountReconciliation 
+            accountId={selectedAccountId} 
+            onReconciliationComplete={handleReconciliationComplete}
+          />
+        </CardContent>
+      </Card>
+    )
+  }
+
   if (!accounts?.length) {
     return (
       <Card className={className}>
@@ -119,11 +157,14 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
         </CardContent>
 
         {/* Modal */}
-        <AddAccountModal
-          isOpen={showModal}
-          onClose={closeModal}
-          onSuccess={handleAccountAdded}
-        />
+        <Modal isOpen={showModal} onClose={closeModal} title="Connect Bank Account" size="md">
+          <div className="space-y-4">
+            <PlaidLink onSuccess={handlePlaidSuccess} onError={handlePlaidError} />
+            <Button onClick={closeModal} variant="ghost" size="sm" className="w-full">
+              Cancel
+            </Button>
+          </div>
+        </Modal>
       </Card>
     );
   }
@@ -182,7 +223,9 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
         {/* Accounts List */}
         <div className="space-y-3">
           {displayAccounts.map((account) => (
-            <AccountListItem key={account.id} account={account} />
+            <div key={account.id} onClick={() => setSelectedAccountId(account.id)} className="cursor-pointer">
+              <AccountListItem account={account} />
+            </div>
           ))}
         </div>
 
@@ -224,11 +267,14 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
       </CardContent>
 
       {/* Modal */}
-      <AddAccountModal
-        isOpen={showModal}
-        onClose={closeModal}
-        onSuccess={handleAccountAdded}
-      />
+      <Modal isOpen={showModal} onClose={closeModal} title="Connect Bank Account" size="md">
+        <div className="space-y-4">
+          <PlaidLink onSuccess={handlePlaidSuccess} onError={handlePlaidError} />
+          <Button onClick={closeModal} variant="ghost" size="sm" className="w-full">
+            Cancel
+          </Button>
+        </div>
+      </Modal>
     </Card>
   );
 }

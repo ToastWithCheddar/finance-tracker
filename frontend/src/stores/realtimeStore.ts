@@ -1,11 +1,11 @@
 import { create } from 'zustand';
+import { shallow } from 'zustand/shallow';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { toast } from 'sonner';
 
 import { queryClient, invalidateDashboard, upsertTransactionInCache, removeTransactionFromCache } from '../services/queryClient';
 import type { Transaction } from '../types/transaction';
 import type { MilestoneAlert } from '../types/goals';
-import type { ActivityEvent } from '../types/activity';
 import type { 
   TypedWebSocketMessage, 
   TransactionPayload,
@@ -27,7 +27,6 @@ import {
   isCategorizationRuleAction,
   isRuleApplication,
   isRuleEffectivenessUpdate,
-  isUserActivity
 } from '../types/websocket';
 
 /*****************************
@@ -102,8 +101,6 @@ interface RealtimeState {
   ruleApplications: Array<{ rule_id: string; rule_name: string; transaction_id: string; confidence_score: number; timestamp?: string }>;
   ruleEffectivenessUpdates: Array<{ rule_id: string; data: Record<string, unknown>; timestamp?: string }>;
 
-  /* Activity Feed */
-  recentActivities: ActivityEvent[];
 
   /* ====== Actions ====== */
   // Connection actions
@@ -112,6 +109,8 @@ interface RealtimeState {
   // Transaction actions
   addRecentTransaction: (transaction: RealtimeTransaction) => void;
   updateTransaction: (transaction: RealtimeTransaction) => void;
+  setRecentTransactions: (transactions: RealtimeTransaction[]) => void;
+  mergeRecentTransactions: (transactions: RealtimeTransaction[]) => void;
   addTransactionUpdate: (update: { type: string; transaction?: RealtimeTransaction; transactionId?: string }) => void;
   clearTransactionUpdates: () => void;
   markTransactionsSeen: () => void;
@@ -127,6 +126,8 @@ interface RealtimeState {
 
   // Notification actions
   addNotification: (notification: Omit<RealtimeNotification, 'id' | 'created_at' | 'read' | 'isNew'>) => void;
+  setNotifications: (items: RealtimeNotification[]) => void;
+  mergeNotifications: (items: RealtimeNotification[]) => void;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
   dismissNotification: (id: string) => void;
@@ -149,11 +150,6 @@ interface RealtimeState {
   clearRuleApplications: () => void;
   clearRuleEffectivenessUpdates: () => void;
 
-  // Activity actions
-  addActivity: (activity: ActivityEvent) => void;
-  markActivitySeen: (activityId: string) => void;
-  clearOldActivities: (keepLatest?: number) => void;
-  clearActivities: () => void;
 
   // WebSocket helpers
   handleWebSocketMessage: (message: Record<string, unknown>) => void;
@@ -188,7 +184,6 @@ export const useRealtimeStore = create<RealtimeState>()(
     ruleApplications: [],
     ruleEffectivenessUpdates: [],
     
-    recentActivities: [],
 
     /***** Connection actions *****/
     updateConnectionStatus: (status, reconnectAttempts = 0) => {
@@ -203,20 +198,68 @@ export const useRealtimeStore = create<RealtimeState>()(
 
     /***** Transaction actions *****/
     addRecentTransaction: (transaction) => {
-      set((state) => ({
-        recentTransactions: [
-          { ...transaction, isNew: true },
-          ...state.recentTransactions.slice(0, 49), // keep max 50
-        ],
-      }));
+      set((state) => {
+        const byId = new Map(state.recentTransactions.map((t) => [t.id, t] as const));
+        // Insert/overwrite with incoming transaction (mark new)
+        byId.set(transaction.id, { ...transaction, isNew: true });
+        // Sort helper: prefer transactionDate, fallback to created timestamps
+        const getTs = (t: any) => {
+          const d = (t.transactionDate || t.transaction_date || t.created_at || t.createdAt);
+          return d ? new Date(d).getTime() : 0;
+        };
+        const merged = Array.from(byId.values())
+          .sort((a, b) => getTs(b) - getTs(a))
+          .slice(0, 50);
+        return { recentTransactions: merged };
+      });
     },
 
     updateTransaction: (transaction) => {
-      set((state) => ({
-        recentTransactions: state.recentTransactions.map((t) =>
+      set((state) => {
+        const updated = state.recentTransactions.map((t) =>
           t.id === transaction.id ? { ...transaction, isNew: t.isNew } : t,
-        ),
-      }));
+        );
+        const getTs = (t: any) => {
+          const d = (t.transactionDate || t.transaction_date || t.created_at || t.createdAt);
+          return d ? new Date(d).getTime() : 0;
+        };
+        updated.sort((a, b) => getTs(b) - getTs(a));
+        return { recentTransactions: updated };
+      });
+    },
+
+    setRecentTransactions: (transactions) => {
+      // Replace list, dedup by id, sort by transactionDate desc, ensure isNew=false and max 50 kept
+      set(() => {
+        const byId = new Map<string, RealtimeTransaction>();
+        transactions.forEach((t) => byId.set(t.id, { ...t, isNew: false }));
+        const getTs = (t: any) => {
+          const d = (t.transactionDate || t.transaction_date || t.created_at || t.createdAt);
+          return d ? new Date(d).getTime() : 0;
+        };
+        const merged = Array.from(byId.values())
+          .sort((a, b) => getTs(b) - getTs(a))
+          .slice(0, 50);
+        return { recentTransactions: merged };
+      });
+    },
+
+    mergeRecentTransactions: (transactions) => {
+      set((state) => {
+        const byId = new Map(state.recentTransactions.map((t) => [t.id, t] as const));
+        for (const incoming of transactions) {
+          const existing = byId.get(incoming.id);
+          byId.set(incoming.id, { ...incoming, isNew: existing?.isNew ?? false });
+        }
+        const getTs = (t: any) => {
+          const d = (t.transactionDate || t.transaction_date || t.created_at || t.createdAt);
+          return d ? new Date(d).getTime() : 0;
+        };
+        const merged = Array.from(byId.values())
+          .sort((a, b) => getTs(b) - getTs(a))
+          .slice(0, 50);
+        return { recentTransactions: merged };
+      });
     },
 
     addTransactionUpdate: (update) => {
@@ -315,6 +358,34 @@ export const useRealtimeStore = create<RealtimeState>()(
       set((state) => ({
         notifications: [newNotification, ...state.notifications.slice(0, 49)], // keep max 50
       }));
+    },
+
+    setNotifications: (items) => {
+      set(() => ({
+        notifications: items.slice(0, 50).map((n) => ({ ...n, isNew: false })),
+      }));
+    },
+
+    mergeNotifications: (items) => {
+      set((state) => {
+        const byId = new Map(state.notifications.map((n) => [n.id, n] as const));
+        for (const incoming of items) {
+          const existing = byId.get(incoming.id);
+          if (existing) {
+            byId.set(incoming.id, {
+              ...incoming,
+              read: existing.read,
+              isNew: false,
+            });
+          } else {
+            byId.set(incoming.id, { ...incoming, isNew: false });
+          }
+        }
+        const merged = Array.from(byId.values())
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 50);
+        return { notifications: merged };
+      });
     },
 
     markNotificationRead: (id) => {
@@ -433,33 +504,6 @@ export const useRealtimeStore = create<RealtimeState>()(
       set({ ruleEffectivenessUpdates: [] });
     },
 
-    /***** Activity actions *****/
-    addActivity: (activity) => {
-      set((state) => ({
-        recentActivities: [
-          { ...activity, isNew: true },
-          ...state.recentActivities.slice(0, 49), // keep max 50
-        ],
-      }));
-    },
-
-    markActivitySeen: (activityId) => {
-      set((state) => ({
-        recentActivities: state.recentActivities.map((activity) =>
-          activity.id === activityId ? { ...activity, isNew: false } : activity,
-        ),
-      }));
-    },
-
-    clearOldActivities: (keepLatest = 20) => {
-      set((state) => ({
-        recentActivities: state.recentActivities.slice(0, keepLatest),
-      }));
-    },
-
-    clearActivities: () => {
-      set({ recentActivities: [] });
-    },
 
     /***** WebSocket helpers *****/
     handleWebSocketMessage: (message) => {
@@ -537,6 +581,10 @@ export const useRealtimeStore = create<RealtimeState>()(
             createdAt: transactionData.createdAt!,
             updatedAt: transactionData.updatedAt!,
           } as any);
+          // Invalidate aggregates and dashboards dependent on transactions
+          queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+          invalidateDashboard();
           
         } else if (typedMessage.type === MessageType.TRANSACTION_UPDATED) {
           const now = Date.now();
@@ -586,6 +634,10 @@ export const useRealtimeStore = create<RealtimeState>()(
             createdAt: realtimeTransaction.createdAt!,
             updatedAt: realtimeTransaction.updatedAt!,
           } as any);
+          // Invalidate aggregates and dashboards dependent on transactions
+          queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+          invalidateDashboard();
           
         } else if (typedMessage.type === MessageType.TRANSACTION_DELETED) {
           const now = Date.now();
@@ -605,6 +657,10 @@ export const useRealtimeStore = create<RealtimeState>()(
           get().addTransactionUpdate({ type: 'deleted', transactionId: payload.id });
           // Remove from any cached list pages
           removeTransactionFromCache(payload.id);
+          // Invalidate aggregates and dashboards dependent on transactions
+          queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+          invalidateDashboard();
           
         } else if (typedMessage.type === MessageType.BULK_TRANSACTIONS_IMPORTED) {
           // Handle bulk import notification
@@ -613,6 +669,11 @@ export const useRealtimeStore = create<RealtimeState>()(
             title: 'Transactions Imported',
             message: `Successfully imported transactions`,
           });
+          // Refresh lists and aggregates after import
+          queryClient.invalidateQueries({ queryKey: ['transactions'] });
+          queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+          invalidateDashboard();
           
         } else if (isBudgetAlert(typedMessage)) {
           get().addBudgetAlert(typedMessage.payload);
@@ -661,7 +722,8 @@ export const useRealtimeStore = create<RealtimeState>()(
           // Invalidate queries to trigger refetch
           queryClient.invalidateQueries({ queryKey: ['transactions'] });
           queryClient.invalidateQueries({ queryKey: ['accounts'] });
-          queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+          // Note: dashboard-analytics endpoint no longer exists, invalidating transaction stats instead
+          queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
           
         } else if (typedMessage.type === MessageType.TRANSACTION_SYNC_COMPLETE) {
           const payload = typedMessage.payload as TransactionSyncPayload;
@@ -776,26 +838,6 @@ export const useRealtimeStore = create<RealtimeState>()(
           // Invalidate rule effectiveness queries
           queryClient.invalidateQueries({ queryKey: ['rule-effectiveness', payload.rule_id] });
           
-        } else if (isUserActivity(typedMessage)) {
-          const payload = typedMessage.payload as any;
-          
-          const activity: ActivityEvent = {
-            id: payload.id,
-            type: payload.type,
-            title: payload.title,
-            description: payload.description,
-            timestamp: payload.created_at,
-            table_name: payload.table_name,
-            record_id: payload.record_id,
-            metadata: payload.metadata,
-            isNew: true,
-          };
-          
-          get().addActivity(activity);
-          
-          // Invalidate activity feed queries
-          queryClient.invalidateQueries({ queryKey: ['activity-feed'] });
-          
         } else {
           console.warn('[RealtimeStore] Unhandled WebSocket message type:', typedMessage.type);
         }
@@ -820,7 +862,7 @@ export const useRealtimeStore = create<RealtimeState>()(
  *****************************/
 
 export const useConnectionStatus = () =>
-  useRealtimeStore((state) => state.connectionStatus);
+  useRealtimeStore((state) => state.connectionStatus, shallow);
 
 export const useRealtimeTransactions = () =>
   useRealtimeStore((state) => state.recentTransactions);
@@ -835,11 +877,14 @@ export const useBudgetAlerts = () =>
   useRealtimeStore((state) => state.budgetAlerts);
 
 export const useRealtimeStats = () =>
-  useRealtimeStore((state) => ({
-    transactionCount: state.recentTransactions.length,
-    newTransactionCount: state.recentTransactions.filter((t) => t.isNew).length,
-    notificationCount: state.notifications.length,
-  }));
+  useRealtimeStore(
+    (state) => ({
+      transactionCount: state.recentTransactions.length,
+      newTransactionCount: state.recentTransactions.filter((t) => t.isNew).length,
+      notificationCount: state.notifications.length,
+    }),
+    shallow,
+  );
 
 export const useRecurringUpdates = () =>
   useRealtimeStore((state) => state.recurringUpdates);
@@ -854,23 +899,15 @@ export const useRuleEffectivenessUpdates = () =>
   useRealtimeStore((state) => state.ruleEffectivenessUpdates);
 
 export const useRealtimeAutomationStats = () =>
-  useRealtimeStore((state) => ({
-    ruleUpdateCount: state.ruleUpdates.length,
-    ruleApplicationCount: state.ruleApplications.length,
-    recurringUpdateCount: state.recurringUpdates.length,
-  }));
+  useRealtimeStore(
+    (state) => ({
+      ruleUpdateCount: state.ruleUpdates.length,
+      ruleApplicationCount: state.ruleApplications.length,
+      recurringUpdateCount: state.recurringUpdates.length,
+    }),
+    shallow,
+  );
 
-export const useRealtimeActivities = () =>
-  useRealtimeStore((state) => state.recentActivities);
-
-export const useNewActivitiesCount = () =>
-  useRealtimeStore((state) => state.recentActivities.filter((a) => a.isNew).length);
-
-export const useActivityStats = () =>
-  useRealtimeStore((state) => ({
-    totalActivities: state.recentActivities.length,
-    newActivities: state.recentActivities.filter((a) => a.isNew).length,
-  }));
 
 /*****************************
  *  Debug subscriptions (can be removed in prod)

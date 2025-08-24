@@ -92,16 +92,13 @@ export interface Budget {
     alerts: BudgetAlert[];
   }
 
-  // Budget Alert Settings interfaces
+  // Budget Alert Settings interfaces (simplified to in-app only)
   export interface BudgetAlertSettings {
     id: string;
     budget_id: string;
     user_id: string;
     alerts_enabled: boolean;
     alert_thresholds: number[];
-    email_alerts: boolean;
-    push_alerts: boolean;
-    in_app_alerts: boolean;
     alert_frequency: 'immediate' | 'daily' | 'weekly';
     suppress_repeated_alerts: boolean;
     end_of_period_warning: boolean;
@@ -116,9 +113,6 @@ export interface Budget {
   export interface CreateBudgetAlertSettingsRequest {
     alerts_enabled?: boolean;
     alert_thresholds?: number[];
-    email_alerts?: boolean;
-    push_alerts?: boolean;
-    in_app_alerts?: boolean;
     alert_frequency?: 'immediate' | 'daily' | 'weekly';
     suppress_repeated_alerts?: boolean;
     end_of_period_warning?: boolean;
@@ -134,7 +128,6 @@ export interface Budget {
     threshold: number;
     message: string;
     priority: string;
-    channels: string[];
   }
 
   export interface BudgetAlertTest {

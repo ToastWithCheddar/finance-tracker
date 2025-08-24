@@ -283,7 +283,7 @@ class TestTransactionServiceGetTransactionsWithFilters:
             end_date=date(2025, 1, 31),
             category_id=uuid4()
         )
-        pagination = TransactionPagination(page=1, per_page=25)
+        pagination = TransactionPagination(limit=25, offset=0)
         
         mock_transactions = [
             Transaction(id=uuid4(), user_id=user_id, amount_cents=1000),
@@ -322,7 +322,7 @@ class TestTransactionServiceGetTransactionsWithFilters:
         user_id = uuid4()
         
         filters = TransactionFilter()
-        pagination = TransactionPagination(page=1, per_page=25)
+        pagination = TransactionPagination(limit=25, offset=0)
         
         mock_query = mock_db.query.return_value
         mock_query.options.return_value = mock_query

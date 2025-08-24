@@ -1,5 +1,5 @@
-import { accountService } from '../../services/accountService';
-import { getAccountIcon, getHealthIcon } from '../../utils/account';
+import { getAccountIcon, getHealthIcon, getAccountTypeLabel, getConnectionHealthColor, getConnectionHealthLabel } from '../../utils/account';
+import { CurrencyUtils } from '../../utils/currency';
 import type { Account } from '../../services/accountService';
 
 interface AccountListItemProps {
@@ -27,14 +27,14 @@ export function AccountListItem({ account, className = '' }: AccountListItemProp
           
           <div className="flex items-center space-x-2 mt-1">
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              {accountService.getAccountTypeLabel(account.account_type)}
+              {getAccountTypeLabel(account.account_type)}
             </p>
             
             {account.plaid_account_id && (
               <>
                 <span className="text-gray-300">•</span>
-                <p className={`text-xs ${accountService.getConnectionHealthColor(account.connection_health)}`}>
-                  {accountService.getConnectionHealthLabel(account.connection_health)}
+                <p className={`text-xs ${getConnectionHealthColor(account.connection_health)}`}>
+                  {getConnectionHealthLabel(account.connection_health)}
                 </p>
               </>
             )}
@@ -44,7 +44,7 @@ export function AccountListItem({ account, className = '' }: AccountListItemProp
 
       <div className="text-right">
         <p className={`font-semibold ${account.balance_cents >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {accountService.formatBalance(account.balance_cents)}
+          {CurrencyUtils.formatCents(account.balance_cents)}
         </p>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {account.currency}

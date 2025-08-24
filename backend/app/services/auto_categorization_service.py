@@ -13,7 +13,7 @@ from uuid import UUID
 from collections import defaultdict
 from cachetools import TTLCache
 
-from app.config import settings, Settings
+from app.config import settings, Settings, get_settings
 
 from app.models.categorization_rule import CategorizationRule
 from app.models.transaction import Transaction
@@ -266,10 +266,6 @@ class AutoCategorizationService:
         """Check if a rule matches a transaction"""
         
         try:
-            # Check merchant conditions
-            if not rule.matches_merchant(transaction.merchant, transaction.description):
-                return False
-            
             # Check description conditions
             if not rule.matches_description(transaction.description):
                 return False
@@ -476,7 +472,9 @@ class AutoCategorizationService:
                 "active_rules": 0,
                 "total_applications": 0,
                 "rules_never_used": 0,
-                "average_success_rate": 0.0
+                "average_success_rate": 0.0,
+                "average_success_rate_percentage": 0.0,
+                "most_used_rule": None
             }
         
         total_applications = sum(rule.times_applied for rule in rules)

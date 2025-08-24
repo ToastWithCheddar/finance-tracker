@@ -51,7 +51,6 @@ class TestAutoCategorizationService:
         rule.last_applied_at = None
         
         # Mock the matching methods
-        rule.matches_merchant = Mock(return_value=True)
         rule.matches_description = Mock(return_value=True)
         rule.matches_amount = Mock(return_value=True)
         rule.matches_account_type = Mock(return_value=True)
@@ -112,7 +111,6 @@ class TestAutoCategorizationService:
         result = self.service._rule_matches_transaction(rule, transaction)
         
         assert result is True
-        rule.matches_merchant.assert_called_once()
         rule.matches_description.assert_called_once()
         rule.matches_amount.assert_called_once()
         rule.matches_account_type.assert_called_once()
@@ -120,18 +118,7 @@ class TestAutoCategorizationService:
         rule.matches_account_id.assert_called_once()
         rule.exclude_category.assert_called_once()
     
-    def test_rule_matches_transaction_merchant_fails(self):
-        """Test that rule matching fails when merchant condition fails"""
-        rule = self.create_mock_rule()
-        rule.matches_merchant.return_value = False
-        transaction = self.create_mock_transaction()
-        
-        result = self.service._rule_matches_transaction(rule, transaction)
-        
-        assert result is False
-        rule.matches_merchant.assert_called_once()
-        # Other conditions should not be checked after first failure
-        rule.matches_description.assert_not_called()
+
     
     def test_apply_rule_actions_category_change(self):
         """Test applying rule actions changes transaction category"""

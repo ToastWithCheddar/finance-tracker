@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Plus, Filter, AlertCircle, TrendingUp, DollarSign, Target } from 'lucide-react';
 import { Button, Card, CardHeader, CardTitle, CardContent, LoadingSpinner } from '../components/ui';
-import { BudgetCard } from '../components/budgets/BudgetCard';
+import { ErrorState } from '../components/ui/ErrorState';
+import { EmptyState } from '../components/ui/EmptyState';
+import { BudgetCardContainer } from '../components/budgets/BudgetCardContainer';
 import { BudgetForm } from '../components/budgets/BudgetForm';
 import { useBudgets, useBudgetSummary, useBudgetAlerts, useBudgetActions } from '../hooks/useBudgets';
 import { budgetService } from '../services/budgetService';
@@ -306,18 +308,19 @@ export function Budgets() {
 
         {/* Error State */}
         {budgetsError && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-8">
-            <p className="text-red-600 dark:text-red-400">
-              Failed to load budgets. Please try refreshing the page.
-            </p>
-          </div>
+          <ErrorState
+            error={budgetsError}
+            message="Failed to load budgets. Please try refreshing the page."
+            onRetry={() => window.location.reload()}
+            className="mb-8"
+          />
         )}
 
         {/* Budget List */}
         {!isLoading && budgets.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {budgets.map((budget) => (
-              <BudgetCard
+              <BudgetCardContainer
                 key={budget.id}
                 budget={budget}
                 onEdit={handleEditBudget}
@@ -331,27 +334,23 @@ export function Budgets() {
         {/* Empty State */}
         {!isLoading && budgets.length === 0 && (
           <Card>
-            <CardContent className="text-center py-12">
-              <Target className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-                {hasActiveFilters ? 'No budgets match your filters' : 'No budgets yet'}
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-6">
-                {hasActiveFilters 
+            <CardContent>
+              <EmptyState
+                icon={<Target className="h-12 w-12 text-gray-400 mx-auto" />}
+                title={hasActiveFilters ? 'No budgets match your filters' : 'No budgets yet'}
+                description={hasActiveFilters 
                   ? 'Try adjusting your filters to see more results.'
                   : 'Create your first budget to start tracking your spending.'
                 }
-              </p>
-              {hasActiveFilters ? (
-                <Button variant="ghost" onClick={clearFilters}>
-                  Clear Filters
-                </Button>
-              ) : (
-                <Button onClick={handleCreateBudget}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Your First Budget
-                </Button>
-              )}
+                action={hasActiveFilters ? {
+                  label: 'Clear Filters',
+                  onClick: clearFilters,
+                  variant: 'secondary'
+                } : {
+                  label: 'Create Your First Budget',
+                  onClick: handleCreateBudget
+                }}
+              />
             </CardContent>
           </Card>
         )}

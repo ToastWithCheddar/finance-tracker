@@ -30,7 +30,7 @@ const CustomTooltip: React.FC<TooltipProps> = ({ active, payload }) => {
           Transactions: {data.transaction_count}
         </p>
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Percentage: {data.percentage.toFixed(1)}%
+          Percentage: {(Number((data as any).percentage_expense ?? data.percentage) as number).toFixed(1)}%
         </p>
       </div>
     );
@@ -39,14 +39,20 @@ const CustomTooltip: React.FC<TooltipProps> = ({ active, payload }) => {
 };
 
 export function CategoryPieChart({ data, title = "Spending by Category" }: CategoryPieChartProps) {
-  // Filter out zero amounts and prepare data
-  const chartData = data
-    .filter(item => item.total_amount > 0)
-    .slice(0, 10) // Limit to top 10 categories
-    .map(item => ({
-      ...item,
-      value: Math.abs(item.total_amount), // Ensure positive values for pie chart
-    }));
+  // Prepare expense-only data and recompute percentages relative to total expenses
+  const expensesOnly = data.filter(item => item.total_amount < 0);
+  const totalExpenseAbs = expensesOnly.reduce((sum, it) => sum + Math.abs(it.total_amount), 0) || 0;
+  const chartData = expensesOnly
+    .slice(0, 10)
+    .map(item => {
+      const value = Math.abs(item.total_amount);
+      const pct = totalExpenseAbs > 0 ? (value / totalExpenseAbs) * 100 : 0;
+      return {
+        ...item,
+        value,
+        percentage_expense: pct,
+      } as any;
+    });
 
   if (chartData.length === 0) {
     return (
@@ -80,7 +86,8 @@ export function CategoryPieChart({ data, title = "Spending by Category" }: Categ
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ category_name, percentage }) => `${category_name} ${percentage.toFixed(1)}%`}
+                // Use recomputed expense-only percentage for labels
+                label={({ category_name, percentage_expense }: any) => `${category_name} ${Number(percentage_expense).toFixed(1)}%`}
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="value"

@@ -40,7 +40,7 @@ class TestCategorizationRulesRouter:
             "description": "Categorize coffee shop purchases",
             "priority": 50,
             "conditions": {
-                "merchant_contains": ["starbucks", "coffee"],
+                "description_contains": ["starbucks", "coffee"],
                 "amount_range": {"min_cents": 100, "max_cents": 2000}
             },
             "actions": {
@@ -113,7 +113,7 @@ class TestCategorizationRulesRouter:
     def test_test_rule_conditions(self):
         """Test testing rule conditions against transactions"""
         test_conditions = {
-            "merchant_contains": ["test", "merchant"],
+            "description_contains": ["test", "description"],
             "amount_range": {"min_cents": 1000}
         }
         

@@ -4,24 +4,21 @@
  */
 import { transactionService as importedTransactionService, TransactionService } from './transactionService';
 import { budgetService as importedBudgetService, BudgetService } from './budgetService';
-import { savedFilterService as importedSavedFilterService } from './savedFilterService';
-import { timelineService as importedTimelineService } from './timelineService';
+import { goalService as importedGoalService, GoalService } from './goalService';
 import { type ServiceResponse, type ServiceError, type ServiceResult } from './base/BaseService';
 
 // Service instances - using the enhanced legacy services
 const services = {
   transaction: importedTransactionService,
   budget: importedBudgetService,
-  savedFilter: importedSavedFilterService,
-  timeline: importedTimelineService,
+  goal: importedGoalService,
 } as const;
 
 // Service registry interface
 export interface IServiceRegistry {
   readonly transaction: TransactionService;
   readonly budget: BudgetService;
-  readonly savedFilter: typeof importedSavedFilterService;
-  readonly timeline: typeof importedTimelineService;
+  readonly goal: GoalService;
 }
 
 /**
@@ -32,8 +29,7 @@ export class ServiceRegistry implements IServiceRegistry {
   
   readonly transaction = services.transaction;
   readonly budget = services.budget;
-  readonly savedFilter = services.savedFilter;
-  readonly timeline = services.timeline;
+  readonly goal = services.goal;
   
   private constructor() {
     // Private constructor for singleton
@@ -58,16 +54,14 @@ export class ServiceRegistry implements IServiceRegistry {
       return {
         transaction: true,
         budget: true,
-        savedFilter: true,
-        timeline: true,
+        goal: true,
       };
     } catch (error) {
       console.error('Service health check failed:', error);
       return {
         transaction: false,
         budget: false,
-        savedFilter: false,
-        timeline: false,
+        goal: false,
       };
     }
   }
@@ -90,8 +84,7 @@ export const serviceRegistry = ServiceRegistry.getInstance();
 // Export individual services for direct access
 export const registryTransactionService = serviceRegistry.transaction;
 export const registryBudgetService = serviceRegistry.budget;
-export const registrySavedFilterService = serviceRegistry.savedFilter;
-export const registryTimelineService = serviceRegistry.timeline;
+export const registryGoalService = serviceRegistry.goal;
 
 // Re-export service utilities
 export type { ServiceResponse, ServiceError, ServiceResult };

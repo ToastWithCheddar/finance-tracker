@@ -1,32 +1,30 @@
-from fastapi import FastAPI, HTTPException, Request, status
-from fastapi.middleware.cors import CORSMiddleware
-# from fastapi.middleware.trustedhost import TrustedHostMiddleware  # Not needed for development
-from fastapi.responses import JSONResponse
-from fastapi.exception_handlers import (
-    http_exception_handler,
-    request_validation_exception_handler,
-)
-from fastapi.exceptions import RequestValidationError
+# Standard library imports
 from contextlib import asynccontextmanager
-import uvicorn
 import logging
 import time
 import asyncio
 from datetime import datetime, timezone
 
+# Third-party imports
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
+import uvicorn
+
+# Local imports
 from app.config import settings
 from app.database import engine, check_database_health, create_database
 from app.models import Base
-from app.routes import auth, users, health, categories, transactions, budget, analytics, webhooks, notifications, ml, saved_filters, websockets, categorization_rules, merchants
+from app.routes import auth, users, health, categories, transactions, budget, webhooks, notifications, ml, websockets, categorization_rules, dashboard, goals
 from app.routes import accounts_basic, accounts_plaid, accounts_sync, accounts_reconciliation
 from app.routes import recurring_plaid
 from app.core.exceptions import FinanceTrackerException
 from app.schemas.error import ErrorResponse, ValidationErrorResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-
 
 # Configure logging for development
 level_name = str(getattr(settings, "LOG_LEVEL", "DEBUG")).upper()
@@ -42,8 +40,6 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
-# Relaxed rate limiting for development
-limiter = Limiter(key_func=get_remote_address, default_limits=["1000 per minute"])
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -135,10 +131,12 @@ app = FastAPI(
     },
 )
 
+# Rate limiting setup
+limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS Middleware
+# Middleware setup
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.ALLOWED_ORIGINS,
@@ -231,7 +229,7 @@ async def finance_tracker_exception_handler(request: Request, exc: FinanceTracke
     
     return JSONResponse(
         status_code=exc.status_code,
-        content=error_response.model_dump()
+        content=error_response.model_dump(mode='json')
     )
 
 @app.exception_handler(HTTPException)
@@ -254,7 +252,7 @@ async def custom_http_exception_handler(request: Request, exc: HTTPException):
     
     return JSONResponse(
         status_code=exc.status_code,
-        content=error_response.model_dump()
+        content=error_response.model_dump(mode='json')
     )
 
 @app.exception_handler(RequestValidationError)
@@ -288,9 +286,10 @@ async def custom_validation_exception_handler(request: Request, exc: RequestVali
         validation_errors=validation_errors
     )
     
-    return JSONResponse(
+    return Response(
+        content=error_response.model_dump_json(),
         status_code=422,
-        content=error_response.model_dump()
+        media_type="application/json"
     )
 
 @app.exception_handler(Exception)
@@ -320,7 +319,7 @@ async def general_exception_handler(request: Request, exc: Exception):
     
     return JSONResponse(
         status_code=500,
-        content=error_response.model_dump()
+        content=error_response.model_dump(mode='json')
     )
 
 def _is_sensitive_details(details: dict) -> bool:
@@ -427,6 +426,27 @@ app.include_router(
     }
 )
 
+app.include_router(
+    goals.router,
+    prefix="/api",
+    tags=["Goals"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
+
+app.include_router(
+    dashboard.router,
+    prefix="/api/dashboard",
+    tags=["Dashboard"],
+    responses={
+        401: {"description": "Unauthorized"},
+        404: {"description": "Not Found"},
+        422: {"description": "Validation Error"},
+    }
+)
 
 app.include_router(
     accounts_basic.router,
@@ -472,16 +492,6 @@ app.include_router(
     }
 )
 
-app.include_router(
-    analytics.router,
-    prefix="/api/analytics",
-    tags=["Analytics & Dashboard"],
-    responses={
-        401: {"description": "Unauthorized"},
-        404: {"description": "Not Found"},
-        422: {"description": "Validation Error"},
-    }
-)
 
 
 app.include_router(
@@ -515,16 +525,7 @@ app.include_router(
 )
 
 
-app.include_router(
-    saved_filters.router,
-    prefix="/api",
-    tags=["Saved Filters"],
-    responses={
-        401: {"description": "Unauthorized"},
-        404: {"description": "Not Found"},
-        422: {"description": "Validation Error"},
-    }
-)
+# Note: Saved filters router removed as it was empty
 
 
 app.include_router(
@@ -538,16 +539,7 @@ app.include_router(
     }
 )
 
-app.include_router(
-    merchants.router,
-    prefix="/api",
-    tags=["Merchant Recognition"],
-    responses={
-        401: {"description": "Unauthorized"},
-        404: {"description": "Not Found"},
-        422: {"description": "Validation Error"},
-    }
-)
+
 
 # Realtime WebSocket routes (no prefix)
 app.include_router(
@@ -571,13 +563,12 @@ async def api_base():
             "transactions": "/api/transactions",
             "recurring": "/api/recurring",
             "budgets": "/api/budgets",
+            "dashboard": "/api/dashboard",
             "accounts": "/api/accounts",
-            "analytics": "/api/analytics",
             "webhooks": "/api/webhooks",
             "notifications": "/api/notifications",
-            "saved_filters": "/api/saved-filters",
             "categorization_rules": "/api/categorization-rules",
-            "merchants": "/api/merchants",
+
             "ml": "/api/ml",
             "health": "/health",
             "docs": "/docs" if settings.DEBUG else None,

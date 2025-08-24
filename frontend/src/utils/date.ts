@@ -70,3 +70,16 @@ export function parseDate(dateStr: string): Date | null {
   const date = new Date(dateStr);
   return isNaN(date.getTime()) ? null : date;
 }
+
+/**
+ * Format date to locale string - backward compatibility function
+ */
+export function formatDate(date: string | Date, options?: Intl.DateTimeFormatOptions): string {
+  const dateObj = typeof date === 'string' ? new Date(date) : date;
+  return dateObj.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    ...options,
+  });
+}

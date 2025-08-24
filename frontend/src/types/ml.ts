@@ -35,7 +35,6 @@ export interface MLFeedback {
 
 export interface MLTrainingData {
   transactionDescription: string;
-  merchant?: string;
   amount: number;
   categoryId: string;
   userId: string;
@@ -56,7 +55,6 @@ export interface MLModelPerformance {
 
 export interface MLCategorizeRequest {
   description: string;
-  merchant?: string;
   amountCents: number;
   accountId?: string;
   userId?: string;
@@ -77,7 +75,6 @@ export interface MLBatchCategorizeRequest {
   transactions: Array<{
     id?: string;
     description: string;
-    merchant?: string;
     amountCents: number;
   }>;
   userId?: string;
@@ -106,7 +103,6 @@ export interface MLFeedbackRequest {
   userAction: 'accepted' | 'corrected' | 'rejected';
   confidence: number;
   description: string;
-  merchant?: string;
   amountCents: number;
 }
 

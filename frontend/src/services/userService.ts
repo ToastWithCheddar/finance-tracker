@@ -1,11 +1,18 @@
 import { apiClient } from './api';
-import type { ActivityEvent, ActivityFeedOptions, ActivityResponse } from '../types/activity';
 
 export interface UserUpdateData {
   first_name?: string;
   last_name?: string;
   display_name?: string;
   avatar_url?: string;
+  locale?: string;
+  timezone?: string;
+  currency?: string;
+  notifications_enabled?: boolean;
+  theme?: string;
+  default_items_per_page?: number;
+  auto_categorization_enabled?: boolean;
+  spending_alert_threshold_cents?: number | null;
   [key: string]: unknown;
 }
 
@@ -21,6 +28,11 @@ export interface UserProfile {
   currency: string;
   is_active: boolean;
   is_verified: boolean;
+  notifications_enabled: boolean;
+  theme: string;
+  default_items_per_page: number;
+  auto_categorization_enabled: boolean;
+  spending_alert_threshold_cents?: number | null;
   created_at: string;
   updated_at?: string;
 }

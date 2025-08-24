@@ -204,7 +204,6 @@ def sample_goal_data() -> dict:
         "priority": "medium",
         "status": "active",
         "monthly_target_cents": 10000,  # $100.00
-        "auto_contribute": False,
         "milestone_percentage": 25
     }
 

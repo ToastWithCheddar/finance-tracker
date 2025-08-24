@@ -28,7 +28,6 @@ export function BudgetCardContainer({
         onDelete={onDelete}
         isLoading={isLoading}
         onOpenAlertSettings={() => setShowAlertSettings(true)}
-        onOpenCalendar={() => setShowCalendar(true)}
       />
 
       {/* Modal components managed by container */}

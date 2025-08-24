@@ -2,7 +2,7 @@
 Error response schemas for standardized API error handling.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -18,17 +18,10 @@ class ErrorDetail(BaseModel):
 class ErrorResponse(BaseModel):
     """Standardized error response schema"""
     
-    error: bool = Field(True, description="Always true for error responses")
-    message: str = Field(..., description="Human-readable error message")
-    error_code: str = Field(..., description="Machine-readable error code")
-    status_code: int = Field(..., description="HTTP status code")
-    timestamp: datetime = Field(..., description="When the error occurred")
-    path: str = Field(..., description="API path that caused the error")
-    request_id: Optional[str] = Field(None, description="Request ID for tracing")
-    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: lambda dt: dt.isoformat()},
+        json_schema_extra={
             "example": {
                 "error": True,
                 "message": "Resource not found",
@@ -40,18 +33,25 @@ class ErrorResponse(BaseModel):
                 "details": {}
             }
         }
+    )
+    
+    error: bool = Field(True, description="Always true for error responses")
+    message: str = Field(..., description="Human-readable error message")
+    error_code: str = Field(..., description="Machine-readable error code")
+    status_code: int = Field(..., description="HTTP status code")
+    timestamp: datetime = Field(..., description="When the error occurred")
+    path: str = Field(..., description="API path that caused the error")
+    request_id: Optional[str] = Field(None, description="Request ID for tracing")
+    details: Optional[Dict[str, Any]] = Field(None, description="Additional error details")
 
 
 class ValidationErrorResponse(ErrorResponse):
     """Error response for validation failures"""
     
-    validation_errors: list[ErrorDetail] = Field(
-        ..., 
-        description="List of validation errors"
-    )
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: lambda dt: dt.isoformat()},
+        json_schema_extra={
             "example": {
                 "error": True,
                 "message": "Validation failed",
@@ -70,15 +70,21 @@ class ValidationErrorResponse(ErrorResponse):
                 ]
             }
         }
+    )
+    
+    validation_errors: list[ErrorDetail] = Field(
+        ..., 
+        description="List of validation errors"
+    )
 
 
 class AuthenticationErrorResponse(ErrorResponse):
     """Error response for authentication failures"""
     
-    auth_scheme: Optional[str] = Field(None, description="Authentication scheme required")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: lambda dt: dt.isoformat()},
+        json_schema_extra={
             "example": {
                 "error": True,
                 "message": "Authentication required",
@@ -91,15 +97,18 @@ class AuthenticationErrorResponse(ErrorResponse):
                 "auth_scheme": "Bearer"
             }
         }
+    )
+    
+    auth_scheme: Optional[str] = Field(None, description="Authentication scheme required")
 
 
 class AuthorizationErrorResponse(ErrorResponse):
     """Error response for authorization failures"""
     
-    required_permission: Optional[str] = Field(None, description="Required permission")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: lambda dt: dt.isoformat()},
+        json_schema_extra={
             "example": {
                 "error": True,
                 "message": "Access denied",
@@ -112,16 +121,18 @@ class AuthorizationErrorResponse(ErrorResponse):
                 "required_permission": "account:read"
             }
         }
+    )
+    
+    required_permission: Optional[str] = Field(None, description="Required permission")
 
 
 class RateLimitErrorResponse(ErrorResponse):
     """Error response for rate limit exceeded"""
     
-    retry_after: Optional[int] = Field(None, description="Seconds to wait before retrying")
-    limit: Optional[str] = Field(None, description="Rate limit that was exceeded")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: lambda dt: dt.isoformat()},
+        json_schema_extra={
             "example": {
                 "error": True,
                 "message": "Rate limit exceeded",
@@ -135,16 +146,19 @@ class RateLimitErrorResponse(ErrorResponse):
                 "limit": "1000 per minute"
             }
         }
+    )
+    
+    retry_after: Optional[int] = Field(None, description="Seconds to wait before retrying")
+    limit: Optional[str] = Field(None, description="Rate limit that was exceeded")
 
 
 class ExternalServiceErrorResponse(ErrorResponse):
     """Error response for external service failures"""
     
-    service_name: str = Field(..., description="Name of the failed external service")
-    service_status: Optional[str] = Field(None, description="Status of the external service")
-    
-    class Config:
-        json_schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_encoders={datetime: lambda dt: dt.isoformat()},
+        json_schema_extra={
             "example": {
                 "error": True,
                 "message": "External service unavailable",
@@ -158,3 +172,7 @@ class ExternalServiceErrorResponse(ErrorResponse):
                 "service_status": "degraded"
             }
         }
+    )
+    
+    service_name: str = Field(..., description="Name of the failed external service")
+    service_status: Optional[str] = Field(None, description="Status of the external service")

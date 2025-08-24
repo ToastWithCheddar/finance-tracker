@@ -8,11 +8,12 @@ from uuid import UUID
 import enum
 
 class BudgetPeriod(enum.Enum):
-    DAILY = "daily"
-    WEEKLY = "weekly"
-    MONTHLY = "monthly"
-    QUARTERLY = "quarterly"
-    YEARLY = "yearly"
+    # Store uppercase values to match PostgreSQL enum values
+    DAILY = "DAILY"
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+    QUARTERLY = "QUARTERLY"
+    YEARLY = "YEARLY"
 
 class Budget(BaseModel):
     __tablename__ = "budgets"
@@ -21,7 +22,16 @@ class Budget(BaseModel):
     category_id: Mapped[Optional[UUID]] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     amount_cents: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    period: Mapped[BudgetPeriod] = mapped_column(Enum(BudgetPeriod), default=BudgetPeriod.MONTHLY, nullable=False)
+    # Store enum NAMES in DB to match existing PostgreSQL enum values (DAILY, WEEKLY, ...)
+    period: Mapped[BudgetPeriod] = mapped_column(
+        Enum(
+            BudgetPeriod,
+            name="budgetperiod",
+            values_callable=lambda x: [e.name for e in x],
+        ),
+        default=BudgetPeriod.MONTHLY,
+        nullable=False,
+    )
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     alert_threshold: Mapped[float] = mapped_column(Float, default=0.8)  # alert at 80%

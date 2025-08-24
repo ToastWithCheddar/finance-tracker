@@ -133,8 +133,7 @@ class TestInsightsService:
         """Test recurring expense detection with high confidence suggestion."""
         # Mock recurring detection service
         high_confidence_suggestion = {
-            'merchant': 'Netflix',
-            'normalized_merchant': 'netflix',
+            'description': 'Netflix subscription',
             'amount_dollars': 15.99,
             'amount_cents': 1599,
             'frequency': 'monthly',
@@ -165,8 +164,7 @@ class TestInsightsService:
         """Test recurring expense detection with low confidence suggestion."""
         # Mock recurring detection service with low confidence
         low_confidence_suggestion = {
-            'merchant': 'Some Merchant',
-            'normalized_merchant': 'some merchant',
+            'description': 'Some subscription service',
             'amount_dollars': 25.00,
             'confidence_score': 0.60,  # Below threshold
             'frequency': 'monthly'

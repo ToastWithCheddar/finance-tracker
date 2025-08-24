@@ -34,6 +34,9 @@ class SyncStatus(str, Enum):
     SUCCESS = "success"
     FAILED = "failed"
     STALE = "stale"
+    SYNCED = "synced"
+    ERROR = "error"
+    SYNCING = "syncing"
 
 
 class ConnectionHealth(str, Enum):
@@ -43,6 +46,7 @@ class ConnectionHealth(str, Enum):
     ERROR = "error"
     UNKNOWN = "unknown"
     REQUIRES_UPDATE = "requires_update"
+    FAILED = "failed"
 
 
 class PlaidAccountMetadata(BaseModel):
@@ -81,6 +85,7 @@ class AccountCreate(AccountBase):
     user_id: UUID
     
     # Plaid Integration Fields (optional for manual accounts)
+    plaid_access_token: str | None = None
     plaid_account_id: str | None = None
     plaid_item_id: str | None = None
     last_sync_at: datetime | None = None

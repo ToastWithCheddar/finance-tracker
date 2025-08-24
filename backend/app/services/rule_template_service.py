@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, desc, func
 from uuid import UUID
 
-from app.config import Settings, settings
+from app.config import Settings, settings, get_settings
 from app.models.categorization_rule_template import CategorizationRuleTemplate
 from app.models.categorization_rule import CategorizationRule
 from app.models.category import Category
@@ -313,7 +313,7 @@ class RuleTemplateService:
                 "description": "Automatically categorize coffee shop transactions to dining",
                 "category": "Dining",
                 "conditions_template": {
-                    "merchant_contains": ["starbucks", "dunkin", "coffee", "cafe", "espresso"]
+                    "description_contains": ["starbucks", "dunkin", "coffee", "cafe", "espresso"]
                 },
                 "actions_template": {
                     "set_category_id": "{{dining_category_id}}",
@@ -326,7 +326,7 @@ class RuleTemplateService:
                 "description": "Automatically categorize gas station transactions to transportation",
                 "category": "Transportation",
                 "conditions_template": {
-                    "merchant_contains": ["shell", "exxon", "chevron", "bp", "gas", "fuel"]
+                    "description_contains": ["shell", "exxon", "chevron", "bp", "gas", "fuel"]
                 },
                 "actions_template": {
                     "set_category_id": "{{transportation_category_id}}",
@@ -339,7 +339,7 @@ class RuleTemplateService:
                 "description": "Automatically categorize grocery store transactions to groceries",
                 "category": "Groceries",
                 "conditions_template": {
-                    "merchant_contains": ["walmart", "target", "kroger", "safeway", "whole foods", "grocery"]
+                    "description_contains": ["walmart", "target", "kroger", "safeway", "whole foods", "grocery"]
                 },
                 "actions_template": {
                     "set_category_id": "{{groceries_category_id}}",
@@ -352,7 +352,7 @@ class RuleTemplateService:
                 "description": "Automatically categorize streaming service subscriptions to entertainment",
                 "category": "Entertainment",
                 "conditions_template": {
-                    "merchant_contains": ["netflix", "spotify", "hulu", "disney", "amazon prime", "youtube premium"],
+                    "description_contains": ["netflix", "spotify", "hulu", "disney", "amazon prime", "youtube premium"],
                     "amount_range": {"min_cents": 500, "max_cents": 5000}
                 },
                 "actions_template": {
@@ -366,7 +366,7 @@ class RuleTemplateService:
                 "description": "Categorize large Amazon purchases as shopping",
                 "category": "Shopping",
                 "conditions_template": {
-                    "merchant_contains": ["amazon", "amzn"],
+                    "description_contains": ["amazon", "amzn"],
                     "amount_range": {"min_cents": 5000}
                 },
                 "actions_template": {

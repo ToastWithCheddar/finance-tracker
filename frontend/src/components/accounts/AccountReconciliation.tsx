@@ -207,7 +207,7 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
                   Create Adjustment Entry
                 </Button>
                 <Button
-                  onClick={performReconciliation}
+                  onClick={() => performReconciliation(accountId)}
                   variant="outline"
                   className="flex-1"
                 >

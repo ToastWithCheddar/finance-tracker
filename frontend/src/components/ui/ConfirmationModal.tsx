@@ -35,7 +35,7 @@ export function ConfirmationModal({
       case 'danger':
         return {
           iconColor: 'text-red-500',
-          confirmButtonVariant: 'destructive' as const
+          confirmButtonVariant: 'danger' as const
         };
       case 'warning':
         return {
@@ -58,7 +58,7 @@ export function ConfirmationModal({
   const { iconColor, confirmButtonVariant } = getVariantStyles();
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} className="max-w-md">
+    <Modal isOpen={isOpen} onClose={onClose}>
       <div className="p-6">
         <div className="flex items-center gap-3 mb-4">
           <AlertTriangle className={`h-6 w-6 ${iconColor}`} />
@@ -83,7 +83,7 @@ export function ConfirmationModal({
             variant={confirmButtonVariant}
             onClick={handleConfirm}
             disabled={isLoading}
-            isLoading={isLoading}
+            loading={isLoading}
           >
             {confirmText}
           </Button>

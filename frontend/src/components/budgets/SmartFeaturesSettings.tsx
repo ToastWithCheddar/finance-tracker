@@ -1,5 +1,5 @@
 import { Zap, Clock } from 'lucide-react';
-import { Controller, Control } from 'react-hook-form';
+import { Controller, type Control } from 'react-hook-form';
 import type { CreateBudgetAlertSettingsRequest } from '../../types/budgets';
 
 interface SmartFeaturesSettingsProps {

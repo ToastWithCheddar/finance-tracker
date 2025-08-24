@@ -149,6 +149,154 @@ async def get_categorization_rules(
         raise DataIntegrityError("Unable to retrieve categorization rules")
 
 @router.get(
+    "/templates",
+    summary="Get rule templates",
+    description="Get available categorization rule templates",
+    response_model=List[RuleTemplateResponse]
+)
+async def get_rule_templates(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_with_user_context),
+    category_filter: Optional[str] = Query(None, description="Filter by category"),
+    official_only: bool = Query(False, description="Show only official templates"),
+    limit: int = Query(50, ge=1, le=100, description="Number of templates to return"),
+    template_service = Depends(get_rule_template_service)
+):
+    """Get available rule templates."""
+    try:
+        if official_only:
+            templates = await template_service.get_official_templates(db, category_filter)
+        else:
+            templates = await template_service.get_popular_templates(db, limit, category_filter)
+        
+        return templates
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch rule templates: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to retrieve rule templates")
+
+@router.post(
+    "/templates/{template_id}/create-rule",
+    summary="Create rule from template",
+    description="Create a categorization rule from a template",
+    response_model=RuleTemplateCreateResponse
+)
+async def create_rule_from_template(
+    template_id: UUID,
+    customizations: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_with_user_context),
+    template_service = Depends(get_rule_template_service),
+    auto_categorization_service = Depends(get_auto_categorization_service)
+):
+    """Create a categorization rule from a template."""
+    try:
+        rule = await template_service.create_rule_from_template(
+            db=db,
+            template_id=template_id,
+            user_id=current_user.id,
+            customizations=customizations
+        )
+        
+        # Clear cache after creating new rule
+        auto_categorization_service.clear_rule_cache(current_user.id)
+        
+        return RuleTemplateCreateResponse(
+            success=True,
+            rule_id=rule.id,
+            rule_name=rule.name,
+            template_id=template_id,
+            created_at=rule.created_at
+        )
+        
+    except ValueError as e:
+        raise ValidationError(str(e))
+    except Exception as e:
+        logger.error(f"Failed to create rule from template: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to create rule from template")
+
+@router.get(
+    "/statistics",
+    summary="Get rule statistics",
+    description="Get statistics about user's categorization rules",
+    response_model=RuleStatisticsResponse
+)
+async def get_rule_statistics(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
+):
+    """Get statistics about user's categorization rules."""
+    try:
+        statistics = await auto_categorization_service.get_matching_statistics(db, current_user.id)
+        
+        return statistics
+        
+    except Exception as e:
+        logger.error(f"Failed to fetch rule statistics for user {current_user.id}: {e}", exc_info=True)
+        raise DataIntegrityError("Unable to retrieve rule statistics")
+
+@router.post(
+    "/test-conditions",
+    summary="Test rule conditions",
+    description="Test rule conditions against historical transactions without saving a rule",
+    response_model=RuleTestResponse
+)
+async def test_rule_conditions(
+    conditions: Dict[str, Any],
+    limit: int = Query(100, ge=1, le=500, description="Number of transactions to test against"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
+):
+    """Test rule conditions against historical transactions."""
+    try:
+        matching_transactions = await auto_categorization_service.test_rule_against_transactions(
+            db=db,
+            rule_conditions=conditions,
+            user_id=current_user.id,
+            limit=limit
+        )
+        
+        return RuleTestResponse(
+            conditions=conditions,
+            total_matches=len(matching_transactions),
+            matching_transactions=matching_transactions
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to test rule conditions: {e}", exc_info=True)
+        raise BusinessLogicError("Unable to test rule conditions")
+
+@router.post(
+    "/apply-to-transactions",
+    summary="Apply rules to transactions",
+    description="Apply categorization rules to specific transactions",
+    response_model=RuleApplicationResponse
+)
+async def apply_rules_to_transactions(
+    transaction_ids: List[UUID],
+    dry_run: bool = Query(False, description="Preview changes without applying them"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_with_user_context),
+    auto_categorization_service = Depends(get_auto_categorization_service)
+):
+    """Apply categorization rules to specific transactions."""
+    try:
+        result = await auto_categorization_service.batch_apply_rules(
+            db=db,
+            transaction_ids=transaction_ids,
+            user_id=current_user.id,
+            dry_run=dry_run
+        )
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to apply rules to transactions for user {current_user.id}: {e}", exc_info=True)
+        raise BusinessLogicError("Unable to apply rules to transactions")
+
+@router.get(
     "/{rule_id}",
     summary="Get a specific categorization rule",
     description="Get details of a specific categorization rule",
@@ -297,154 +445,6 @@ async def test_categorization_rule(
     except Exception as e:
         logger.error(f"Failed to test categorization rule {rule_id}: {e}", exc_info=True)
         raise BusinessLogicError("Unable to test categorization rule")
-
-@router.post(
-    "/test-conditions",
-    summary="Test rule conditions",
-    description="Test rule conditions against historical transactions without saving a rule",
-    response_model=RuleTestResponse
-)
-async def test_rule_conditions(
-    conditions: Dict[str, Any],
-    limit: int = Query(100, ge=1, le=500, description="Number of transactions to test against"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context),
-    auto_categorization_service = Depends(get_auto_categorization_service)
-):
-    """Test rule conditions against historical transactions."""
-    try:
-        matching_transactions = await auto_categorization_service.test_rule_against_transactions(
-            db=db,
-            rule_conditions=conditions,
-            user_id=current_user.id,
-            limit=limit
-        )
-        
-        return RuleTestResponse(
-            conditions=conditions,
-            total_matches=len(matching_transactions),
-            matching_transactions=matching_transactions
-        )
-        
-    except Exception as e:
-        logger.error(f"Failed to test rule conditions: {e}", exc_info=True)
-        raise BusinessLogicError("Unable to test rule conditions")
-
-@router.post(
-    "/apply-to-transactions",
-    summary="Apply rules to transactions",
-    description="Apply categorization rules to specific transactions",
-    response_model=RuleApplicationResponse
-)
-async def apply_rules_to_transactions(
-    transaction_ids: List[UUID],
-    dry_run: bool = Query(False, description="Preview changes without applying them"),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context),
-    auto_categorization_service = Depends(get_auto_categorization_service)
-):
-    """Apply categorization rules to specific transactions."""
-    try:
-        result = await auto_categorization_service.batch_apply_rules(
-            db=db,
-            transaction_ids=transaction_ids,
-            user_id=current_user.id,
-            dry_run=dry_run
-        )
-        
-        return result
-        
-    except Exception as e:
-        logger.error(f"Failed to apply rules to transactions for user {current_user.id}: {e}", exc_info=True)
-        raise BusinessLogicError("Unable to apply rules to transactions")
-
-@router.get(
-    "/templates",
-    summary="Get rule templates",
-    description="Get available categorization rule templates",
-    response_model=List[RuleTemplateResponse]
-)
-async def get_rule_templates(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context),
-    category_filter: Optional[str] = Query(None, description="Filter by category"),
-    official_only: bool = Query(False, description="Show only official templates"),
-    limit: int = Query(50, ge=1, le=100, description="Number of templates to return"),
-    template_service = Depends(get_rule_template_service)
-):
-    """Get available rule templates."""
-    try:
-        if official_only:
-            templates = await template_service.get_official_templates(db, category_filter)
-        else:
-            templates = await template_service.get_popular_templates(db, limit, category_filter)
-        
-        return templates
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch rule templates: {e}", exc_info=True)
-        raise DataIntegrityError("Unable to retrieve rule templates")
-
-@router.post(
-    "/templates/{template_id}/create-rule",
-    summary="Create rule from template",
-    description="Create a categorization rule from a template",
-    response_model=RuleTemplateCreateResponse
-)
-async def create_rule_from_template(
-    template_id: UUID,
-    customizations: Dict[str, Any],
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context),
-    template_service = Depends(get_rule_template_service),
-    auto_categorization_service = Depends(get_auto_categorization_service)
-):
-    """Create a categorization rule from a template."""
-    try:
-        rule = await template_service.create_rule_from_template(
-            db=db,
-            template_id=template_id,
-            user_id=current_user.id,
-            customizations=customizations
-        )
-        
-        # Clear cache after creating new rule
-        auto_categorization_service.clear_rule_cache(current_user.id)
-        
-        return RuleTemplateCreateResponse(
-            success=True,
-            rule_id=rule.id,
-            rule_name=rule.name,
-            template_id=template_id,
-            created_at=rule.created_at
-        )
-        
-    except ValueError as e:
-        raise ValidationError(str(e))
-    except Exception as e:
-        logger.error(f"Failed to create rule from template: {e}", exc_info=True)
-        raise DataIntegrityError("Unable to create rule from template")
-
-@router.get(
-    "/statistics",
-    summary="Get rule statistics",
-    description="Get statistics about user's categorization rules",
-    response_model=RuleStatisticsResponse
-)
-async def get_rule_statistics(
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db_with_user_context),
-    auto_categorization_service = Depends(get_auto_categorization_service)
-):
-    """Get statistics about user's categorization rules."""
-    try:
-        statistics = await auto_categorization_service.get_matching_statistics(db, current_user.id)
-        
-        return statistics
-        
-    except Exception as e:
-        logger.error(f"Failed to fetch rule statistics for user {current_user.id}: {e}", exc_info=True)
-        raise DataIntegrityError("Unable to retrieve rule statistics")
 
 @router.get(
     "/{rule_id}/effectiveness",

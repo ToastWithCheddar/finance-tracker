@@ -356,15 +356,7 @@ class ReconciliationService:
                 desc_score = len(common_words) / max(len(plaid_desc.split()), len(existing_desc.split()))
                 score += desc_score * 0.2
         
-        # Merchant matching
-        plaid_merchant = plaid_txn.get('merchant_name', '').lower()
-        existing_merchant = (existing_txn.merchant or '').lower()
-        
-        if plaid_merchant and existing_merchant:
-            if plaid_merchant == existing_merchant:
-                score += 0.1
-            elif plaid_merchant in existing_merchant or existing_merchant in plaid_merchant:
-                score += 0.05
+
         
         return min(1.0, score)
     

@@ -7,6 +7,7 @@ import { LoadingSpinner } from '../ui';
 import { userService } from '../../services/userService';
 import { useSuccessToast, useErrorToast } from '../ui/Toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
+import { getRelativeTime } from '../../utils/date';
 
 interface SessionManagementModalProps {
   isOpen: boolean;
@@ -114,27 +115,6 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
     return <Globe className="h-5 w-5" />;
   };
 
-  const formatLastActive = (dateString: string) => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-    const diffDays = Math.floor(diffHours / 24);
-
-    if (diffHours < 1) {
-      return 'Active now';
-    } else if (diffHours < 24) {
-      return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-    } else if (diffDays < 7) {
-      return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
-      });
-    }
-  };
 
   const otherSessions = sessions.filter(session => !session.is_current);
   const currentSession = sessions.find(session => session.is_current);
@@ -178,7 +158,7 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
                         </span>
                         <span className="flex items-center gap-1">
                           <Calendar className="h-3 w-3" />
-                          {formatLastActive(currentSession.last_active)}
+                          {getRelativeTime(currentSession.last_active)}
                         </span>
                       </div>
                     </div>
@@ -247,7 +227,7 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
                             </span>
                             <span className="flex items-center gap-1">
                               <Calendar className="h-3 w-3" />
-                              {formatLastActive(session.last_active)}
+                              {getRelativeTime(session.last_active)}
                             </span>
                           </div>
                         </div>

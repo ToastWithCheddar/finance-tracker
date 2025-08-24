@@ -198,111 +198,8 @@ class RedisClient:
         except Exception as e:
             logger.error(f"Error checking if key '{key}' exists: {str(e)}")
             return False
+
     
-    async def persist_message(self, user_id: str, message: Dict[str, Any]) -> bool:
-        """Persist a message for a user (for offline recovery)"""
-        try:
-            conn = await self.get_connection()
-            key = f"notifications:{user_id}"
-            
-            # Add timestamp if not present
-            if "timestamp" not in message:
-                message["timestamp"] = datetime.now(timezone.utc).isoformat()
-            
-            # Store as JSON in a list (FIFO queue)
-            await conn.lpush(key, json.dumps(message))
-            
-            # Keep only last 100 messages
-            await conn.ltrim(key, 0, 99)
-            
-            # Set expiration for 7 days
-            await conn.expire(key, 7 * 24 * 3600)
-            
-            await conn.close()
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error persisting message for user '{user_id}': {str(e)}")
-            return False
-    
-    async def get_missed_messages(self, user_id: str, limit: int = 20) -> list:
-        """Get missed messages for a user"""
-        try:
-            conn = await self.get_connection()
-            key = f"notifications:{user_id}"
-            
-            # Get messages from the list
-            messages = await conn.lrange(key, 0, limit - 1)
-            await conn.close()
-            
-            # Parse JSON messages
-            parsed_messages = []
-            for message in reversed(messages):  # Reverse to get chronological order
-                try:
-                    parsed_message = json.loads(message)
-                    parsed_messages.append(parsed_message)
-                except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON in stored message for user '{user_id}'")
-                    
-            return parsed_messages
-            
-        except Exception as e:
-            logger.error(f"Error getting missed messages for user '{user_id}': {str(e)}")
-            return []
-    
-    async def cleanup_old_messages(self, max_age_hours: int = 24) -> int:
-        """Cleanup old messages from all user notification queues"""
-        try:
-            conn = await self.get_connection()
-            
-            # Get all notification keys
-            keys = await conn.keys("notifications:*")
-            cleaned_count = 0
-            
-            for key in keys:
-                try:
-                    # Get all messages
-                    messages = await conn.lrange(key, 0, -1)
-                    current_time = datetime.now(timezone.utc)
-                    
-                    # Filter out old messages
-                    valid_messages = []
-                    for message in messages:
-                        try:
-                            parsed_message = json.loads(message)
-                            message_time = datetime.fromisoformat(parsed_message.get("timestamp", ""))
-                            
-                            # Keep message if it's newer than max_age_hours
-                            age_hours = (current_time - message_time).total_seconds() / 3600
-                            if age_hours <= max_age_hours:
-                                valid_messages.append(message)
-                            else:
-                                cleaned_count += 1
-                                
-                        except (json.JSONDecodeError, ValueError):
-                            # Remove invalid messages
-                            cleaned_count += 1
-                    
-                    # Replace the list with valid messages only
-                    if len(valid_messages) < len(messages):
-                        await conn.delete(key)
-                        if valid_messages:
-                            await conn.lpush(key, *valid_messages)
-                            await conn.expire(key, 7 * 24 * 3600)
-                            
-                except Exception as e:
-                    logger.error(f"Error cleaning messages for key '{key}': {str(e)}")
-            
-            await conn.close()
-            
-            if cleaned_count > 0:
-                logger.info(f"Cleaned up {cleaned_count} old messages")
-                
-            return cleaned_count
-            
-        except Exception as e:
-            logger.error(f"Error during message cleanup: {str(e)}")
-            return 0
     
     async def get_connection_stats(self) -> Dict[str, Any]:
         """Get Redis connection and usage statistics"""
@@ -312,14 +209,6 @@ class RedisClient:
             # Get Redis info
             info = await conn.info()
             
-            # Get notification queue stats
-            notification_keys = await conn.keys("notifications:*")
-            total_notifications = 0
-            
-            for key in notification_keys:
-                count = await conn.llen(key)
-                total_notifications += count
-            
             await conn.close()
             
             return {
@@ -327,8 +216,6 @@ class RedisClient:
                 "total_commands_processed": info.get("total_commands_processed", 0),
                 "used_memory": info.get("used_memory", 0),
                 "used_memory_human": info.get("used_memory_human", "0B"),
-                "notification_queues": len(notification_keys),
-                "total_stored_notifications": total_notifications,
                 "redis_version": info.get("redis_version", "unknown"),
                 "uptime_seconds": info.get("uptime_in_seconds", 0)
             }

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Edit2, Mail, Calendar, MapPin, Globe, DollarSign, CheckCircle, XCircle } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { formatDate, getUserInitials, getDisplayName } from '../../utils';
+import { formatDate } from '../../utils/date';
+import { getUserInitials, getDisplayName } from '../../utils';
 import type { UserProfile } from '../../services/userService';
 
 interface ProfileInfoProps {

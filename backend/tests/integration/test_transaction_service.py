@@ -249,7 +249,7 @@ class TestTransactionServiceReadOperationsIntegration:
             start_date=date(2025, 1, 2),
             end_date=date(2025, 1, 4)
         )
-        pagination = TransactionPagination(page=1, per_page=10)
+        pagination = TransactionPagination(limit=10, offset=0)
         
         result_transactions, result_count = TransactionService.get_transactions_with_filters(
             test_db_session, test_user.id, filters, pagination
@@ -299,7 +299,7 @@ class TestTransactionServiceReadOperationsIntegration:
         
         # Act - Filter by category
         filters = TransactionFilter(category_id=test_category.id)
-        pagination = TransactionPagination(page=1, per_page=10)
+        pagination = TransactionPagination(limit=10, offset=0)
         
         result_transactions, result_count = TransactionService.get_transactions_with_filters(
             test_db_session, test_user.id, filters, pagination

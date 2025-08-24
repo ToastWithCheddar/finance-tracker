@@ -76,12 +76,11 @@ export interface UpdateTransactionRequest extends Partial<CreateTransactionReque
   id: string;
 }
 
-export type TransactionGroupBy = 'none' | 'date' | 'category' | 'merchant';
+// Removed: TransactionGroupBy - no longer using grouping functionality
 
 export interface TransactionFilters {
   accountId?: string;
   categoryId?: string;
-  merchant?: string;
   dateFrom?: string;
   dateTo?: string;
   amountMinCents?: number;
@@ -91,7 +90,7 @@ export interface TransactionFilters {
   page?: number;
   per_page?: number;
   limit?: number;
-  group_by?: TransactionGroupBy;
+  // Removed: group_by - no longer using grouping functionality
   transaction_type?: 'income' | 'expense';
 }
 
@@ -114,6 +113,7 @@ export interface TransactionListResponse {
   has_previous: boolean;
 }
 
+// Deprecated: TransactionGroup - kept for backend API compatibility
 export interface TransactionGroup {
   key: string;
   total_amount_cents: number;
@@ -121,6 +121,7 @@ export interface TransactionGroup {
   transactions: Transaction[];
 }
 
+// Deprecated: TransactionGroupedResponse - kept for backend API compatibility
 export interface TransactionGroupedResponse {
   groups: TransactionGroup[];
   total: number;

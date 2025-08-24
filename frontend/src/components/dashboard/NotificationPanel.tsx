@@ -20,7 +20,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import type { RealtimeNotification } from '../../stores/realtimeStore';
 import { useRealtimeStore } from '../../stores/realtimeStore';
-import { formatRelativeTime } from '../../utils';
+import { getRelativeTime } from '../../utils/date';
 
 interface NotificationPanelProps {
   notifications: RealtimeNotification[];
@@ -31,11 +31,9 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   notifications,
   unreadCount
 }) => {
-  const { 
-    markNotificationRead, 
-    markAllNotificationsRead, 
-    dismissNotification
-  } = useRealtimeStore();
+  const markNotificationRead = useRealtimeStore((s) => s.markNotificationRead);
+  const markAllNotificationsRead = useRealtimeStore((s) => s.markAllNotificationsRead);
+  const dismissNotification = useRealtimeStore((s) => s.dismissNotification);
   
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -442,7 +440,7 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
             <div className="flex items-center justify-between mt-2">
               <div className="flex items-center space-x-2">
                 <span className="text-xs text-gray-400">
-                  {formatRelativeTime(notification.created_at)}
+                  {getRelativeTime(notification.created_at)}
                 </span>
                 
                 {/* Priority Badge */}

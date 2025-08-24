@@ -29,7 +29,7 @@ class AmountRange(BaseModel):
 
 class RuleConditions(BaseModel):
     """Strongly typed schema for rule conditions"""
-    merchant_contains: NonEmptyStringList = Field(None, description="Merchant name contains any of these strings")
+
     description_contains: NonEmptyStringList = Field(None, description="Transaction description contains any of these strings")
     amount_range: AmountRange | None = Field(None, description="Amount range filter")
     account_types: NonEmptyStringList = Field(None, description="Account types to match")
@@ -60,7 +60,7 @@ class CategorizationRuleCreate(BaseModel):
     @validator('conditions')
     def validate_conditions_not_empty(cls, v):
         """Ensure at least one condition is specified"""
-        if not any([v.merchant_contains, v.description_contains, v.amount_range, 
+        if not any([v.description_contains, v.amount_range, 
                    v.account_types, v.transaction_type, v.account_ids, v.category_not_in]):
             raise ValueError('At least one condition must be specified')
         return v
@@ -134,7 +134,7 @@ class RuleTestRequest(BaseModel):
     @validator('conditions')
     def validate_conditions_not_empty(cls, v):
         """Ensure at least one condition is specified for testing"""
-        if not any([v.merchant_contains, v.description_contains, v.amount_range, 
+        if not any([v.description_contains, v.amount_range, 
                    v.account_types, v.transaction_type, v.account_ids, v.category_not_in]):
             raise ValueError('At least one condition must be specified for testing')
         return v

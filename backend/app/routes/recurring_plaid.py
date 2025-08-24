@@ -12,6 +12,8 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.auth.dependencies import get_current_user, get_db_with_user_context
 from app.dependencies import get_plaid_service, get_account_service
+from app.services.plaid_recurring_service import PlaidRecurringService
+from app.schemas.plaid_recurring import PlaidRecurringInsightsResponse, PlaidRecurringTransactionResponse
 from app.models.user import User
 from app.services.account_service import AccountService
 from app.core.exceptions import (
@@ -28,8 +30,8 @@ router = APIRouter()
 
 
 @router.get(
-    "/plaid/insights",
-    response_model=Dict[str, Any],
+    "/insights",
+    response_model=PlaidRecurringInsightsResponse,
     summary="Get Plaid recurring transaction insights",
     description="Get recurring transaction insights from Plaid for connected accounts"
 )
@@ -37,7 +39,6 @@ async def get_plaid_recurring_insights(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db_with_user_context),
     account_id: Optional[UUID] = Query(None, description="Filter by account ID"),
-    plaid_service = Depends(get_plaid_service),
     account_service: AccountService = Depends(get_account_service)
 ):
     """Get recurring transaction insights from Plaid."""
@@ -51,18 +52,55 @@ async def get_plaid_recurring_insights(
             if not account.plaid_access_token:
                 raise ValidationError("Account is not connected to Plaid")
         
-        insights = await plaid_service.sync_recurring_transactions_for_user(db, current_user.id)
+        # Create the service instance and get insights
+        plaid_recurring_service = PlaidRecurringService()
+        insights = await plaid_recurring_service.get_recurring_insights(db, current_user.id)
         
-        return {
-            "success": True,
-            "data": insights
-        }
+        return insights
         
     except (AccountNotFoundError, ValidationError):
         raise
     except Exception as e:
         logger.error(f"Failed to retrieve Plaid recurring insights: {e}", exc_info=True)
         raise PlaidIntegrationError("Unable to retrieve recurring transaction insights")
+
+
+@router.get(
+    "/plaid-subscriptions",
+    response_model=List[PlaidRecurringTransactionResponse],
+    summary="Get Plaid recurring transactions",
+    description="Get user's Plaid recurring transactions with filtering options"
+)
+async def get_plaid_recurring_transactions(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db_with_user_context),
+    status_filter: Optional[str] = Query(None, description="Filter by Plaid status (MATURE, EARLY_DETECTION, etc.)"),
+    frequency_filter: Optional[str] = Query(None, description="Filter by frequency (WEEKLY, MONTHLY, etc.)"),
+    is_muted: Optional[bool] = Query(None, description="Filter by muted status"),
+    is_linked: Optional[bool] = Query(None, description="Filter by rule link status"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of results"),
+    offset: int = Query(0, ge=0, description="Number of results to skip"),
+):
+    """Get user's Plaid recurring transactions with filtering options."""
+    try:
+        # Create the service instance and get transactions
+        plaid_recurring_service = PlaidRecurringService()
+        transactions = await plaid_recurring_service.get_recurring_transactions(
+            db=db,
+            user_id=current_user.id,
+            status_filter=status_filter,
+            frequency_filter=frequency_filter,
+            is_muted=is_muted,
+            is_linked=is_linked,
+            limit=limit,
+            offset=offset
+        )
+        
+        return transactions
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve Plaid recurring transactions: {e}", exc_info=True)
+        raise PlaidIntegrationError("Unable to retrieve recurring transactions")
 
 
 @router.get(

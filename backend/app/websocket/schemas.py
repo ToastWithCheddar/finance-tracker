@@ -25,6 +25,11 @@ class MessageType(str, Enum):
     ACCOUNT_SYNCED = "account_synced"
     ACCOUNT_SYNC_ERROR = "account_sync_error"
     
+    # Sync completion events
+    TRANSACTION_SYNC_COMPLETE = "transaction_sync_complete"
+    BULK_SYNC_COMPLETE = "bulk_sync_complete"
+    WEBHOOK_SYNC_COMPLETE = "webhook_sync_complete"
+    
     # Budget events
     BUDGET_ALERT = "budget_alert"
     BUDGET_THRESHOLD_REACHED = "budget_threshold_reached"
@@ -157,6 +162,29 @@ class AccountSyncErrorPayload(BaseModel):
     failed_at: datetime = Field(..., description="Failure timestamp")
     priority: NotificationPriority = Field(NotificationPriority.MEDIUM, description="Error priority")
 
+class TransactionSyncCompletePayload(BaseModel):
+    account_id: str = Field(..., description="Account ID")
+    account_name: str = Field(..., description="Account name")
+    new_transactions: int = Field(..., description="Number of new transactions")
+    updated_transactions: int = Field(..., description="Number of updated transactions")
+    duplicates_skipped: int = Field(..., description="Number of duplicates skipped")
+    sync_duration: float = Field(..., description="Sync duration in seconds")
+    date_range: str = Field(..., description="Date range of sync")
+
+class BulkSyncCompletePayload(BaseModel):
+    total_new_transactions: int = Field(..., description="Total new transactions across all accounts")
+    total_updated_transactions: int = Field(..., description="Total updated transactions across all accounts")
+    total_errors: int = Field(..., description="Total errors during sync")
+    sync_time: str = Field(..., description="Sync completion timestamp")
+
+class WebhookSyncCompletePayload(BaseModel):
+    item_id: str = Field(..., description="Plaid item ID")
+    total_new_transactions: int = Field(0, description="Total new transactions")
+    total_updated_transactions: int = Field(0, description="Total updated transactions")
+    accounts_synced: int = Field(0, description="Number of accounts synced")
+    sync_time: Optional[str] = Field(None, description="Sync completion timestamp")
+    success: bool = Field(True, description="Whether sync was successful")
+
 class NotificationPayload(BaseModel):
     id: str = Field(..., description="Notification ID")
     title: str = Field(..., description="Notification title")
@@ -207,6 +235,9 @@ PayloadType = Union[
     GoalAchievedPayload,
     AccountSyncPayload,
     AccountSyncErrorPayload,
+    TransactionSyncCompletePayload,
+    BulkSyncCompletePayload,
+    WebhookSyncCompletePayload,
     NotificationPayload,
     SystemAlertPayload,
     AIInsightPayload,

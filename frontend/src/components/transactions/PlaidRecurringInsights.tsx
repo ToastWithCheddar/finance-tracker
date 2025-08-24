@@ -7,7 +7,7 @@ interface PlaidRecurringInsightsProps {
   insights: PlaidRecurringInsights;
 }
 
-export const PlaidRecurringInsights: React.FC<PlaidRecurringInsightsProps> = ({ insights }) => {
+export const PlaidRecurringInsightsComponent: React.FC<PlaidRecurringInsightsProps> = ({ insights }) => {
   const {
     total_subscriptions,
     active_subscriptions,

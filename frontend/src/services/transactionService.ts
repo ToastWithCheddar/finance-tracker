@@ -1,12 +1,10 @@
 import { BaseService } from './base/BaseService';
 import { apiClient, normalizeListEnvelope } from './api';
-import { toTransactionView } from '../api/adapters/transaction';
 import type { 
   Transaction, 
   CreateTransactionRequest, 
   UpdateTransactionRequest, 
   TransactionFilters,
-  TransactionSummary,
   TransactionStats,
   TransactionGroupedResponse
 } from '../types/transaction';
@@ -114,11 +112,11 @@ export class TransactionService extends BaseService {
     if (filters?.dateTo) params.end_date = filters.dateTo;
     if (filters?.accountId) params.account_id = filters.accountId;
     if (filters?.categoryId) params.category_id = filters.categoryId;
-    if (filters?.merchant) params.merchant = filters.merchant;
+    // Merchant filtering not implemented yet
+    // if (filters?.merchant) params.merchant = filters.merchant;
     if (filters?.amountMinCents !== undefined) params.min_amount_cents = filters.amountMinCents;
     if (filters?.amountMaxCents !== undefined) params.max_amount_cents = filters.amountMaxCents;
     if (filters?.search) params.search_query = filters.search;
-    if (filters?.group_by) params.group_by = filters.group_by;
     if (filters?.transaction_type) params.transaction_type = filters.transaction_type;
 
     // Debug-level logging
@@ -139,7 +137,7 @@ export class TransactionService extends BaseService {
     // Normalize list envelope first, then normalize each transaction item
     const list = normalizeListEnvelope<any>(response);
     const normalizedResponse: TransactionListResponse = {
-      items: (list.items || []).map(toTransactionView),
+      items: (list.items || []).map(item => this.normalizeTransaction(item)),
       total: list.total || 0,
       page: list.page || 1,
       per_page: list.per_page || (list.items?.length ?? 0),
@@ -172,7 +170,8 @@ export class TransactionService extends BaseService {
     if (filters?.dateTo) params.end_date = filters.dateTo;
     if (filters?.accountId) params.account_id = filters.accountId;
     if (filters?.categoryId) params.category_id = filters.categoryId;
-    if (filters?.merchant) params.merchant = filters.merchant;
+    // Merchant filtering not implemented yet
+    // if (filters?.merchant) params.merchant = filters.merchant;
     if (filters?.amountMinCents !== undefined) params.min_amount_cents = filters.amountMinCents;
     if (filters?.amountMaxCents !== undefined) params.max_amount_cents = filters.amountMaxCents;
     if (filters?.search) params.search_query = filters.search;
@@ -202,7 +201,7 @@ export class TransactionService extends BaseService {
         key: group.key,
         total_amount_cents: group.total_amount_cents || 0,
         count: group.count || 0,
-        transactions: (group.transactions || []).map(toTransactionView),
+        transactions: (group.transactions || []).map((item: any) => this.normalizeTransaction(item)),
       })),
       total: response.total || 0,
       page: response.page || 1,
@@ -254,8 +253,8 @@ export class TransactionService extends BaseService {
     
     const response = await this.post<any>(endpoint, payload, { context: options?.context });
     
-    // Apply adapter to normalize the response
-    return toTransactionView(response);
+    // Apply normalization to the response
+    return this.normalizeTransaction(response);
   }
 
   async updateTransaction(
@@ -272,8 +271,8 @@ export class TransactionService extends BaseService {
     
     const response = await this.put<any>(`/${transactionId}`, payload, { context: options?.context });
     
-    // Apply adapter to normalize the response
-    return toTransactionView(response);
+    // Apply normalization to the response
+    return this.normalizeTransaction(response);
   }
 
   async deleteTransaction(
@@ -297,73 +296,76 @@ export class TransactionService extends BaseService {
     );
   }
 
-  // Helper method to normalize stats response from backend to frontend format
-  private normalizeTransactionStats(backendStats: any): TransactionStats {
-    // Handle case where backend returns TransactionSummary format (camelCase)
-    if (backendStats.totalIncome !== undefined) {
-      return {
-        total_income: backendStats.totalIncome || 0,
-        total_expenses: backendStats.totalExpenses || 0,
-        net_amount: backendStats.netAmount || 0,
-        transaction_count: backendStats.transactionCount || 0,
-        total_count: backendStats.transactionCount || 0, // alias for backward compatibility
-        // Calculate missing fields
-        average_transaction: backendStats.transactionCount > 0 
-          ? Math.abs(backendStats.netAmount) / backendStats.transactionCount 
-          : 0,
-        transaction_count_by_type: {
-          income: Math.round((backendStats.totalIncome / (backendStats.totalIncome + backendStats.totalExpenses || 1)) * (backendStats.transactionCount || 0)),
-          expense: Math.round((backendStats.totalExpenses / (backendStats.totalIncome + backendStats.totalExpenses || 1)) * (backendStats.transactionCount || 0))
-        }
-      };
-    }
-    
-    // Handle case where backend already returns snake_case format
-    return {
-      total_income: backendStats.total_income || 0,
-      total_expenses: backendStats.total_expenses || 0,
-      net_amount: backendStats.net_amount || 0,
-      transaction_count: backendStats.transaction_count || backendStats.total_count || 0,
-      total_count: backendStats.total_count || backendStats.transaction_count || 0,
-      average_transaction: backendStats.average_transaction || 0,
-      transaction_count_by_type: backendStats.transaction_count_by_type || {
-        income: 0,
-        expense: 0
-      }
-    };
-  }
 
   async getTransactionStats(
     filters?: TransactionFilters,
     options?: { useCache?: boolean; context?: ErrorContext }
   ): Promise<TransactionStats> {
-    const params: Record<string, string | number | boolean> = {};
+    console.log('🎯 TransactionService: Analytics endpoint not available, using fallback stats calculation');
     
-    if (filters?.dateFrom) params.start_date = filters.dateFrom;
-    if (filters?.dateTo) params.end_date = filters.dateTo;
-    if (filters?.categoryId) params.category_id = filters.categoryId;
-    if (filters?.search) params.search_query = filters.search;
-
-    console.log('🎯 TransactionService fetching stats from endpoint:', '/analytics/stats');
-    console.log('📦 With params:', params);
-
-    const response = await this.get<any>(
-      '/analytics/stats',
-      params,
-      {
+    // FALLBACK: Calculate stats from transaction data since analytics endpoint is unavailable
+    try {
+      // Get transactions with the same filters to calculate stats locally
+      const transactionData = await this.getTransactions(filters, { 
         useCache: options?.useCache ?? true,
-        cacheTtl: 5 * 60 * 1000, // 5 minutes cache for stats
-        context: options?.context
-      }
-    );
-    
-    console.log('📤 TransactionService raw stats response:', response);
-
-    // Normalize the response to match frontend expectations
-    const normalizedStats = this.normalizeTransactionStats(response);
-    
-    console.log('✨ TransactionService normalized stats:', normalizedStats);
-    return normalizedStats;
+        context: options?.context 
+      });
+      
+      const transactions = transactionData.items || [];
+      console.log('📊 Calculating stats from', transactions.length, 'transactions');
+      
+      // Calculate basic stats from transaction data
+      let totalIncome = 0;
+      let totalExpenses = 0;
+      let incomeCount = 0;
+      let expenseCount = 0;
+      
+      transactions.forEach(transaction => {
+        const amount = transaction.amount_cents || 0;
+        if (amount > 0) {
+          totalIncome += amount;
+          incomeCount++;
+        } else {
+          totalExpenses += Math.abs(amount);
+          expenseCount++;
+        }
+      });
+      
+      const totalCount = transactions.length;
+      const netAmount = totalIncome - totalExpenses;
+      const averageTransaction = totalCount > 0 ? Math.abs(netAmount) / totalCount : 0;
+      
+      const fallbackStats: TransactionStats = {
+        total_count: totalCount,
+        total_income: totalIncome,
+        total_expenses: totalExpenses,
+        net_amount: netAmount,
+        average_transaction: Math.round(averageTransaction),
+        transaction_count_by_type: {
+          income: incomeCount,
+          expense: expenseCount
+        }
+      };
+      
+      console.log('✨ TransactionService calculated fallback stats:', fallbackStats);
+      return fallbackStats;
+      
+    } catch (error) {
+      console.warn('⚠️ TransactionService: Failed to calculate fallback stats, returning empty stats:', error);
+      
+      // Return empty stats as final fallback
+      return {
+        total_count: 0,
+        total_income: 0,
+        total_expenses: 0,
+        net_amount: 0,
+        average_transaction: 0,
+        transaction_count_by_type: {
+          income: 0,
+          expense: 0
+        }
+      };
+    }
   }
 
   async importCSV(
@@ -428,98 +430,7 @@ export class TransactionService extends BaseService {
     return type === 'income' ? '📈' : '📉';
   }
 
-  // Merchant recognition methods
-  async enrichTransactionWithMerchant(
-    transactionId: string,
-    description?: string,
-    options?: { context?: ErrorContext }
-  ): Promise<{
-    transaction_id: string;
-    original_description: string;
-    recognized_merchant: string | null;
-    confidence_score: number;
-    method_used: string;
-    updated: boolean;
-  }> {
-    const payload: any = {};
-    if (description) {
-      payload.description = description;
-    }
 
-    return this.post<{
-      transaction_id: string;
-      original_description: string;
-      recognized_merchant: string | null;
-      confidence_score: number;
-      method_used: string;
-      updated: boolean;
-    }>(
-      `/merchants/transactions/${transactionId}/enrich`,
-      payload,
-      { context: options?.context }
-    );
-  }
-
-  async correctTransactionMerchant(
-    transactionId: string,
-    merchantName: string,
-    options?: { context?: ErrorContext }
-  ): Promise<{
-    message: string;
-    transaction_id: string;
-    corrected_merchant: string;
-    learning_updated: boolean;
-  }> {
-    return this.put<{
-      message: string;
-      transaction_id: string;
-      corrected_merchant: string;
-      learning_updated: boolean;
-    }>(
-      `/merchants/transactions/${transactionId}/correct`,
-      { merchant_name: merchantName },
-      { context: options?.context }
-    );
-  }
-
-  async recognizeMerchantFromDescription(
-    description: string,
-    options?: { context?: ErrorContext }
-  ): Promise<{
-    original_description: string;
-    recognized_merchant: string | null;
-    confidence_score: number;
-    method_used: string;
-    suggestions: string[];
-  }> {
-    const params = { description };
-    
-    return this.get<{
-      original_description: string;
-      recognized_merchant: string | null;
-      confidence_score: number;
-      method_used: string;
-      suggestions: string[];
-    }>(
-      `/merchants/recognize`,
-      params,
-      { context: options?.context }
-    );
-  }
-
-  async getMerchantSuggestions(
-    query: string,
-    limit: number = 5,
-    options?: { context?: ErrorContext }
-  ): Promise<{ suggestions: string[] }> {
-    const params = { query, limit };
-    
-    return this.get<{ suggestions: string[] }>(
-      `/merchants/suggestions`,
-      params,
-      { context: options?.context }
-    );
-  }
 
   parseCSVFile(file: File): Promise<CreateTransactionRequest[]> {
     return new Promise((resolve, reject) => {
@@ -640,13 +551,6 @@ export class TransactionService extends BaseService {
     });
   }
 
-  async getSpendingTrends(period: 'week' | 'month' | 'year' = 'month'): Promise<any[]> {
-    const params = { period };
-    return this.get<any[]>(
-      '/analytics/trends',
-      params
-    );
-  }
 
   async getCategoryBreakdown(filters?: TransactionFilters): Promise<any[]> {
     const params: Record<string, string | number | boolean> = {};
@@ -694,20 +598,6 @@ export class TransactionService extends BaseService {
     }
   }
 
-  async getSpendingTrendsWithWrapper(period: 'week' | 'month' | 'year' = 'month'): Promise<{ success: boolean; data: any[] }> {
-    try {
-      const data = await this.getSpendingTrends(period);
-      return {
-        success: true,
-        data
-      };
-    } catch (error) {
-      return {
-        success: false,
-        data: []
-      };
-    }
-  }
 
   async getCategoryBreakdownWithWrapper(filters?: TransactionFilters): Promise<{ success: boolean; data: any[] }> {
     try {

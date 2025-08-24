@@ -1,45 +1,22 @@
 # Standard library imports
-import enum
 from datetime import datetime
 from typing import List, Dict, Annotated
 from uuid import UUID
 
 # Third-party imports
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, computed_field
 
 # Local imports
 from .base import BaseResponseSchema
-
-
-class GoalStatus(enum.Enum):
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    PAUSED = "paused"
-    CANCELLED = "cancelled"
-
-class GoalType(enum.Enum):
-    SAVINGS = "savings"
-    DEBT_PAYOFF = "debt_payoff"
-    EMERGENCY_FUND = "emergency_fund"
-    INVESTMENT = "investment"
-    PURCHASE = "purchase"
-    OTHER = "other"
-
-class GoalPriority(enum.Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-class ContributionFrequency(enum.Enum):
-    DAILY = "daily"
-    WEEKLY = "weekly"
-    MONTHLY = "monthly"
-    QUARTERLY = "quarterly"
-    YEARLY = "yearly"
+from ..models.goal import GoalStatus, GoalType, GoalPriority
 
 
 class GoalBase(BaseModel):
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True
+    )
+    
     name: Annotated[str, Field(min_length=1, max_length=100)]
     description: str | None = None
     target_amount_cents: Annotated[int, Field(gt=0, description="Target amount in cents")]
@@ -49,7 +26,6 @@ class GoalBase(BaseModel):
     start_date: datetime | None = None
     target_date: datetime | None = None
     last_contribution_date: datetime | None = None
-    contribution_frequency: Annotated[ContributionFrequency, Field(default=ContributionFrequency.WEEKLY)]
     monthly_target_cents: int | None = Field(None, description="Monthly target in cents")
     milestone_percent: int | None = None
 
@@ -61,6 +37,7 @@ class GoalBase(BaseModel):
         return v
 
 class GoalCreate(GoalBase):
+    pass
 
 class GoalUpdate(BaseModel):
     name: Annotated[str, Field(min_length=1, max_length=255)] | None = None
@@ -71,7 +48,6 @@ class GoalUpdate(BaseModel):
     status: GoalStatus | None = None
     start_date: datetime | None = None
     target_date: datetime | None = None
-    contribution_frequency: ContributionFrequency | None = None
     monthly_target_cents: Annotated[int, Field(ge=0)] | None = None
     milestone_percentage: Annotated[int, Field(ge=1, le=100)] | None = None
 
@@ -116,18 +92,22 @@ class GoalMilestone(BaseResponseSchema):
 
 # Main Goal schema
 class Goal(GoalBase, BaseResponseSchema):
+    model_config = ConfigDict(
+        from_attributes=True,
+        use_enum_values=True,
+        arbitrary_types_allowed=True
+    )
+    
     user_id: UUID
     current_amount_cents: int
-    status: GoalStatus
-    start_date: datetime
     completed_date: datetime | None = None
     last_contribution_date: datetime | None = None
-    last_milestone_reached: float
+    last_milestone: int | None = 0
 
-    # Computed properties
-    progress_percentage: int 
-    remaining_amount_cents: int 
-    is_completed: bool
+    # Computed properties - made optional with defaults
+    progress_percentage: int | None = 0
+    remaining_amount_cents: int | None = 0
+    is_completed: bool | None = False
     days_remaining: int | None = None
 
     # Related data
@@ -148,11 +128,15 @@ class GoalStats(BaseModel):
     active_goals: int
     completed_goals: int
     paused_goals: int
-    total_saved_cents: int 
-    total_target_cents: int 
-    this_month_contributions_cents: int 
-    goals_by_type: Dict[str, int]
-    goals_by_priority: Dict[str, int]
+    total_saved_cents: int
+    total_target_cents: int
+    average_progress: int | float = 0
+    this_month_contributions_cents: int
+    # Detailed maps for UI charts
+    goals_by_type: Dict[str, Dict[str, int]]
+    goals_by_priority: Dict[str, Dict[str, int]]
+    # Nested contribution stats block used by dashboard
+    contribution_stats: Dict[str, List[dict] | int]
 
 class ContributionStats(BaseModel):
     total_contributions_cents: int 
@@ -167,5 +151,4 @@ class MilestoneAlert(BaseModel):
     milestone_percentage: int 
     amount_reached_cents: int 
     reached_date: datetime
-
 

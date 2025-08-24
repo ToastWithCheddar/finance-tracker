@@ -2,11 +2,12 @@ import { useState, useMemo, useEffect, useRef, Suspense, lazy } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui';
+import { ErrorState } from '../components/ui/ErrorState';
 import { TransactionList } from '../components/transactions/TransactionList';
 import { TransactionFilters } from '../components/transactions/TransactionFilters';
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { CSVImport } from '../components/transactions/CSVImport';
-import { useTransactions, useTransactionsGrouped, useTransactionStats, useTransactionActions } from '../hooks/useTransactions';
+import { useTransactions, useTransactionStats, useTransactionActions } from '../hooks/useTransactions';
 import type { 
   CreateTransactionRequest as TransactionCreate, 
   UpdateTransactionRequest as TransactionUpdate, 
@@ -18,15 +19,8 @@ import { ReceiptText, RefreshCcw, Settings } from 'lucide-react';
 
 // Lazy load tab components for better performance
 const RecurringTab = lazy(() => import('../components/transactions/RecurringTab').then(module => ({ default: module.RecurringTab })));
-const AutomationRulesTab = lazy(() => import('../components/transactions/AutomationRulesTab').then(module => ({ default: module.AutomationRulesTab })));
+const AutomationRulesTab = lazy(() => import('../features/automation/components/AutomationRulesTab').then(module => ({ default: module.AutomationRulesTab })));
 
-// Define the shape of our grouped data
-interface GroupedTransactions {
-  [date: string]: {
-    transactions: Transaction[];
-    total: number; // Net total in cents for the day
-  };
-}
 
 // Tab definitions
 type TransactionTab = 'all' | 'recurring' | 'automation';
@@ -107,9 +101,7 @@ export function Transactions() {
     if (searchParams.get('accountId')) {
       urlFilters.accountId = searchParams.get('accountId')!;
     }
-    if (searchParams.get('merchant')) {
-      urlFilters.merchant = searchParams.get('merchant')!;
-    }
+
     if (searchParams.get('search')) {
       urlFilters.search = searchParams.get('search')!;
     }
@@ -128,8 +120,7 @@ export function Transactions() {
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>();
   
-  // Date grouping state
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  // Removed: Date grouping state no longer needed
   
   // Refs for click outside handling
   const exportDropdownRef = useRef<HTMLDivElement>(null);
@@ -141,20 +132,8 @@ export function Transactions() {
     per_page: itemsPerPage,
   };
 
-  // Determine if we should use grouped or flat data fetching
-  const isGroupedView = filters.group_by && filters.group_by !== 'none';
-  
-  // Data fetching with React Query - conditionally use grouped or flat hooks
-  const flatQuery = useTransactions(queryFilters, !isGroupedView);
-  const groupedQuery = useTransactionsGrouped(
-    isGroupedView 
-      ? { ...queryFilters, group_by: filters.group_by as 'date' | 'category' | 'merchant' }
-      : { ...queryFilters, group_by: 'date' } // Provide default to avoid type issues
-  );
-  
-  // Select the appropriate query result
-  const activeQuery = isGroupedView ? groupedQuery : flatQuery;
-  const { data: transactionData, isLoading, error } = activeQuery;
+  // Always fetch flat transaction data - no more grouping
+  const { data: transactionData, isLoading, error } = useTransactions(queryFilters);
   const { data: stats } = useTransactionStats(filters);
   
   // Mutations
@@ -173,77 +152,20 @@ export function Transactions() {
     isExporting 
   } = useTransactionActions();
 
-  // Extract data from the response based on the view type
-  const groups = isGroupedView ? (transactionData as any)?.groups || [] : [];
-  const transactions = !isGroupedView ? transactionData?.items || [] : [];
+  // Extract data from the flat transaction response
+  const transactions = transactionData?.items || [];
   const totalCount = transactionData?.total || 0;
   const totalPages = transactionData?.pages || 1;
   
   // Debug logging for data structure
   console.log('🔍 Transaction data structure:', {
     hasData: !!transactionData,
-    isGroupedView,
-    groupsCount: groups.length,
     transactionsCount: transactions.length,
-    activeGroupBy: filters.group_by
+    totalCount,
+    totalPages
   });
   
-  // For flat view, create legacy grouped format for TransactionList component compatibility
-  const groupedTransactions = useMemo(() => {
-    if (isGroupedView || !Array.isArray(transactions) || transactions.length === 0) {
-      return {};
-    }
-    
-    return transactions.reduce((acc: GroupedTransactions, tx) => {
-      const transactionDate = tx.transactionDate || tx.transaction_date;
-      if (!tx || !transactionDate) {
-        console.warn('⚠️ Transaction missing transactionDate:', tx);
-        return acc;
-      }
-      
-      const dateStr = typeof transactionDate === 'string' 
-        ? transactionDate 
-        : transactionDate.toString();
-      const date = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
-      
-      if (!acc[date]) {
-        acc[date] = { transactions: [], total: 0 };
-      }
-      acc[date].transactions.push(tx);
-      acc[date].total += (tx.amountCents || tx.amount_cents || 0);
-      return acc;
-    }, {});
-  }, [transactions, isGroupedView]);
-  
-  // Determine grouping type from filters
-  const groupType = filters.group_by || 'date';
-  
-  // Toggle group expansion
-  const toggleGroup = (date: string) => {
-    setExpandedGroups(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(date)) {
-        newSet.delete(date);
-      } else {
-        newSet.add(date);
-      }
-      return newSet;
-    });
-  };
-  
-  // Initialize with the most recent group expanded
-  useEffect(() => {
-    if (isGroupedView && groups.length > 0) {
-      // For grouped view, expand the first group
-      setExpandedGroups(new Set([groups[0].key]));
-    } else if (!isGroupedView) {
-      // For flat view with date grouping, expand the most recent date
-      const dates = Object.keys(groupedTransactions).sort((a, b) => b.localeCompare(a));
-      if (dates.length > 0) {
-        setExpandedGroups(new Set([dates[0]]));
-      }
-    }
-  }, [isGroupedView, groups, groupedTransactions]);
+  // Removed: Complex grouping logic no longer needed - transactions are displayed as flat list
 
   // Handle click outside for export dropdown
   useEffect(() => {
@@ -261,16 +183,12 @@ export function Transactions() {
     }
   }, [isExportDropdownOpen]);
 
-  // Get unique categories for filter dropdown (from current transactions or all transactions from groups)
-  const allTransactionsForCategories = isGroupedView
-    ? groups.flatMap(group => group.transactions)
-    : transactions;
-  
+  // Get unique categories for filter dropdown from current transactions
   const categories = Array.from(
     new Set(
-      Array.isArray(allTransactionsForCategories) 
-        ? allTransactionsForCategories.map(t => t?.categoryId).filter((c): c is string => !!c)
-        : []
+      transactions
+        .map(t => t?.categoryId)
+        .filter((c): c is string => !!c)
     )
   ).sort();
 
@@ -353,11 +271,13 @@ export function Transactions() {
   // Error handling
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <p className="text-red-600 mb-4">Failed to load transactions</p>
-          <Button onClick={() => window.location.reload()}>Retry</Button>
-        </div>
+      <div className="min-h-screen">
+        <ErrorState
+          error={error}
+          message="Failed to load transactions"
+          onRetry={() => window.location.reload()}
+          retryLabel="Retry"
+        />
       </div>
     );
   }
@@ -497,16 +417,12 @@ export function Transactions() {
             {!isLoading && (
               <div className="mb-8">
                 <TransactionList
-                  groupedTransactions={isGroupedView ? undefined : groupedTransactions}
-                  groups={isGroupedView ? groups : undefined}
-                  expandedGroups={expandedGroups}
-                  onToggleGroup={toggleGroup}
+                  transactions={transactions}
                   stats={stats}
                   isLoading={isBusy}
                   onEdit={handleEditTransaction}
                   onDelete={handleDeleteTransaction}
                   onBulkDelete={handleBulkDelete}
-                  groupType={groupType as 'date' | 'category' | 'merchant' | 'none'}
                 />
               </div>
             )}

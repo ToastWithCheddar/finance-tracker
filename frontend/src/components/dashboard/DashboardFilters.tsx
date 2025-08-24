@@ -57,26 +57,32 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
   };
 
   const handlePredefinedRangeClick = (rangeKey: string) => {
+    console.log('[DEBUG DashboardFilters] handlePredefinedRangeClick called with:', rangeKey);
     const presets = getDateRangePresets();
     const range = presets[rangeKey as keyof typeof presets];
     
     if (range) {
-      onFiltersChange({
+      const newFilters = {
         ...filters,
         start_date: range.start_date,
         end_date: range.end_date,
-      });
+      };
+      console.log('[DEBUG DashboardFilters] About to call onFiltersChange with:', newFilters);
+      onFiltersChange(newFilters);
       setShowCustomRange(false);
     }
   };
 
   const handleCustomRangeSubmit = () => {
+    console.log('[DEBUG DashboardFilters] handleCustomRangeSubmit called');
     if (customStartDate && customEndDate) {
-      onFiltersChange({
+      const newFilters = {
         ...filters,
         start_date: customStartDate,
         end_date: customEndDate,
-      });
+      };
+      console.log('[DEBUG DashboardFilters] About to call onFiltersChange with custom range:', newFilters);
+      onFiltersChange(newFilters);
       setShowCustomRange(false);
     }
   };

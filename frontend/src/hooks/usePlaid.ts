@@ -52,12 +52,14 @@ export function useExchangeToken() {
       plaidService.exchangeToken(exchangeData),
     onSuccess: () => {
       // Invalidate all related queries after successful token exchange
-      queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Add accounts cache invalidation
+      queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Broad invalidation for all account queries
+      queryClient.invalidateQueries({ queryKey: ['accounts', user?.id] }); // Specific accounts list for this user
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       // Also invalidate dashboard analytics which uses a different key
-      queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+      // Note: dashboard-analytics endpoint no longer exists, invalidating transaction stats instead
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
     },
   });
 }
@@ -102,7 +104,8 @@ export function useSyncTransactions() {
       // Invalidate transaction-related queries
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+      // Note: dashboard-analytics endpoint no longer exists, invalidating transaction stats instead
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
       // Invalidate connection status to update health indicators
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
     },
@@ -129,10 +132,12 @@ export function useSyncBalances() {
       console.log('✅ Balance sync successful:', data);
       
       // Invalidate account and dashboard queries - balances have updated
-      queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Add accounts cache invalidation
+      queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Broad invalidation for all account queries
+      queryClient.invalidateQueries({ queryKey: ['accounts', user?.id] }); // Specific accounts list for this user
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard-analytics'] });
+      // Note: dashboard-analytics endpoint no longer exists, invalidating transaction stats instead
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
     },
     onError: (error) => {
       console.error('❌ Balance sync failed:', error);

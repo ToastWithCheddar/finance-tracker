@@ -1,7 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { navigationItems } from '../../config/navigation';
 import { ConnectionStatusChip, DateChip, NotificationsBell, ProfileMenu } from './TopBarExtras';
-import { TickerSummary } from './TickerSummary';
 import { ThemeToggle } from '../ui/ThemeToggle';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -32,7 +31,6 @@ export function Navigation({ className = '' }: NavigationProps) {
 
           {/* User Menu and global controls */}
           <div className="flex items-center space-x-3 flex-1 justify-end">
-            <TickerSummary />
             <ConnectionStatusChip />
             <DateChip />
             <NotificationsBell />

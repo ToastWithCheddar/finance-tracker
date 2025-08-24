@@ -2,10 +2,7 @@ import { useState } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
-import { Modal } from '../ui/Modal';
-import type { TransactionFilters, TransactionGroupBy } from '../../types/transaction';
-import { useSavedFilters, useSavedFilterOperations } from '../../hooks/useSavedFilters';
-import type { SavedFilter } from '../../types/savedFilters';
+import type { TransactionFilters } from '../../types/transaction';
 
 interface TransactionFiltersProps {
   filters: TransactionFilters;
@@ -14,54 +11,6 @@ interface TransactionFiltersProps {
   categories?: string[];
 }
 
-interface SaveFilterModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSave: (name: string) => void;
-  isLoading?: boolean;
-}
-
-function SaveFilterModal({ isOpen, onClose, onSave, isLoading }: SaveFilterModalProps) {
-  const [filterName, setFilterName] = useState('');
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (filterName.trim()) {
-      onSave(filterName.trim());
-      setFilterName('');
-      onClose();
-    }
-  };
-
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Save Filter">
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Filter Name
-          </label>
-          <Input
-            type="text"
-            value={filterName}
-            onChange={(e) => setFilterName(e.target.value)}
-            placeholder="e.g., Monthly Groceries, Q1 Expenses..."
-            className="w-full"
-            required
-          />
-        </div>
-        
-        <div className="flex justify-end space-x-2">
-          <Button type="button" variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={!filterName.trim() || isLoading}>
-            {isLoading ? 'Saving...' : 'Save Filter'}
-          </Button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
 
 export function TransactionFilters({ 
   filters, 
@@ -70,71 +19,15 @@ export function TransactionFilters({
   categories = []
 }: TransactionFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showSaveModal, setShowSaveModal] = useState(false);
-  const [currentSavedFilter, setCurrentSavedFilter] = useState<SavedFilter | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; filter?: SavedFilter }>({
-    isOpen: false
-  });
-  
-  // Saved filters hooks
-  const { data: savedFilters, isLoading: isLoadingSavedFilters } = useSavedFilters();
-  const savedFilterOperations = useSavedFilterOperations();
 
-  const handleFilterChange = (key: keyof TransactionFilters, value: string | number | boolean | null) => {
+  const handleFilterChange = (key: keyof TransactionFilters, value: string | number | boolean | null | undefined) => {
     const newFilters = {
       ...filters,
       [key]: value || undefined, // Convert empty strings to undefined
     };
     onFiltersChange(newFilters);
-    
-    // Clear current saved filter if filters change
-    if (currentSavedFilter) {
-      setCurrentSavedFilter(null);
-    }
   };
 
-  // Check if current filters match a saved filter
-  const matchingSavedFilter = savedFilters?.find(savedFilter => 
-    JSON.stringify(savedFilter.filters) === JSON.stringify(filters)
-  );
-
-  // Check if current filters differ from empty state
-  const hasUnsavedChanges = Object.values(filters).some(value => 
-    value !== undefined && value !== '' && value !== null
-  ) && !matchingSavedFilter;
-
-  // Saved filter operations
-  const handleApplySavedFilter = (savedFilter: SavedFilter) => {
-    onFiltersChange(savedFilter.filters);
-    setCurrentSavedFilter(savedFilter);
-  };
-
-  const handleSaveFilter = (name: string) => {
-    savedFilterOperations.create({ name, filters });
-  };
-
-  const handleUpdateSavedFilter = () => {
-    if (matchingSavedFilter) {
-      savedFilterOperations.update({
-        id: matchingSavedFilter.id,
-        data: { filters }
-      });
-    }
-  };
-
-  const handleDeleteSavedFilter = (savedFilter: SavedFilter) => {
-    setDeleteConfirm({ isOpen: true, filter: savedFilter });
-  };
-
-  const handleDeleteConfirm = () => {
-    if (deleteConfirm.filter) {
-      savedFilterOperations.delete(deleteConfirm.filter.id);
-      if (currentSavedFilter?.id === deleteConfirm.filter.id) {
-        setCurrentSavedFilter(null);
-      }
-    }
-    setDeleteConfirm({ isOpen: false });
-  };
 
   const hasActiveFilters = Object.values(filters).some(value => 
     value !== undefined && value !== '' && value !== null
@@ -147,7 +40,7 @@ export function TransactionFilters({
   return (
     <Card>
       <div className="p-4">
-        {/* Search Bar and Saved Filters - Always Visible */}
+        {/* Search Bar - Always Visible */}
         <div className="flex items-center space-x-4 mb-4">
           <div className="flex-1">
             <div className="relative">
@@ -170,28 +63,6 @@ export function TransactionFilters({
             </div>
           </div>
           
-          {/* Saved Filters Dropdown */}
-          {savedFilters && savedFilters.length > 0 && (
-            <div className="relative">
-              <select
-                value={matchingSavedFilter?.id || ''}
-                onChange={(e) => {
-                  const savedFilter = savedFilters.find(sf => sf.id === e.target.value);
-                  if (savedFilter) {
-                    handleApplySavedFilter(savedFilter);
-                  }
-                }}
-                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-              >
-                <option value="">💾 Saved Filters</option>
-                {savedFilters.map((savedFilter) => (
-                  <option key={savedFilter.id} value={savedFilter.id}>
-                    {savedFilter.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          )}
           
           <Button
             variant="outline"
@@ -208,40 +79,6 @@ export function TransactionFilters({
               ▼
             </span>
           </Button>
-          
-          {/* Save Filter Button */}
-          {hasUnsavedChanges && (
-            <Button
-              variant="outline"
-              onClick={() => setShowSaveModal(true)}
-              disabled={savedFilterOperations.isCreating}
-              className="text-green-600 border-green-300 hover:bg-green-50"
-            >
-              💾 Save Filter
-            </Button>
-          )}
-
-          {/* Update/Delete Saved Filter Buttons */}
-          {matchingSavedFilter && (
-            <>
-              <Button
-                variant="outline"
-                onClick={handleUpdateSavedFilter}
-                disabled={savedFilterOperations.isUpdating}
-                className="text-blue-600 border-blue-300 hover:bg-blue-50"
-              >
-                📝 Update
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => handleDeleteSavedFilter(matchingSavedFilter)}
-                disabled={savedFilterOperations.isDeleting}
-                className="text-red-600 border-red-300 hover:bg-red-50"
-              >
-                🗑️ Delete
-              </Button>
-            </>
-          )}
 
           {hasActiveFilters && (
             <Button
@@ -257,22 +94,7 @@ export function TransactionFilters({
         {/* Advanced Filters - Collapsible */}
         {isExpanded && (
           <div className="space-y-4 pt-4 border-t border-gray-200">
-            {/* Group By Section */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Group By
-              </label>
-              <select
-                value={filters.group_by || 'none'}
-                onChange={(e) => handleFilterChange('group_by', e.target.value as TransactionGroupBy)}
-                className="w-full md:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              >
-                <option value="none">📋 No Grouping</option>
-                <option value="date">📅 Group by Date</option>
-                <option value="category">🏷️ Group by Category</option>
-                <option value="merchant">🏪 Group by Merchant</option>
-              </select>
-            </div>
+            {/* Removed: Group By Section - using flat transaction list now */}
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Date Range */}
@@ -320,8 +142,8 @@ export function TransactionFilters({
                   Category
                 </label>
                 <select
-                  value={filters.category || ''}
-                  onChange={(e) => handleFilterChange('category', e.target.value)}
+                  value={filters.categoryId || ''}
+                  onChange={(e) => handleFilterChange('categoryId', e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">All Categories</option>
@@ -444,62 +266,6 @@ export function TransactionFilters({
                 💸 Expenses Only
               </Button>
 
-              {/* New Smart Preset Buttons */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onFiltersChange({
-                    ...filters,
-                    amountMinCents: 10000, // $100 in cents
-                    transaction_type: 'expense'
-                  });
-                  // Clear current saved filter since filters changed
-                  if (currentSavedFilter) {
-                    setCurrentSavedFilter(null);
-                  }
-                }}
-              >
-                💳 Large Expenses
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  const today = new Date();
-                  const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-                  onFiltersChange({
-                    ...filters,
-                    dateFrom: startOfMonth.toISOString().split('T')[0],
-                    dateTo: today.toISOString().split('T')[0],
-                    search: 'dining food restaurant'
-                  });
-                  // Clear current saved filter since filters changed
-                  if (currentSavedFilter) {
-                    setCurrentSavedFilter(null);
-                  }
-                }}
-              >
-                🍽️ This Month's Dining
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  onFiltersChange({
-                    ...filters,
-                    categoryId: '__uncategorized__' // Special value to indicate null categories
-                  });
-                  // Clear current saved filter since filters changed
-                  if (currentSavedFilter) {
-                    setCurrentSavedFilter(null);
-                  }
-                }}
-              >
-                📝 Uncategorized
-              </Button>
             </div>
           </div>
         )}
@@ -534,11 +300,11 @@ export function TransactionFilters({
                 </span>
               )}
               
-              {filters.category && (
+              {filters.categoryId && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  Category: {filters.category}
+                  Category: {categories.find(cat => cat === filters.categoryId) || filters.categoryId}
                   <button
-                    onClick={() => handleFilterChange('category', '')}
+                    onClick={() => handleFilterChange('categoryId', '')}
                     className="ml-1 text-blue-600 hover:text-blue-800"
                   >
                     ×
@@ -579,45 +345,6 @@ export function TransactionFilters({
           </div>
         )}
 
-        {/* Delete Filter Confirmation Modal */}
-        <Modal
-          isOpen={deleteConfirm.isOpen}
-          onClose={() => setDeleteConfirm({ isOpen: false })}
-          title="Delete Saved Filter"
-        >
-          <div className="space-y-4">
-            <p>
-              Are you sure you want to delete the saved filter "<strong>{deleteConfirm.filter?.name}</strong>"?
-            </p>
-            <p className="text-sm text-[hsl(var(--text))/0.75]">
-              This action cannot be undone. You will need to recreate the filter if you need it again.
-            </p>
-            
-            <div className="flex justify-end space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => setDeleteConfirm({ isOpen: false })}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleDeleteConfirm}
-                className="bg-red-600 hover:bg-red-700"
-              >
-                Delete Filter
-              </Button>
-            </div>
-          </div>
-        </Modal>
-
-        {/* Save Filter Modal */}
-        <SaveFilterModal
-          isOpen={showSaveModal}
-          onClose={() => setShowSaveModal(false)}
-          onSave={handleSaveFilter}
-          isLoading={savedFilterOperations.isCreating}
-        />
       </div>
     </Card>
   );

@@ -25,15 +25,6 @@ export const GoalStatus = {
   } as const;
   export type GoalPriority = typeof GoalPriority[keyof typeof GoalPriority];
   
-  export const ContributionFrequency = {
-    DAILY : 'daily',
-    WEEKLY : 'weekly',
-    MONTHLY : 'monthly',
-    QUARTERLY : 'quarterly',
-    YEARLY : 'yearly'
-  } as const;
-  export type ContributionFrequency = typeof ContributionFrequency[keyof typeof ContributionFrequency];
-  
   export interface GoalContribution {
     id: string;
     goal_id: string;
@@ -70,10 +61,9 @@ export const GoalStatus = {
     target_date?: string;
     completed_date?: string;
     last_contribution_date?: string;
-    contribution_frequency?: ContributionFrequency;
     monthly_target_cents?: number;
     milestone_percentage: number;
-    last_milestone_reached: number;
+    last_milestone: number;
     created_at: string;
     updated_at: string;
     
@@ -96,7 +86,6 @@ export const GoalStatus = {
     goal_type: GoalType;
     priority?: GoalPriority;
     target_date?: string;
-    contribution_frequency?: ContributionFrequency;
     monthly_target_cents?: number;
     milestone_percentage?: number;
     [key: string]: unknown;
@@ -110,7 +99,6 @@ export const GoalStatus = {
     priority?: GoalPriority;
     status?: GoalStatus;
     target_date?: string;
-    contribution_frequency?: ContributionFrequency;
     monthly_target_cents?: number;
     milestone_percentage?: number;
     [key: string]: unknown;

@@ -29,9 +29,8 @@ class PlaidClientService:
             logger.info("Plaid integration is disabled")
             return
             
-        # Validate configuration
-        if self.client_id == "your_plaid_client_id" or self.secret == "your_plaid_secret":
-            logger.warning("Plaid credentials are not configured. Using sandbox test credentials.")
+        # Validate configuration - strict validation for credentials
+        self._validate_configuration()
         
         # Plaid API endpoints
         self.base_url = {
@@ -43,6 +42,28 @@ class PlaidClientService:
         logger.info(f"Plaid client service initialized for {self.environment} environment")
         logger.debug(f"Plaid client_id: {self.client_id[:10]}... (truncated)")
         logger.debug(f"Plaid secret: {'*' * len(self.secret) if self.secret else 'EMPTY'}")
+    
+    def _validate_configuration(self):
+        """Validate Plaid configuration and raise errors for invalid setup"""
+        if not self.client_id or not self.secret:
+            logger.error("Plaid credentials are missing. Set PLAID_CLIENT_ID and PLAID_SECRET environment variables.")
+            raise Exception("Plaid credentials not configured. Check environment variables.")
+        
+        # Check for placeholder values (but allow the specific sandbox credentials that were working)
+        placeholder_values = [
+            "your_plaid_client_id", 
+            "your_plaid_secret"
+        ]
+        
+        if self.client_id in placeholder_values or self.secret in placeholder_values:
+            logger.error("Plaid credentials are using placeholder values. Please set valid credentials.")
+            raise Exception("Invalid Plaid credentials. Please configure valid client_id and secret.")
+        
+        # Validate environment
+        valid_envs = ['sandbox', 'development', 'production']
+        if self.environment not in valid_envs:
+            logger.warning(f"Invalid Plaid environment '{self.environment}'. Falling back to 'sandbox'.")
+            self.environment = 'sandbox'
     
     async def create_link_token(self, user_id: str, update_mode: bool = False) -> Dict[str, Any]:
         """Create a link token for Plaid Link initialization or update"""
@@ -167,21 +188,21 @@ class PlaidClientService:
                 'error': str(e)
             }
     
-    async def fetch_transactions(self, access_token: str, start_date: str, end_date: str, 
-                               count: int = 500, offset: int = 0, 
+    async def fetch_transactions(self, access_token: str, start_date: str, end_date: str,
                                account_ids: Optional[list] = None) -> Dict[str, Any]:
         """Fetch transactions from Plaid"""
         try:
             request_data = {
                 'access_token': access_token,
                 'start_date': start_date,
-                'end_date': end_date,
-                'count': count,
-                'offset': offset
+                'end_date': end_date
             }
             
+            # Move account_ids into options object as per Plaid API requirements
             if account_ids:
-                request_data['account_ids'] = account_ids
+                request_data['options'] = {
+                    'account_ids': account_ids
+                }
             
             result = await self._make_request('transactions/get', request_data)
             
@@ -260,13 +281,19 @@ class PlaidClientService:
         url = f"{self.base_url}/{endpoint}"
         headers = {
             'Content-Type': 'application/json',
-            'PLAID-CLIENT-NAME': 'Finance Tracker',
-            'PLAID-SECRET': self.secret
+            'PLAID-CLIENT-NAME': 'Finance Tracker'
         }
         
         try:
+            # Debug logging to understand what's being sent
+            logger.debug(f"Plaid API request to {url}")
+            logger.debug(f"Request headers: {headers}")
+            logger.debug(f"Request data keys: {list(data.keys())}")
+            logger.debug(f"Has client_id: {'client_id' in data}")
+            logger.debug(f"Has secret: {'secret' in data}")
+            
             # Run the request in a thread pool to avoid blocking
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             response = await loop.run_in_executor(
                 None, 
                 lambda: requests.post(url, json=data, headers=headers, timeout=30)

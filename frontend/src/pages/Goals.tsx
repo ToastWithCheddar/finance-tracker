@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Button } from '../components/ui/Button';
-import { Card } from '../components/ui/Card';
+import { Card, CardContent } from '../components/ui/Card';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
+import { ErrorState } from '../components/ui/ErrorState';
+import { EmptyState } from '../components/ui/EmptyState';
 import { GoalCard } from '../components/goals/GoalCard';
 import { GoalForm } from '../components/goals/GoalForm';
 import { GoalsDashboard } from '../components/goals/GoalDashboard';
@@ -55,16 +57,11 @@ export default function Goals() {
   if (error) {
     return (
       <div className="max-w-7xl mx-auto px-4 py-8">
-        <Card className="p-8 text-center">
-          <div className="text-red-500 text-xl mb-4">⚠️</div>
-          <h2 className="text-xl font-semibold text-gray-900 mb-2">Failed to Load Goals</h2>
-          <p className="text-gray-600 mb-4">
-            {error instanceof Error ? error.message : 'An unexpected error occurred'}
-          </p>
-          <Button onClick={() => window.location.reload()}>
-            Try Again
-          </Button>
-        </Card>
+        <ErrorState
+          error={error}
+          message="Failed to Load Goals"
+          onRetry={() => window.location.reload()}
+        />
       </div>
     );
   }
@@ -199,7 +196,13 @@ export default function Goals() {
               </Card>
               <Card className="p-4 text-center">
                 <div className="text-2xl font-bold text-purple-600">
-                  {goalsData.overall_progress.toFixed(1)}%
+                  {Number(
+                    goalsData.overall_progress ?? (
+                      goalsData.total_target_amount_cents
+                        ? (goalsData.total_current_amount_cents / goalsData.total_target_amount_cents) * 100
+                        : 0
+                    )
+                  ).toFixed(1)}%
                 </div>
                 <div className="text-sm text-gray-600">Overall Progress</div>
               </Card>
@@ -228,23 +231,21 @@ export default function Goals() {
               ))}
             </div>
           ) : (
-            <Card className="p-12 text-center">
-              <div className="text-6xl mb-4">🎯</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Goals Found</h3>
-              <p className="text-gray-600 mb-6">
-                {Object.values(filters).some(f => f) 
-                  ? "No goals match your current filters. Try adjusting them or clearing all filters."
-                  : "Start your financial journey by creating your first goal!"
-                }
-              </p>
-              {!Object.values(filters).some(f => f) && (
-                <Button
-                  onClick={() => setShowCreateForm(true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
-                >
-                  Create Your First Goal
-                </Button>
-              )}
+            <Card>
+              <CardContent>
+                <EmptyState
+                  icon="🎯"
+                  title="No Goals Found"
+                  description={Object.values(filters).some(f => f) 
+                    ? "No goals match your current filters. Try adjusting them or clearing all filters."
+                    : "Start your financial journey by creating your first goal!"
+                  }
+                  action={!Object.values(filters).some(f => f) ? {
+                    label: 'Create Your First Goal',
+                    onClick: () => setShowCreateForm(true)
+                  } : undefined}
+                />
+              </CardContent>
             </Card>
           )}
         </div>

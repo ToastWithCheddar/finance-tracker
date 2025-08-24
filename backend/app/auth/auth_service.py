@@ -49,8 +49,7 @@ class AuthService:
                 "avatar_url": db_user.avatar_url,  # snake_case version
                 "is_active": db_user.is_active,    # snake_case version
                 "is_verified": db_user.is_verified,
-                "notification_email": db_user.notification_email,
-                "notification_push": db_user.notification_push,
+                "notifications_enabled": db_user.notifications_enabled,
                 "theme": db_user.theme,
             })
         

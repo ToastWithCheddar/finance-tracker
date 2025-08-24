@@ -17,10 +17,8 @@ class BudgetAlertSettings(BaseModel):
     alert_name: Mapped[str] = mapped_column(String(100), nullable=False)
     threshold_percentage: Mapped[float] = mapped_column(Float, nullable=False, default=0.8)  # Alert at 80%
     
-    # Notification Channels
-    email_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    push_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    sms_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Notification Channels (simplified to in-app only)
+    in_app_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     
     # Alert Behavior
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

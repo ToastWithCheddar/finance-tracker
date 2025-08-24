@@ -13,7 +13,7 @@ from uuid import UUID
 from app.models.account import Account
 from app.models.plaid_recurring_transaction import PlaidRecurringTransaction
 from app.services.plaid_client_service import get_plaid_client_service
-from app.services.plaid_transaction_service import get_plaid_transaction_service
+from app.services.transaction_sync_service import get_transaction_sync_service
 from app.services.utils.plaid_utils import group_accounts_by_token
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
@@ -296,7 +296,7 @@ class PlaidWebhookService:
             user_id = str(accounts[0].user_id)
             
             try:
-                sync_result = await get_plaid_transaction_service().sync_transactions_for_user(db, user_id)
+                sync_result = await get_transaction_sync_service().sync_user_transactions(user_id, db)
                 logger.info(f"Webhook triggered transaction sync for user {user_id}: {sync_result.get('total_new_transactions', 0)} new transactions")
                 
                 return {"success": True, "sync_result": sync_result}
@@ -364,9 +364,9 @@ class PlaidWebhookService:
             accounts = db.query(Account).filter(Account.plaid_item_id == item_id).all()
             
             if accounts and accounts[0].plaid_access_token:
-                from app.services.plaid_account_service import plaid_account_service
+                from app.services.plaid_account_service import get_plaid_account_service
                 try:
-                    sync_result = await plaid_account_service.sync_account_balances(
+                    sync_result = await get_plaid_account_service().sync_account_balances(
                         db=db,
                         account_ids=[str(acc.id) for acc in accounts]
                     )

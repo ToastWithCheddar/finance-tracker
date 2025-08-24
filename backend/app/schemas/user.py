@@ -20,8 +20,13 @@ class User(BaseResponseSchema):
     is_active: bool = True
     is_verified: bool = True
 
-    notification_push: bool = True
-    theme: str = "light" 
+    notifications_enabled: bool = True
+    theme: str = "light"
+    
+    # Additional User Preferences
+    default_items_per_page: int = 25
+    auto_categorization_enabled: bool = True
+    spending_alert_threshold_cents: int | None = None 
 
     # Pydantic v2: allow constructing from SQLAlchemy objects
     model_config = ConfigDict(from_attributes=True)
@@ -63,8 +68,13 @@ class UserCreate(BaseModel):
     is_active: bool | None = True
     is_verified: bool | None = False
 
-    notification_push: bool | None = True
+    notifications_enabled: bool | None = True
     theme: str | None = "light"
+    
+    # Additional User Preferences
+    default_items_per_page: int | None = 25
+    auto_categorization_enabled: bool | None = True
+    spending_alert_threshold_cents: int | None = None
 
 
 # Partial update schema (only contains fields users can modify)
@@ -74,5 +84,12 @@ class UserUpdate(BaseModel):
     timezone: str | None = Field(None, min_length=1, max_length=50)
     currency: str | None = Field(None, min_length=3, max_length=3)
     avatar_url: str | None = None
+    notifications_enabled: bool | None = None
+    theme: str | None = Field(None, min_length=1, max_length=20)
+    
+    # Additional User Preferences
+    default_items_per_page: int | None = Field(None, ge=10, le=100)
+    auto_categorization_enabled: bool | None = None
+    spending_alert_threshold_cents: int | None = Field(None, ge=0)
 
 # All authentication schemas have been moved to auth.py for consistency

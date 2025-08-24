@@ -1,11 +1,15 @@
-from sqlalchemy import create_engine, event, text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
+# Standard library imports
 import logging
 from contextlib import contextmanager
 from typing import Generator
 
+# Third-party imports
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.pool import StaticPool
+
+# Local imports
 from app.config import settings
 
 logger = logging.getLogger(__name__)

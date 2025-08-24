@@ -99,8 +99,7 @@ export function AlertTestingSection({ budget }: AlertTestingSectionProps) {
                 {alertActions.previewData.message}
               </p>
               <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                Priority: {alertActions.previewData.priority} | 
-                Channels: {alertActions.previewData.channels.join(', ')}
+                Priority: {alertActions.previewData.priority}
               </p>
             </div>
           </div>

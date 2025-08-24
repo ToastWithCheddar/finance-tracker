@@ -7,8 +7,7 @@ import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { AuthInitializer } from './components/common/AuthInitializer';
 import { ToastProvider } from './components/ui/Toast';
 import { Login } from './pages/Login';
-import { Dashboard } from './pages/Dashboard';
-import { Settings } from './pages/Settings';
+import { RealtimeDashboard } from './components/dashboard/RealtimeDashboard';
 import { Profile } from './pages/Profile';
 import { Transactions } from './pages/Transactions';
 import { Recurring } from './pages/Recurring';
@@ -18,6 +17,7 @@ import Goals from './pages/Goals';
 import { AdminBypassButton } from './components/dev-tools/AdminBypassButton';
 import { Layout } from './components/layout/Layout';
 import { CommandPalette } from './components/layout/CommandPalette';
+import { WebSocketManager } from './components/realtime/WebSocketManager';
 
 function App() {
   return (
@@ -25,6 +25,8 @@ function App() {
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <AuthInitializer />
+          {/* Global realtime connection manager */}
+          <WebSocketManager />
           <Router>
             <div className="App">
               <Routes>
@@ -37,7 +39,7 @@ function App() {
                   element={
                     <ProtectedRoute>
                       <Layout>
-                        <Dashboard />
+                        <RealtimeDashboard />
                       </Layout>
                     </ProtectedRoute>
                   }
@@ -99,16 +101,6 @@ function App() {
                 />
                 
                 
-                <Route
-                  path="/settings"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Settings />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
                 
                 <Route
                   path="/profile"

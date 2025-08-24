@@ -90,24 +90,12 @@ async def handle_client_message(websocket: WebSocket, user_id: str, message_data
         
         logger.debug(f"Received WebSocket message from {user_id}: {message_type}")
         
-        # Handle different message types
+        # Handle different message types (simplified)
         if message_type == "ping":
             await handle_ping(websocket, user_id, payload)
             
-        elif message_type == "subscribe":
-            await handle_subscription(websocket, user_id, payload)
-            
-        elif message_type == "unsubscribe":
-            await handle_unsubscription(websocket, user_id, payload)
-            
         elif message_type == "dashboard_refresh":
             await handle_dashboard_refresh(websocket, user_id, payload)
-            
-        elif message_type == "mark_notification_read":
-            await handle_mark_notification_read(websocket, user_id, payload)
-            
-        elif message_type == "get_connection_stats":
-            await handle_get_connection_stats(websocket, user_id, payload)
             
         else:
             # Unknown message type
@@ -135,111 +123,14 @@ async def handle_ping(websocket: WebSocket, user_id: str, payload: Dict[str, Any
     except Exception as e:
         logger.error(f"Error sending pong to {user_id}: {str(e)}")
 
-async def handle_subscription(websocket: WebSocket, user_id: str, payload: Dict[str, Any]):
-    """Handle subscription requests"""
-    try:
-        subscription_types = payload.get("types", [])
-        
-        # Store subscription preferences in connection metadata
-        if websocket in manager.connection_metadata:
-            manager.connection_metadata[websocket]["subscriptions"] = subscription_types
-        
-        response = {
-            "type": "subscription_confirmed",
-            "payload": {
-                "subscribed_types": subscription_types,
-                "user_id": user_id
-            }
-        }
-        await websocket.send_text(json.dumps(response))
-        
-        logger.info(f"User {user_id} subscribed to: {subscription_types}")
-        
-    except Exception as e:
-        logger.error(f"Error handling subscription for {user_id}: {str(e)}")
-
-async def handle_unsubscription(websocket: WebSocket, user_id: str, payload: Dict[str, Any]):
-    """Handle unsubscription requests"""
-    try:
-        unsubscribe_types = payload.get("types", [])
-        
-        # Update subscription preferences
-        if websocket in manager.connection_metadata:
-            current_subs = manager.connection_metadata[websocket].get("subscriptions", [])
-            updated_subs = [sub for sub in current_subs if sub not in unsubscribe_types]
-            manager.connection_metadata[websocket]["subscriptions"] = updated_subs
-        
-        response = {
-            "type": "unsubscription_confirmed", 
-            "payload": {
-                "unsubscribed_types": unsubscribe_types,
-                "remaining_subscriptions": updated_subs
-            }
-        }
-        await websocket.send_text(json.dumps(response))
-        
-        logger.info(f"User {user_id} unsubscribed from: {unsubscribe_types}")
-        
-    except Exception as e:
-        logger.error(f"Error handling unsubscription for {user_id}: {str(e)}")
-
 async def handle_dashboard_refresh(websocket: WebSocket, user_id: str, payload: Dict[str, Any]):
     """Handle dashboard refresh requests"""
     try:
         # Send fresh dashboard data
         await manager.send_full_sync(user_id, websocket)
         
-        response = {
-            "type": "dashboard_refresh_completed",
-            "payload": {
-                "refreshed_at": datetime.now(timezone.utc).isoformat()
-            }
-        }
-        await websocket.send_text(json.dumps(response))
-        
     except Exception as e:
         logger.error(f"Error refreshing dashboard for {user_id}: {str(e)}")
-
-async def handle_mark_notification_read(websocket: WebSocket, user_id: str, payload: Dict[str, Any]):
-    """Handle marking notifications as read"""
-    try:
-        notification_ids = payload.get("notification_ids", [])
-        
-        # Here you could update notification status in database
-        # For now, just acknowledge
-        response = {
-            "type": "notifications_marked_read",
-            "payload": {
-                "marked_read": notification_ids,
-                "marked_at": datetime.now(timezone.utc).isoformat()
-            }
-        }
-        await websocket.send_text(json.dumps(response))
-        
-        logger.debug(f"Marked {len(notification_ids)} notifications as read for {user_id}")
-        
-    except Exception as e:
-        logger.error(f"Error marking notifications read for {user_id}: {str(e)}")
-
-async def handle_get_connection_stats(websocket: WebSocket, user_id: str, payload: Dict[str, Any]):
-    """Handle connection statistics requests"""
-    try:
-        stats = await manager.get_connection_stats()
-        user_connections = manager.get_user_connection_count(user_id)
-        
-        response = {
-            "type": "connection_stats",
-            "payload": {
-                "user_connections": user_connections,
-                "total_connections": stats.get("active_connections", 0),
-                "connected_users": stats.get("connected_users", 0),
-                "server_uptime": datetime.now(timezone.utc).isoformat()
-            }
-        }
-        await websocket.send_text(json.dumps(response))
-        
-    except Exception as e:
-        logger.error(f"Error getting connection stats for {user_id}: {str(e)}")
 
 async def send_error_response(websocket: WebSocket, error_message: str):
     """Send error response to client"""
@@ -361,16 +252,33 @@ async def broadcast_system_message(
         logger.error(f"Error broadcasting system message: {str(e)}", exc_info=True)
         raise ExternalServiceError("WebSocket Service", "Failed to broadcast system message")
 
-# Background task to cleanup stale connections
-async def cleanup_stale_connections():
-    """Background task to periodically cleanup stale connections"""
-    while True:
-        try:
-            await manager.cleanup_stale_connections()
-            await asyncio.sleep(300)  # Run every 5 minutes
-        except Exception as e:
-            logger.error(f"Error in cleanup task: {str(e)}")
-            await asyncio.sleep(60)  # Wait 1 minute before retrying
-
-# Note: Background task moved to main app startup to avoid import-time execution
-# See main.py lifespan event for cleanup task initialization
+# --- Simple background cleanup task (dev-friendly) ---
+async def cleanup_stale_connections(check_interval_seconds: int = 60, idle_minutes: int = 30):
+    """
+    Periodically scan connection metadata and disconnect sockets that appear idle.
+    Minimal, safe no-op in development if metadata is missing.
+    """
+    try:
+        while True:
+            try:
+                now = datetime.now(timezone.utc)
+                threshold = now.timestamp() - idle_minutes * 60
+                # Iterate a copy of metadata to avoid runtime mutation issues
+                for ws, meta in list(manager.connection_metadata.items()):
+                    last = meta.get("last_activity")
+                    try:
+                        last_ts = datetime.fromisoformat(last).timestamp() if isinstance(last, str) else now.timestamp()
+                    except Exception:
+                        last_ts = now.timestamp()
+                    if last_ts < threshold:
+                        try:
+                            await manager.disconnect(ws)
+                        except Exception:
+                            pass
+            except Exception:
+                # Swallow errors; this is a best-effort cleanup in dev
+                pass
+            await asyncio.sleep(check_interval_seconds)
+    except asyncio.CancelledError:
+        # Task cancelled on shutdown
+        return

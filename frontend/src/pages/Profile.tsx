@@ -3,7 +3,9 @@ import { Download, Trash2, LogOut, Key, Monitor } from 'lucide-react';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui';
+import { ErrorState } from '../components/ui/ErrorState';
 import { ProfileInfo } from '../components/profile/ProfileInfo';
+import { UserPreferences } from '../components/profile/UserPreferences';
 import { EditProfileModal } from '../components/profile/EditProfileModal';
 import { ChangePasswordModal } from '../components/profile/ChangePasswordModal';
 import { SessionManagementModal } from '../components/profile/SessionManagementModal';
@@ -116,11 +118,12 @@ export function Profile() {
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--bg))' }}>
-        <div className="text-center">
-          <p className="text-red-600 mb-4">{error || 'Failed to load profile'}</p>
-          <Button onClick={loadProfileData}>Retry</Button>
-        </div>
+      <div className="min-h-screen" style={{ backgroundColor: 'hsl(var(--bg))' }}>
+        <ErrorState
+          message={error || 'Failed to load profile'}
+          onRetry={loadProfileData}
+          retryLabel="Retry"
+        />
       </div>
     );
   }
@@ -138,6 +141,12 @@ export function Profile() {
           <ProfileInfo
             profile={profile}
             onEdit={() => setIsEditModalOpen(true)}
+          />
+
+          {/* User Preferences */}
+          <UserPreferences
+            profile={profile}
+            onUpdate={handleProfileUpdate}
           />
 
           {/* Account Statistics */}

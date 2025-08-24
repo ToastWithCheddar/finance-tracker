@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Load .env files from the repo root so frontend uses unified env
+  envDir: '..',
   plugins: [react()],
   server: {
     host: '0.0.0.0', // Allow external connections

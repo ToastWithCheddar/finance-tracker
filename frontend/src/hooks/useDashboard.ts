@@ -1,37 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { dashboardService, type DashboardFilters } from '../services/dashboardService';
-
-export function useDashboardAnalytics(filters?: DashboardFilters) {
-  return useQuery({
-    queryKey: ['dashboard-analytics', filters],
-    queryFn: () => dashboardService.getDashboardAnalytics(filters),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes (gcTime is the correct property in v5)
-  });
-}
-
-export function useSpendingTrends(period: 'weekly' | 'monthly' = 'monthly') {
-  return useQuery({
-    queryKey: ['spending-trends', period],
-    queryFn: () => dashboardService.getSpendingTrends(period),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes (gcTime is the correct property in v5)
-  });
-}
+import { dashboardService } from '../services/dashboardService';
+import type { NetWorthTrendData, DashboardSummary } from '../services/dashboardService';
 
 export function useDashboardDateRanges() {
   return dashboardService.getDateRangePresets();
-}
-
-
-export function useSpendingHeatmap(startDate: string, endDate: string) {
-  return useQuery({
-    queryKey: ['spending-heatmap', startDate, endDate],
-    queryFn: () => dashboardService.getSpendingHeatmap({ start_date: startDate, end_date: endDate }),
-    enabled: !!startDate && !!endDate,
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
-  });
 }
 
 export function useNetWorthTrend(period: string = '90d') {
@@ -39,16 +11,15 @@ export function useNetWorthTrend(period: string = '90d') {
     queryKey: ['net-worth-trend', period],
     queryFn: () => dashboardService.getNetWorthTrend(period),
     staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false,
   });
 }
 
-export function useCashFlowWaterfall(startDate: string, endDate: string) {
+export function useDashboardSummary() {
   return useQuery({
-    queryKey: ['cash-flow-waterfall', startDate, endDate],
-    queryFn: () => dashboardService.getCashFlowWaterfall({ start_date: startDate, end_date: endDate }),
-    enabled: !!startDate && !!endDate,
-    staleTime: 10 * 60 * 1000, // 10 minutes
-    gcTime: 15 * 60 * 1000, // 15 minutes
+    queryKey: ['dashboard-summary'],
+    queryFn: () => dashboardService.getDashboardSummary(),
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    refetchOnWindowFocus: false,
   });
 }

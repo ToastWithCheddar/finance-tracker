@@ -64,8 +64,6 @@ export const MessageType = {
   CATEGORIZATION_RULE_APPLIED: 'categorization_rule_applied',
   RULE_EFFECTIVENESS_UPDATED: 'rule_effectiveness_updated',
   
-  // User activity events
-  USER_ACTIVITY_CREATED: 'user_activity_created',
 } as const;
 
 export type MessageType = typeof MessageType[keyof typeof MessageType];
@@ -336,16 +334,6 @@ export interface RuleEffectivenessPayload {
   updated_at: string; // ISO datetime string
 }
 
-export interface UserActivityPayload {
-  id: string;
-  type: string;
-  title: string;
-  description: string;
-  table_name?: string;
-  record_id?: string;
-  metadata?: Record<string, any>;
-  created_at: string; // ISO datetime string
-}
 
 // Union type for all possible payloads
 export type PayloadType = 
@@ -372,7 +360,7 @@ export type PayloadType =
   | CategorizationRuleActionPayload
   | RuleApplicationPayload
   | RuleEffectivenessPayload
-  | UserActivityPayload;
+;
 
 // Typed WebSocket Messages
 export interface TypedWebSocketMessage extends WebSocketMessage {
@@ -453,9 +441,6 @@ export function isRuleEffectivenessUpdate(message: WebSocketMessage): boolean {
   return message.type === MessageType.RULE_EFFECTIVENESS_UPDATED;
 }
 
-export function isUserActivity(message: WebSocketMessage): boolean {
-  return message.type === MessageType.USER_ACTIVITY_CREATED;
-}
 
 // WebSocket connection status
 export const ConnectionStatus = {

@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from '../../../__tests__/utils/testUtils';
+import { render, screen } from '../../../__tests__/utils/testUtils';
 import userEvent from '@testing-library/user-event';
 import { BudgetCard } from '../BudgetCard';
 import { createMockBudget } from '../../../__tests__/utils/mockFactories';
@@ -21,6 +21,7 @@ jest.mock('../../../services/budgetService', () => ({
 describe('BudgetCard', () => {
   const mockOnEdit = jest.fn();
   const mockOnDelete = jest.fn();
+  const mockOnOpenAlertSettings = jest.fn();
 
   const defaultBudget = createMockBudget({
     id: 'budget-1',
@@ -53,14 +54,14 @@ describe('BudgetCard', () => {
 
   describe('Basic Rendering', () => {
     it('should render budget name and category', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} />);
       
       expect(screen.getByText('Food Budget')).toBeInTheDocument();
       expect(screen.getByText('Category: Food & Dining')).toBeInTheDocument();
     });
 
     it('should render budget amount and period', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} />);
       
       expect(screen.getByText('$500.00')).toBeInTheDocument();
       expect(screen.getByText('Monthly')).toBeInTheDocument();
@@ -68,14 +69,14 @@ describe('BudgetCard', () => {
     });
 
     it('should render budget status badge', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} />);
       
       expect(screen.getByText('on track')).toBeInTheDocument();
       expect(mockBudgetService.getBudgetStatus).toHaveBeenCalledWith(defaultBudget.usage);
     });
 
     it('should render days remaining', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} />);
       
       expect(screen.getByText('15 days remaining')).toBeInTheDocument();
       expect(mockBudgetService.calculateDaysRemaining).toHaveBeenCalledWith(defaultBudget.usage);
@@ -84,7 +85,7 @@ describe('BudgetCard', () => {
 
   describe('Progress Bar', () => {
     it('should render progress bar with correct percentage', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
       expect(screen.getByText('Progress')).toBeInTheDocument();
       expect(screen.getByText('60%')).toBeInTheDocument();
@@ -94,7 +95,7 @@ describe('BudgetCard', () => {
     });
 
     it('should render green progress bar for on-track budget', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
       const progressBar = screen.getByText('Progress').closest('.mb-4')?.querySelector('.h-2');
       expect(progressBar).toHaveClass('bg-green-500');
@@ -150,7 +151,7 @@ describe('BudgetCard', () => {
 
   describe('Spending Details', () => {
     it('should render spent and remaining amounts', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} />);
       
       expect(screen.getByText('Spent')).toBeInTheDocument();
       expect(screen.getByText('$300.00')).toBeInTheDocument();
@@ -177,7 +178,7 @@ describe('BudgetCard', () => {
     });
 
     it('should render positive remaining amount in green', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} />);
       
       const remainingAmount = screen.getByText('$200.00');
       expect(remainingAmount).toHaveClass('text-green-600');
@@ -203,7 +204,7 @@ describe('BudgetCard', () => {
     });
 
     it('should not display warning when within budget', () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
       expect(screen.queryByText(/Over budget by/)).not.toBeInTheDocument();
     });
@@ -228,7 +229,7 @@ describe('BudgetCard', () => {
     const user = userEvent.setup();
 
     it('should call onEdit when edit button is clicked', async () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
       const editButton = screen.getByRole('button', { name: /edit/i });
       await user.click(editButton);
@@ -237,7 +238,7 @@ describe('BudgetCard', () => {
     });
 
     it('should show delete confirmation modal when delete button is clicked', async () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
       const deleteButton = screen.getByRole('button', { name: /delete budget/i });
       await user.click(deleteButton);
@@ -248,7 +249,7 @@ describe('BudgetCard', () => {
     });
 
     it('should cancel delete confirmation when cancel button is clicked', async () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
       const deleteButton = screen.getByRole('button', { name: /delete budget/i });
       await user.click(deleteButton);
@@ -260,7 +261,7 @@ describe('BudgetCard', () => {
     });
 
     it('should call onDelete when confirm delete button is clicked', async () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
       const deleteButton = screen.getByRole('button', { name: /delete budget/i });
       await user.click(deleteButton);
@@ -272,7 +273,7 @@ describe('BudgetCard', () => {
     });
 
     it('should open alert settings modal when alert settings button is clicked', async () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
       const alertSettingsButton = screen.getByRole('button', { name: /alert settings/i });
       await user.click(alertSettingsButton);
@@ -283,14 +284,10 @@ describe('BudgetCard', () => {
     });
 
     it('should open calendar modal when calendar button is clicked', async () => {
-      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} />);
+      render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
-      const calendarButton = screen.getByRole('button', { name: /calendar view/i });
-      await user.click(calendarButton);
-      
-      await waitFor(() => {
-        expect(screen.getByText('Budget Calendar')).toBeInTheDocument();
-      });
+      // Calendar button removed; no calendar interaction expected
+      expect(screen.queryByRole('button', { name: /calendar view/i })).not.toBeInTheDocument();
     });
 
     it('should disable buttons when loading', () => {
@@ -298,12 +295,11 @@ describe('BudgetCard', () => {
       
       const editButton = screen.getByRole('button', { name: /edit budget/i });
       const deleteButton = screen.getByRole('button', { name: /delete budget/i });
-      const calendarButton = screen.getByRole('button', { name: /calendar view/i });
       const alertButton = screen.getByRole('button', { name: /alert settings/i });
       
       expect(editButton).toBeDisabled();
       expect(deleteButton).toBeDisabled();
-      expect(calendarButton).toBeDisabled();
+      expect(screen.queryByRole('button', { name: /calendar view/i })).not.toBeInTheDocument();
       expect(alertButton).toBeDisabled();
     });
 

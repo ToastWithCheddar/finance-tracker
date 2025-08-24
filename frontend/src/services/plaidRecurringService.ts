@@ -115,17 +115,6 @@ export const plaidRecurringService = {
    * Export Plaid recurring transactions data
    */
   exportPlaidRecurringTransactions: async (format: 'csv' | 'json' = 'csv'): Promise<Blob> => {
-    const response = await fetch(`/api/recurring/plaid-subscriptions/export?format=${format}`, {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('access_token') || ''}`,
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error('Export failed');
-    }
-    
-    return response.blob();
+    return api.getBlob('/recurring/plaid-subscriptions/export', { format });
   }
 };

@@ -68,6 +68,8 @@ export interface SyncTransactionsResponse {
       account_id: string;
       account_name: string;
       success: boolean;
+      skipped?: boolean;
+      reason?: string;
       new_transactions?: number;
       updated_transactions?: number;
       sync_duration?: number;

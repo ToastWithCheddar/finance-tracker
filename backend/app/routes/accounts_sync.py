@@ -21,6 +21,7 @@ from app.models.user import User
 from app.models.account import Account
 from app.services.account_service import AccountService
 from app.websocket.events import WebSocketEvent, EventType
+from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.core.exceptions import (
     ExternalServiceError,
     AccountNotFoundError,
@@ -110,6 +111,28 @@ async def sync_transactions(
             results = []
             for account in user_accounts:
                 try:
+                    # Guardrail: skip non-transactional or not-connected accounts with friendly message
+                    non_transactional_types = {"mortgage", "loan", "investment", "retirement"}
+                    if account.account_type in non_transactional_types:
+                        results.append({
+                            "account_id": str(account.id),
+                            "account_name": account.name,
+                            "success": False,
+                            "skipped": True,
+                            "reason": "This account type does not have a transaction feed. Payments appear on the funding account.",
+                        })
+                        continue
+
+                    if not account.is_plaid_connected:
+                        results.append({
+                            "account_id": str(account.id),
+                            "account_name": account.name,
+                            "success": False,
+                            "skipped": True,
+                            "reason": "Account is not connected to a bank. Connect it before syncing.",
+                        })
+                        continue
+
                     result = await transaction_sync_service.sync_account_transactions(
                         str(account.id), db, days=days
                     )
@@ -137,7 +160,7 @@ async def sync_transactions(
         else:
             # Sync all user accounts
             result = await transaction_sync_service.sync_user_transactions(
-                str(current_user.id), db, days=days
+                current_user.id, db, days=days
             )
             return {
                 "success": True,

@@ -161,12 +161,15 @@ export function useAddContribution() {
       contributionData: GoalContributionCreate 
     }) => goalService.addContribution(goalId, contributionData),
     onSuccess: (contribution, variables) => {
+      const amountDollars = typeof (contribution as any)?.amount === 'number'
+        ? (contribution as any).amount
+        : ((contribution as any)?.amount_cents ?? 0) / 100;
       queryClient.invalidateQueries({ queryKey: goalKeys.lists() });
       queryClient.invalidateQueries({ queryKey: goalKeys.detail(variables.goalId) });
       queryClient.invalidateQueries({ queryKey: goalKeys.contributions(variables.goalId) });
       queryClient.invalidateQueries({ queryKey: goalKeys.stats() });
       
-      toast.success(`Contribution of $${contribution.amount.toFixed(2)} added! 💰`, {
+      toast.success(`Contribution of $${amountDollars.toFixed(2)} added! 💰`, {
         duration: 4000,
       });
     },

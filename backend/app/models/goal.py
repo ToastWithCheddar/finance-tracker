@@ -13,31 +13,24 @@ from sqlalchemy.orm import relationship, mapped_column, Mapped
 from .base import BaseModel
 
 class GoalStatus(enum.Enum):
-    ACTIVE = "active"
-    COMPLETED = "completed"
-    PAUSED = "paused"
-    CANCELLED = "cancelled"
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    PAUSED = "PAUSED"
+    CANCELLED = "CANCELLED"
 
 class GoalType(enum.Enum):
-    SAVINGS = "savings"
-    DEBT_PAYOFF = "debt_payoff"
-    EMERGENCY_FUND = "emergency_fund"
-    INVESTMENT = "investment"
-    PURCHASE = "purchase"
-    OTHER = "other"
+    SAVINGS = "SAVINGS"
+    DEBT_PAYOFF = "DEBT_PAYOFF"
+    EMERGENCY_FUND = "EMERGENCY_FUND"
+    INVESTMENT = "INVESTMENT"
+    PURCHASE = "PURCHASE"
+    OTHER = "OTHER"
 
 class GoalPriority(enum.Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-class ContributionFrequency(enum.Enum):
-    DAILY = "daily"
-    WEEKLY = "weekly"
-    MONTHLY = "monthly"
-    QUARTERLY = "quarterly"
-    YEARLY = "yearly"
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
 
 
 class Goal(BaseModel):
@@ -60,13 +53,12 @@ class Goal(BaseModel):
 
     # Progress tracking
     last_contribution_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    contribution_frequency: Mapped[ContributionFrequency] = mapped_column(Enum(ContributionFrequency), default=ContributionFrequency.WEEKLY)
     monthly_target_cents: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     celebration_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Milestone settings 
     milestone_percent: Mapped[int] = mapped_column(Integer, default=25, nullable=True) # Round up
-    last_milestone: Mapped[Optional[int]] = mapped_column(Integer, nullable=True) 
+    last_milestone: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True) 
 
     # Relationships 
     user = relationship("User", back_populates="goals") # One user can have many goals
@@ -80,12 +72,16 @@ class Goal(BaseModel):
         return min(int((self.current_amount_cents / self.target_amount_cents) * 100), 100)
 
     @property
-    def remaining(self) -> int:
+    def remaining_amount_cents(self) -> int:
         return max(0, int(self.target_amount_cents - self.current_amount_cents))
 
     @property
-    def is_achieved(self) -> bool:
+    def is_completed(self) -> bool:
         return self.current_amount_cents >= self.target_amount_cents
+    
+    @property 
+    def is_achieved(self) -> bool:
+        return self.is_completed
 
     @property
     def days_remaining(self) -> int:

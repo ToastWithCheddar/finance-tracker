@@ -23,7 +23,7 @@ export function AlertThresholdsSelector({
       </p>
       
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {predefinedThresholds.map(({ value, label, color }) => {
+        {predefinedThresholds.map(({ value, label, color }: { value: number; label: string; color: string }) => {
           const isSelected = selectedThresholds.includes(value);
           return (
             <button

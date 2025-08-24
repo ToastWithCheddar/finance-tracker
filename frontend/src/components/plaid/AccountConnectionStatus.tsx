@@ -31,8 +31,8 @@ export function AccountConnectionStatus() {
     syncBalancesResult 
   } = usePlaidActions();
 
-  const handlePlaidSuccess = (accounts: unknown[]) => {
-    console.log('✅ Successfully connected accounts:', accounts);
+  const handlePlaidSuccess = () => {
+    console.log('✅ Successfully connected accounts');
     setShowPlaidLink(false);
     // Refetch connection status
     refetch();

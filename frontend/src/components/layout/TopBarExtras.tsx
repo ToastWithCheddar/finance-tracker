@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Bell, CheckCheck, Wifi, WifiOff, User, LogOut, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useConnectionStatus, useNotifications, useUnreadNotificationsCount, useRealtimeStore } from '../../stores/realtimeStore';
+import { useNotifications, useUnreadNotificationsCount, useRealtimeStore } from '../../stores/realtimeStore';
 import { useAuthStore, useAuthUser } from '../../stores/authStore';
 import { useDropdown } from '../../hooks/useDropdown';
+import { getUserInitials, getDisplayName } from '../../utils/userUtils';
 
 export function ConnectionStatusChip() {
-  const { status } = useConnectionStatus();
+  const status = useRealtimeStore((s) => s.connectionStatus.status);
   const color = status === 'connected' ? 'bg-green-500' : status === 'connecting' ? 'bg-yellow-500' : 'bg-red-500';
   const Icon = status === 'connected' ? Wifi : WifiOff;
   const label = status.charAt(0).toUpperCase() + status.slice(1);
@@ -51,7 +52,7 @@ export function NotificationsBell() {
   return (
     <div className="relative notifications-bell">
       <button 
-        ref={triggerRef}
+        ref={triggerRef as React.RefObject<HTMLButtonElement>}
         onClick={toggle} 
         className="relative p-2 rounded-full border border-border bg-[hsl(var(--surface))]"
       >
@@ -108,28 +109,54 @@ export function ProfileMenu() {
     logout();
   };
 
-  const getInitials = () => {
-    if (user?.displayName) {
-      return user.displayName.charAt(0).toUpperCase();
-    }
-    if (user?.email) {
-      return user.email.charAt(0).toUpperCase();
-    }
-    return 'U';
+  // Helper functions to adapt User interface to UserProfile interface
+  const getUserDisplayName = () => {
+    if (!user) return 'User';
+    // Convert User to UserProfile-like structure
+    const userProfile = {
+      id: user.id || '',
+      display_name: user.displayName,
+      first_name: undefined,
+      last_name: undefined,
+      email: user.email,
+      locale: 'en-US',
+      timezone: 'UTC',
+      currency: 'USD',
+      is_active: true,
+      is_verified: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    return getDisplayName(userProfile);
   };
 
-  const getDisplayName = () => {
-    if (user?.displayName) return user.displayName;
-    return 'User';
+  const getUserInitialsFromProfile = () => {
+    if (!user) return 'U';
+    // Convert User to UserProfile-like structure
+    const userProfile = {
+      id: user.id || '',
+      display_name: user.displayName,
+      first_name: undefined,
+      last_name: undefined,
+      email: user.email,
+      locale: 'en-US',
+      timezone: 'UTC',
+      currency: 'USD',
+      is_active: true,
+      is_verified: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    return getUserInitials(userProfile);
   };
 
   return (
     <div className="relative profile-menu">
       <button 
-        ref={triggerRef}
+        ref={triggerRef as React.RefObject<HTMLButtonElement>}
         onClick={toggle} 
         className="flex items-center gap-2 px-2 py-1.5 rounded-md border border-border bg-[hsl(var(--surface))] hover:bg-[hsl(var(--border)/0.25)] transition-colors"
-        title={`${getDisplayName()} - Click to open profile menu`}
+        title={`${getUserDisplayName()} - Click to open profile menu`}
       >
         <div className="w-6 h-6 rounded-full overflow-hidden bg-gradient-to-br from-[hsl(var(--brand))] to-blue-500 flex items-center justify-center text-white text-xs font-medium">
           {user?.avatarUrl && !imageError ? (
@@ -140,7 +167,7 @@ export function ProfileMenu() {
               onError={() => setImageError(true)}
             />
           ) : (
-            getInitials()
+            getUserInitialsFromProfile()
           )}
         </div>
         <ChevronDown className={`h-4 w-4 opacity-70 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
@@ -159,12 +186,12 @@ export function ProfileMenu() {
                     onError={() => setImageError(true)}
                   />
                 ) : (
-                  getInitials()
+                  getUserInitialsFromProfile()
                 )}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-[hsl(var(--text))] truncate">
-                  {getDisplayName()}
+                  {getUserDisplayName()}
                 </div>
                 <div className="text-xs text-[hsl(var(--text))] opacity-70 truncate">
                   {user?.email}
@@ -200,5 +227,4 @@ export function ProfileMenu() {
     </div>
   );
 }
-
 

@@ -3,7 +3,6 @@ import { api } from './api';
 export interface MLCategorizeRequest {
   description: string;
   amount: number;
-  merchant?: string;
 }
 
 export interface MLCategorizeResponse {
@@ -43,7 +42,6 @@ export interface BatchCategorizeRequest {
     id: string;
     description: string;
     amount: number;
-    merchant?: string;
   }>;
 }
 
@@ -57,56 +55,49 @@ class MLService {
    * Categorize a single transaction using ML model
    */
   async categorizeTransaction(request: MLCategorizeRequest): Promise<MLCategorizeResponse> {
-    const response = await api.post<MLCategorizeResponse>('/ml/categorise', request);
-    return response.data;
+    return await api.post<MLCategorizeResponse>('/ml/categorise', request);
   }
 
   /**
    * Categorize multiple transactions in batch
    */
   async batchCategorizeTransactions(request: BatchCategorizeRequest) {
-    const response = await api.post('/ml/batch-categorise', request);
-    return response.data;
+    return await api.post('/ml/batch-categorise', request);
   }
 
   /**
    * Submit user feedback for model improvement
    */
   async submitFeedback(request: MLFeedbackRequest) {
-    const response = await api.post('/ml/feedback', request);
-    return response.data;
+    return await api.post('/ml/feedback', request);
   }
 
   /**
    * Add a new example to a category for training
    */
   async addCategoryExample(request: CategoryExampleRequest) {
-    const response = await api.post('/ml/add-example', request);
-    return response.data;
+    return await api.post('/ml/add-example', request);
   }
 
   /**
    * Export model to ONNX format with quantization
    */
   async exportModel() {
-    const response = await api.post('/ml/export-model');
-    return response.data;
+    return await api.post('/ml/export-model');
   }
 
   /**
    * Get model performance metrics
    */
   async getModelPerformance(): Promise<MLPerformanceMetrics> {
-    const response = await api.get<MLPerformanceMetrics>('/ml/performance');
-    return response.data;
+    return await api.get<MLPerformanceMetrics>('/ml/performance');
   }
 
   /**
    * Get ML system health status
    */
   async getHealthStatus(): Promise<MLHealthStatus> {
-    const response = await api.get<MLHealthStatus>('/ml/health');
-    return response.data;
+    return await api.get<MLHealthStatus>('/ml/health');
   }
 
   /**

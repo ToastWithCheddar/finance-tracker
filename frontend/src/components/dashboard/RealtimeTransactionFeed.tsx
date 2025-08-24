@@ -11,18 +11,22 @@ import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import type { RealtimeTransaction } from '../../stores/realtimeStore';
 import { useRealtimeStore } from '../../stores/realtimeStore';
-import { formatCurrency, formatRelativeTime } from '../../utils';
+import { formatCurrency } from '../../utils/currency';
+import { getRelativeTime } from '../../utils/date';
 
 interface RealtimeTransactionFeedProps {
   transactions: RealtimeTransaction[];
   newCount: number;
+  isLive?: boolean;
 }
 
 export const RealtimeTransactionFeed: React.FC<RealtimeTransactionFeedProps> = ({
   transactions,
-  newCount
+  newCount,
+  isLive = true
 }) => {
-  const { markTransactionsSeen, clearOldTransactions } = useRealtimeStore();
+  const markTransactionsSeen = useRealtimeStore((s) => s.markTransactionsSeen);
+  const clearOldTransactions = useRealtimeStore((s) => s.clearOldTransactions);
   const feedRef = useRef<HTMLDivElement>(null);
   const prevTransactionCountRef = useRef(transactions.length);
 
@@ -48,10 +52,12 @@ export const RealtimeTransactionFeed: React.FC<RealtimeTransactionFeedProps> = (
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
             <span>Recent Transactions</span>
-            <div className="flex items-center">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
-              <span className="text-sm text-green-600">Live</span>
-            </div>
+            {isLive && (
+              <div className="flex items-center">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                <span className="text-sm text-green-600">Live</span>
+              </div>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -82,10 +88,12 @@ export const RealtimeTransactionFeed: React.FC<RealtimeTransactionFeedProps> = (
             )}
           </div>
           <div className="flex items-center space-x-3">
-            <div className="flex items-center">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
-              <span className="text-sm text-green-600">Live</span>
-            </div>
+            {isLive && (
+              <div className="flex items-center">
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                <span className="text-sm text-green-600">Live</span>
+              </div>
+            )}
             {newCount > 0 && (
               <Button variant="ghost" size="sm" onClick={handleMarkSeen}>
                 <Eye className="h-4 w-4 mr-1" />
@@ -175,16 +183,7 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, isFirst 
                   </div>
                 )}
                 
-                {/* Merchant */}
-                {transaction.merchant && (
-                  <>
-                    <span>•</span>
-                    <div className="flex items-center">
-                      <Building className="h-3 w-3 mr-1" />
-                      <span>{transaction.merchant}</span>
-                    </div>
-                  </>
-                )}
+
                 
                 {/* Account */}
                 {transaction.account_name && (
@@ -197,7 +196,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, isFirst 
               
               {/* Timestamp */}
               <div className="text-xs text-gray-400">
-                {formatRelativeTime(transaction.created_at || transaction.createdAt)}
+                {getRelativeTime(
+                  transaction.transactionDate
+                    ? new Date(transaction.transactionDate as any).toISOString()
+                    : ((transaction.created_at as any) || (transaction.createdAt as any) || new Date().toISOString())
+                )}
               </div>
             </div>
           </div>

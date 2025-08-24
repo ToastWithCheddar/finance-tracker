@@ -5,8 +5,11 @@ Ensures consistent service instantiation patterns and makes testing easier.
 from fastapi import Depends
 from sqlalchemy.orm import Session
 
+# Core dependencies
 from app.database import get_db
 from app.auth.dependencies import get_current_active_user, get_db_with_user_context
+
+# Service imports
 from app.services.account_service import get_account_service
 from app.services.transaction_service import get_transaction_service
 from app.services.category_service import CategoryService
@@ -17,12 +20,12 @@ from app.services.plaid_orchestration_service import get_plaid_service
 from app.services.transaction_sync_service import get_transaction_sync_service
 from app.services.account_sync_monitor import get_account_sync_monitor
 from app.services.reconciliation_service import get_enhanced_reconciliation_service
-from app.services.analytics_service import get_analytics_service
 from app.services.notification_service import NotificationService
-from app.services.merchant_service import get_merchant_service
 from app.services.auto_categorization_service import AutoCategorizationService
 from app.services.rule_template_service import RuleTemplateService
 from app.services.financial_health_service import FinancialHealthService
+
+# WebSocket manager
 from app.websocket.manager import redis_websocket_manager
 
 
@@ -41,7 +44,7 @@ def get_budget_service() -> BudgetService:
 
 def get_goal_service():
     """Dependency injection for GoalService with WebSocket manager."""
-    return GoalService(websocket_manager=get_websocket_manager())
+    return GoalService(websocket_manager=get_websocket_manager_dep())
 
 
 def get_user_service(db: Session = Depends(get_db)) -> UserService:
@@ -56,7 +59,9 @@ def get_notification_service() -> NotificationService:
 
 
 # Engine services (stateless singletons with lazy caching)
-_auto_categorization_service_instance = None
+_auto_categorization_service_instance: AutoCategorizationService | None = None
+_rule_template_service_instance: RuleTemplateService | None = None
+
 
 def get_auto_categorization_service() -> AutoCategorizationService:
     """Dependency injection for AutoCategorizationService."""
@@ -65,8 +70,6 @@ def get_auto_categorization_service() -> AutoCategorizationService:
         _auto_categorization_service_instance = AutoCategorizationService()
     return _auto_categorization_service_instance
 
-
-_rule_template_service_instance = None
 
 def get_rule_template_service() -> RuleTemplateService:
     """Dependency injection for RuleTemplateService."""
@@ -145,7 +148,8 @@ def get_owned_budget(
     """
     from fastapi import HTTPException, status
     
-    budget = budget_service.get(db=db, id=budget_id)
+    # Use the BudgetService method that enforces user ownership in the query
+    budget = budget_service.get_budget(db=db, budget_id=budget_id, user_id=current_user.id)
     if not budget or budget.user_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

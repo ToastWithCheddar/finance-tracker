@@ -93,7 +93,7 @@ class AccountInsightsService:
                     'health_score': 50,
                     'transaction_count': 0,
                     'average_transaction': 0,
-                    'spending_pattern': 'unknown'
+                    'spending_pattern': 'simplified'
                 }
             
             # Calculate metrics
@@ -157,7 +157,7 @@ class AccountInsightsService:
                 'average_transaction': average_transaction / 100,
                 'total_income': total_income / 100,
                 'total_expenses': total_expenses / 100,
-                'spending_pattern': self._determine_spending_pattern(expense_transactions)
+                'spending_pattern': 'simplified'
             }
             
         except Exception as e:
@@ -168,7 +168,7 @@ class AccountInsightsService:
                 'health_score': 0,
                 'transaction_count': 0,
                 'average_transaction': 0,
-                'spending_pattern': 'unknown'
+                'spending_pattern': 'simplified'
             }
     
     def _determine_account_category(self, account: Account, analysis: Dict[str, Any]) -> str:
@@ -201,35 +201,6 @@ class AccountInsightsService:
         
         return base_category
     
-    def _determine_spending_pattern(self, expense_transactions: List[Transaction]) -> str:
-        """Analyze spending pattern from expense transactions"""
-        if not expense_transactions:
-            return 'no_expenses'
-        
-        # Group transactions by day of week and amount
-        daily_amounts = {}
-        large_transactions = 0
-        
-        for tx in expense_transactions:
-            day = tx.transaction_date.weekday()
-            amount = abs(tx.amount_cents)
-            
-            if day not in daily_amounts:
-                daily_amounts[day] = []
-            daily_amounts[day].append(amount)
-            
-            if amount > 10000:  # $100+
-                large_transactions += 1
-        
-        # Determine pattern
-        if large_transactions > len(expense_transactions) * 0.3:
-            return 'large_purchases'
-        elif len(set(daily_amounts.keys())) <= 2:
-            return 'concentrated'  # Spending concentrated on few days
-        elif all(len(amounts) > 0 for amounts in daily_amounts.values()):
-            return 'distributed'  # Even spending across week
-        else:
-            return 'irregular'
     
     
     def _generate_portfolio_insights(

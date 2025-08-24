@@ -111,13 +111,7 @@ export class ValidationUtils {
            description.length >= 1;
   }
 
-  /**
-   * Validate merchant name
-   */
-  static isValidMerchantName(merchant: string): boolean {
-    return this.isNonEmptyString(merchant) && 
-           merchant.length <= 100;
-  }
+
 
   /**
    * Validate budget/goal name

@@ -22,10 +22,18 @@ export function PlaidLink({ onSuccess, onError }: PlaidLinkProps) {
     setIsConnecting(true);
     
     try {
+      // Ensure institution exists before proceeding
+      if (!metadata.institution) {
+        throw new Error('No institution data received from Plaid');
+      }
+      
       await exchangeToken({
         public_token: publicToken,
         metadata: {
-          institution: metadata.institution,
+          institution: {
+            name: metadata.institution.name,
+            institution_id: metadata.institution.institution_id,
+          },
           accounts: metadata.accounts,
         },
       });
@@ -63,7 +71,7 @@ export function PlaidLink({ onSuccess, onError }: PlaidLinkProps) {
   return (
     <div className="space-y-4">
       <Button
-        onClick={open}
+        onClick={() => open()}
         disabled={!ready || isConnecting}
         className="w-full"
       >

@@ -46,11 +46,25 @@ async def create_plaid_link_token(
     """Create Plaid Link token for account connection"""
     try:
         result = await plaid_service.create_link_token(str(current_user.id))
+        
+        # Check if the service returned a failure
+        if not result.get("success", False):
+            error_message = result.get("message", "Failed to create link token")
+            logger.error(f"Plaid service error for user {current_user.id}: {result.get('error', 'Unknown error')}")
+            raise PlaidIntegrationError(f"Plaid configuration error: {error_message}")
+        
+        # Ensure required fields exist
+        if "link_token" not in result:
+            logger.error(f"Missing link_token in Plaid service response for user {current_user.id}")
+            raise PlaidIntegrationError("Invalid response from Plaid service")
+        
         return PlaidLinkTokenResponse(
             link_token=result["link_token"],
             expiration=result.get("expiration"),
             request_id=result.get("request_id")
         )
+    except PlaidIntegrationError:
+        raise
     except Exception as e:
         logger.error(f"Failed to create link token for user {current_user.id}: {e}", exc_info=True)
         raise PlaidIntegrationError("Unable to create bank connection link")

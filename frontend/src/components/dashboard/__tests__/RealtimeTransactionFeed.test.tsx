@@ -9,9 +9,12 @@ jest.mock('../../../stores/realtimeStore');
 const mockUseRealtimeStore = useRealtimeStore as jest.MockedFunction<typeof useRealtimeStore>;
 
 // Mock utils
-jest.mock('../../../utils', () => ({
+jest.mock('../../../utils/currency', () => ({
   formatCurrency: (amount: number) => `$${(amount / 100).toFixed(2)}`,
-  formatRelativeTime: (timestamp: string) => '2 minutes ago',
+}));
+
+jest.mock('../../../utils/date', () => ({
+  getRelativeTime: (timestamp: string) => '2 minutes ago',
 }));
 
 const createMockTransaction = (overrides: Partial<RealtimeTransaction> = {}): RealtimeTransaction => ({

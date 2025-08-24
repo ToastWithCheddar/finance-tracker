@@ -6,23 +6,19 @@
 // Enhanced consolidated services (single implementation)
 export { TransactionService, transactionService } from './transactionService';
 export { BudgetService, budgetService } from './budgetService';
+export { BudgetAlertService, budgetAlertService } from './budgetAlertService';
 export { GoalService } from './goalService';
 export { categoryService } from './categoryService';
 export { dashboardService } from './dashboardService';
 export { mlService } from './mlService';
 export { NotificationService } from './notificationService';
-export { timelineService } from './timelineService';
-export { savedFilterService } from './savedFilterService';
 export { plaidRecurringService } from './plaidRecurringService';
-export { categorizationRulesService } from './categorizationRulesService';
 
 // Service registry (now uses consolidated services)
 export {
   serviceRegistry,
   registryTransactionService,
   registryBudgetService,
-  registrySavedFilterService,
-  registryTimelineService,
   ServiceRegistry,
   ServiceOperations,
   ServiceErrorHandler,
@@ -91,7 +87,6 @@ export { queryClient } from './queryClient';
  * import { transactionService, budgetService } from '@/services';
  * 
  * // New transaction features
- * const trends = await transactionService.getSpendingTrends('month');
  * const breakdown = await transactionService.getCategoryBreakdown();
  * 
  * // New budget features  

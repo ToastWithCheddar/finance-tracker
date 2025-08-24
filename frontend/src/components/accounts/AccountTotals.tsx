@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { accountService } from '../../services/accountService';
+import { CurrencyUtils } from '../../utils/currency';
 import type { Account } from '../../services/accountService';
 
 interface AccountTotalsProps {
@@ -32,19 +32,19 @@ export function AccountTotals({ accounts, className = '' }: AccountTotalsProps) 
       <div className="text-center">
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Net Worth</p>
         <p className={`font-semibold ${totals.total >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-          {accountService.formatBalance(totals.total)}
+          {CurrencyUtils.formatCents(totals.total)}
         </p>
       </div>
       <div className="text-center">
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Assets</p>
         <p className="font-semibold text-green-600">
-          {accountService.formatBalance(totals.assets)}
+          {CurrencyUtils.formatCents(totals.assets)}
         </p>
       </div>
       <div className="text-center">
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Liabilities</p>
         <p className="font-semibold text-red-600">
-          {accountService.formatBalance(totals.liabilities)}
+          {CurrencyUtils.formatCents(totals.liabilities)}
         </p>
       </div>
     </div>

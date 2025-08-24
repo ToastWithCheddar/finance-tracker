@@ -83,8 +83,14 @@ export function getAccountTypeLabel(accountType: string | undefined | null): str
       return 'Credit Card';
     case 'investment':
       return 'Investment';
+    case 'retirement':
+      return 'Retirement';
+    case 'mortgage':
+      return 'Mortgage';
+    case 'loan':
+      return 'Loan';
     default:
-      return 'Unknown';
+      return type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown';
   }
 }
 
@@ -94,11 +100,13 @@ export function getAccountTypeLabel(accountType: string | undefined | null): str
 export function getConnectionHealthLabel(health: string | undefined | null): string {
   switch (health) {
     case 'healthy':
-      return 'Healthy';
+      return 'Connected';
     case 'warning':
-      return 'Warning';
+      return 'Needs Attention';
     case 'failed':
-      return 'Failed';
+      return 'Connection Failed';
+    case 'not_connected':
+      return 'Manual Account';
     default:
       return 'Unknown';
   }

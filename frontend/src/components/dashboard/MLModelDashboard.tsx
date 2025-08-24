@@ -3,6 +3,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useToast } from '../ui/Toast';
+import { mlService } from '../../services/mlService';
 
 interface MLModelPerformance {
   total_predictions: number;
@@ -58,20 +59,15 @@ export const MLModelDashboard: React.FC = () => {
   const fetchMLData = async () => {
     try {
       setLoading(true);
-      const [performanceRes, healthRes] = await Promise.all([
-        fetch('/api/ml/performance'),
-        fetch('/api/ml/health')
+      setError(null);
+      
+      const [performanceData, healthData] = await Promise.all([
+        mlService.getModelPerformance(),
+        mlService.getHealthStatus()
       ]);
 
-      if (performanceRes.ok) {
-        const perfData = await performanceRes.json();
-        setPerformance(perfData);
-      }
-
-      if (healthRes.ok) {
-        const healthData = await healthRes.json();
-        setHealth(healthData);
-      }
+      setPerformance(performanceData);
+      setHealth(healthData);
     } catch (err) {
       console.error('Error fetching ML data:', err);
       setError('Failed to load ML model data');
@@ -88,18 +84,7 @@ export const MLModelDashboard: React.FC = () => {
 
     setIsAddingExample(true);
     try {
-      const response = await fetch('/api/ml/add-example', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(newExample),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add example');
-      }
-
+      await mlService.addCategoryExample(newExample);
       showToast('Example added successfully! This will improve future predictions.', 'success');
       setNewExample({ category: '', example: '' });
       fetchMLData(); // Refresh data
@@ -114,17 +99,9 @@ export const MLModelDashboard: React.FC = () => {
   const handleExportModel = async () => {
     setIsExporting(true);
     try {
-      const response = await fetch('/api/ml/export-model', {
-        method: 'POST',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to export model');
-      }
-
-      const result = await response.json();
+      const result = await mlService.exportModel();
       showToast(
-        `Model exported successfully! ${result.quantized_path ? 'Quantized version available.' : ''}`, 
+        `Model exported successfully! ${(result as any).quantized_path ? 'Quantized version available.' : ''}`, 
         'success'
       );
     } catch (error) {

@@ -1,15 +1,5 @@
 import type { UserProfile } from '../services/userService';
 
-/**
- * Formats a date string into a human-readable format
- */
-export const formatDate = (dateString: string): string => {
-  return new Date(dateString).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
-};
 
 /**
  * Generates user initials from various name fields

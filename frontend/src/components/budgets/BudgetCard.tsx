@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PencilIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon, Bell, Settings, Calendar } from 'lucide-react';
+import { PencilIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon, Bell, Settings } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
@@ -11,7 +11,6 @@ interface BudgetCardProps {
   onEdit: (budget: Budget) => void;
   onDelete: (budgetId: string) => void;
   onOpenAlertSettings: () => void;
-  onOpenCalendar: () => void;
   isLoading?: boolean;
 }
 
@@ -20,7 +19,6 @@ export function BudgetCard({
   onEdit, 
   onDelete, 
   onOpenAlertSettings, 
-  onOpenCalendar, 
   isLoading = false 
 }: BudgetCardProps) {
   const [showConfirmDelete, setShowConfirmDelete] = useState(false);
@@ -119,16 +117,6 @@ export function BudgetCard({
           </div>
           
           <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onOpenCalendar}
-              disabled={isLoading}
-              className="h-8 w-8 p-0"
-              title="Calendar View"
-            >
-              <Calendar className="h-4 w-4" />
-            </Button>
             <Button
               variant="ghost"
               size="sm"
@@ -305,7 +293,7 @@ export function BudgetCard({
                   Cancel
                 </Button>
                 <Button
-                  variant="destructive"
+                  variant="danger"
                   onClick={handleConfirmDelete}
                   disabled={isLoading}
                 >

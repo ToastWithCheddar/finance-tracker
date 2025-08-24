@@ -4,7 +4,7 @@ Handles automated transaction import and sync with Plaid
 """
 
 import logging
-from typing import Dict, Any, List, Optional, Set
+from typing import Dict, Any, List, Optional, Set, Union
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 from dataclasses import dataclass
@@ -15,7 +15,6 @@ from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.user import User
 from app.schemas.transaction import TransactionCreate
-from app.services.plaid_orchestration_service import get_plaid_service
 from app.services.transaction_service import get_transaction_service
 from app.websocket.manager import redis_websocket_manager as websocket_manager
 from app.websocket.events import WebSocketEvent, EventType
@@ -39,7 +38,6 @@ class TransactionSyncService:
     
     def __init__(self):
         self.transaction_service = get_transaction_service()
-        self.plaid_service = get_plaid_service()
         
         # Sync configuration
         self.max_sync_days = 365  # Maximum days to sync in one operation
@@ -49,34 +47,7 @@ class TransactionSyncService:
         # Lock configuration
         self.lock_timeout_seconds = 300  # 5 minutes timeout for distributed locks
     
-    def _normalize_merchant_name(self, description: str, merchant: str = None) -> str:
-        """
-        Simple merchant name normalization for duplicate detection.
-        
-        Args:
-            description: Transaction description
-            merchant: Optional merchant name
-            
-        Returns:
-            Normalized string for comparison
-        """
-        # Use merchant if available, otherwise description
-        text = merchant if merchant else description
-        if not text:
-            return ""
-        
-        # Basic normalization: lowercase, remove extra spaces
-        text = text.lower().strip()
-        
-        # Remove common payment prefixes/suffixes
-        for prefix in ['payment to ', 'purchase at ', 'transfer to ', 'debit card purchase ']:
-            if text.startswith(prefix):
-                text = text[len(prefix):]
-        
-        # Remove extra whitespace
-        text = ' '.join(text.split())
-        
-        return text
+
     
     async def _acquire_sync_lock(self, account_id: str) -> bool:
         """
@@ -169,8 +140,16 @@ class TransactionSyncService:
             if not account:
                 raise Exception(f"Account {account_id} not found")
             
+            # Friendlier error for non-transactional or not-connected accounts
+            non_transactional_types: Set[str] = {"mortgage", "loan", "investment", "retirement"}
+            if (account.account_type or "").lower() in non_transactional_types:
+                raise Exception(
+                    f"{account.account_type.title()} accounts do not have a transaction feed. "
+                    f"Payments appear on the funding account (e.g. checking)."
+                )
+
             if not account.is_plaid_connected:
-                raise Exception(f"Account {account.name} is not connected to Plaid")
+                raise Exception(f"Account {account.name} is not connected to a bank")
             
             # Determine sync date range
             sync_days = days or self._calculate_sync_days(account, force_sync)
@@ -190,7 +169,9 @@ class TransactionSyncService:
             
             # Fetch transactions from Plaid
             logger.info(f"📡 DEBUG: Fetching transactions from Plaid API...")
-            transactions_data = await self.plaid_service.fetch_transactions(
+            from app.services.plaid_orchestration_service import get_plaid_service
+            plaid_service = get_plaid_service()
+            transactions_data = await plaid_service.fetch_transactions(
                 account.plaid_access_token,
                 start_date,
                 end_date,
@@ -260,18 +241,33 @@ class TransactionSyncService:
             await self._release_sync_lock(account_id)
     
     async def sync_user_transactions(
-        self, 
-        user_id: str, 
+        self,
+        user_id: Union[str, 'UUID'],
         db: Session,
         days: int = None
     ) -> Dict[str, Any]:
         """Sync transactions for all user's connected accounts"""
-        
+        from uuid import UUID as _UUID
+
+        # Normalize user_id to UUID if provided as string
+        user_uuid = user_id
+        if isinstance(user_id, str):
+            try:
+                user_uuid = _UUID(user_id)
+            except Exception:
+                # Fallback: leave as-is; query may still work if DB auto-casts
+                user_uuid = user_id
+
+        # Only include fully Plaid-connected and transactional accounts
+        non_transactional_types: Set[str] = {"mortgage", "loan", "investment", "retirement"}
         accounts = db.query(Account).filter(
-            Account.user_id == user_id,
+            Account.user_id == user_uuid,
             Account.plaid_access_token_encrypted.isnot(None),
+            Account.plaid_account_id.isnot(None),
             Account.is_active == True
         ).all()
+        # Filter out non-transactional account types defensively
+        accounts = [a for a in accounts if (a.account_type or "").lower() not in non_transactional_types]
         
         if not accounts:
             return {
@@ -521,35 +517,35 @@ class TransactionSyncService:
             if not potential_duplicates:
                 return None
             
-            # Normalize Plaid description for comparison
-            normalized_plaid_desc = self._normalize_merchant_name(plaid_description)
+            # Simple text comparison for duplicate detection
+            plaid_desc_lower = plaid_description.lower().strip()
             
             # Find best match based on description similarity
             best_match = None
             best_match_score = 0
             
             for candidate in potential_duplicates:
-                # Normalize candidate description
-                normalized_candidate_desc = self._normalize_merchant_name(
-                    candidate.description, candidate.merchant
-                )
+                # Get candidate text for comparison
+                candidate_text = candidate.description.lower().strip()
+                if candidate.merchant:
+                    candidate_text = f"{candidate.merchant.lower().strip()} {candidate_text}"
                 
-                # Calculate simple similarity score (exact match for now, can be enhanced later)
-                if normalized_plaid_desc == normalized_candidate_desc:
+                # Calculate simple similarity score
+                if plaid_desc_lower == candidate_text:
                     similarity_score = 1.0
-                elif normalized_plaid_desc in normalized_candidate_desc or normalized_candidate_desc in normalized_plaid_desc:
+                elif plaid_desc_lower in candidate_text or candidate_text in plaid_desc_lower:
                     similarity_score = 0.8
                 else:
                     # Check for word overlap
-                    plaid_words = set(normalized_plaid_desc.split())
-                    candidate_words = set(normalized_candidate_desc.split())
+                    plaid_words = set(plaid_desc_lower.split())
+                    candidate_words = set(candidate_text.split())
                     if plaid_words and candidate_words:
                         overlap = len(plaid_words.intersection(candidate_words))
                         similarity_score = overlap / max(len(plaid_words), len(candidate_words))
                     else:
                         similarity_score = 0
                 
-                logger.info(f"   - Candidate: '{candidate.description}' (normalized: '{normalized_candidate_desc}') - Score: {similarity_score:.2f}")
+                logger.info(f"   - Candidate: '{candidate.description}' (text: '{candidate_text}') - Score: {similarity_score:.2f}")
                 
                 # Require minimum similarity threshold
                 if similarity_score > best_match_score and similarity_score >= 0.6:  # 60% similarity threshold
@@ -738,7 +734,7 @@ class TransactionSyncService:
             await websocket_manager.send_user_event(
                 str(account.user_id),
                 WebSocketEvent(
-                    type=EventType.TRANSACTION_SYNC_COMPLETE,
+                    event_type=EventType.TRANSACTION_SYNC_COMPLETE,
                     data={
                         'account_id': str(account.id),
                         'account_name': account.name,
@@ -765,7 +761,7 @@ class TransactionSyncService:
             await websocket_manager.send_user_event(
                 user_id,
                 WebSocketEvent(
-                    type=EventType.BULK_SYNC_COMPLETE,
+                    event_type=EventType.BULK_SYNC_COMPLETE,
                     data={
                         'total_new_transactions': total_new,
                         'total_updated_transactions': total_updated,
@@ -794,19 +790,23 @@ class TransactionSyncService:
             
             await conn.close()
             
+            from app.services.plaid_orchestration_service import get_plaid_service
+            plaid_service = get_plaid_service()
             return {
                 'active_syncs': len(syncing_accounts),
                 'syncing_accounts': syncing_accounts,
-                'plaid_service_status': await self.plaid_service.get_sync_status()
+                'plaid_service_status': await plaid_service.get_sync_status()
             }
             
         except Exception as e:
             logger.error(f"Error getting sync status from Redis: {str(e)}")
+            from app.services.plaid_orchestration_service import get_plaid_service
+            plaid_service = get_plaid_service()
             return {
                 'active_syncs': 0,
                 'syncing_accounts': [],
                 'error': f"Failed to get sync status: {str(e)}",
-                'plaid_service_status': await self.plaid_service.get_sync_status()
+                'plaid_service_status': await plaid_service.get_sync_status()
             }
     
     async def schedule_automatic_sync(self, db: Session, user_id: Optional[str] = None):
@@ -938,7 +938,7 @@ class TransactionSyncService:
             await websocket_manager.send_user_event(
                 str(user_id),
                 WebSocketEvent(
-                    type=EventType.WEBHOOK_SYNC_COMPLETE,
+                    event_type=EventType.WEBHOOK_SYNC_COMPLETE,
                     data={
                         'item_id': item_id,
                         'total_new_transactions': result.get('total_new_transactions', 0),

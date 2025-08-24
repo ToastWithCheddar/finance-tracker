@@ -88,6 +88,15 @@ export function useTransactionStats(filters?: TransactionFilter) {
     queryKey: TRANSACTION_KEYS.stats(filters),
     queryFn: () => transactionService.getTransactionStats(filters),
     staleTime: 5 * 60 * 1000, // 5 minutes
+    retry: 1, // Only retry once since we now use fallback calculation
+    meta: {
+      onSuccess: (data: any) => {
+        console.log('✅ Transaction stats calculated successfully:', data);
+      },
+      onError: (error: any) => {
+        console.error('❌ Failed to get transaction stats:', error);
+      },
+    },
   });
 }
 
@@ -101,12 +110,14 @@ export function useCreateTransaction() {
       // Invalidate transaction lists and stats
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+      // Invalidate aggregated stats for all filters
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
       
       // Also invalidate budget-related queries since transactions affect budgets
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       
       // Invalidate dashboard data
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
     },
   });
 }
@@ -127,9 +138,10 @@ export function useUpdateTransaction() {
       
       // Invalidate related queries
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.lists() });
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.stats() });
+      // Invalidate aggregated stats for all filters (use prefix, not factory with undefined)
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
     },
   });
 }
@@ -146,9 +158,9 @@ export function useDeleteTransaction() {
       
       // Invalidate list queries
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.lists() });
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.stats() });
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
     },
   });
 }
@@ -167,9 +179,9 @@ export function useBulkDeleteTransactions() {
       
       // Invalidate list queries
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.lists() });
-      queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.stats() });
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
     },
   });
 }
@@ -183,8 +195,9 @@ export function useImportCSV() {
     onSuccess: (result: CSVImportResponse) => {
       // Invalidate all transaction-related queries
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
+      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       
       return result;
     },

@@ -77,14 +77,7 @@ class CategorizationRule(BaseModel):
         """Check if rule was created from a template"""
         return self.template_id is not None
     
-    def matches_merchant(self, merchant: Optional[str], description: str) -> bool:
-        """Check if merchant or description matches merchant conditions"""
-        merchant_patterns = self.conditions.get("merchant_contains", [])
-        if not merchant_patterns:
-            return True
-        
-        search_text = f"{merchant or ''} {description}".lower()
-        return any(pattern.lower() in search_text for pattern in merchant_patterns)
+
     
     def matches_description(self, description: str) -> bool:
         """Check if description matches description conditions"""

@@ -5,13 +5,13 @@ from sqlalchemy import and_, or_, func, text
 from decimal import Decimal
 import uuid
 
-from ..models.budget import Budget
+from ..models.budget import Budget, BudgetPeriod as ModelBudgetPeriod
 from ..models.transaction import Transaction
 from ..models.category import Category
 from ..schemas.budget import (
     BudgetCreate, BudgetUpdate, BudgetResponse, BudgetUsage, 
     BudgetAlert, BudgetSummary, BudgetProgress, BudgetFilter,
-    BudgetPeriod, BudgetCalendarDay, BudgetCalendarResponse
+    BudgetCalendarDay, BudgetCalendarResponse
 )
 from .notification_service import NotificationService
 
@@ -21,10 +21,17 @@ class BudgetService:
     @staticmethod
     def create_budget(db: Session, budget_create: BudgetCreate, user_id: uuid.UUID) -> Budget:
         """Create a new budget"""
-        budget = Budget(
-            user_id=user_id,
-            **budget_create.model_dump()
-        )
+        data = budget_create.model_dump()
+        # Map schema period (lowercase string/enum) to model enum (uppercase)
+        period_input = data.get("period")
+        if period_input is not None:
+            try:
+                period_name = period_input.name if hasattr(period_input, "name") else str(period_input).upper()
+                data["period"] = ModelBudgetPeriod[period_name]
+            except KeyError:
+                # Fallback: default to MONTHLY if unexpected value (dev-only scope)
+                data["period"] = ModelBudgetPeriod.MONTHLY
+        budget = Budget(user_id=user_id, **data)
         db.add(budget)
         db.commit()
         db.refresh(budget)
@@ -58,7 +65,8 @@ class BudgetService:
             if filters.category_id:
                 query = query.filter(Budget.category_id == filters.category_id)
             if filters.period:
-                query = query.filter(Budget.period == filters.period.value)
+                # Compare to model enum
+                query = query.filter(Budget.period == ModelBudgetPeriod[filters.period.name])
             if filters.is_active is not None:
                 query = query.filter(Budget.is_active == filters.is_active)
             if filters.start_date:
@@ -148,6 +156,14 @@ class BudgetService:
     ) -> Budget:
         """Update a budget"""
         update_data = budget_update.model_dump(exclude_unset=True)
+        # Map schema enum/string to model enum for period if provided
+        if "period" in update_data and update_data["period"] is not None:
+            period_input = update_data["period"]
+            try:
+                period_name = period_input.name if hasattr(period_input, "name") else str(period_input).upper()
+                update_data["period"] = ModelBudgetPeriod[period_name]
+            except KeyError:
+                update_data.pop("period", None)
         for field, value in update_data.items():
             setattr(budget, field, value)
         
@@ -531,13 +547,13 @@ class BudgetService:
     @staticmethod
     def _get_period_boundaries(budget: Budget, current_date: date) -> Tuple[date, date]:
         """Calculate period start and end dates based on budget period"""
-        if budget.period == BudgetPeriod.WEEKLY:
+        if budget.period == ModelBudgetPeriod.WEEKLY:
             # Start of current week (Monday)
             days_since_monday = current_date.weekday()
             period_start = current_date - timedelta(days=days_since_monday)
             period_end = period_start + timedelta(days=6)
             
-        elif budget.period == BudgetPeriod.MONTHLY:
+        elif budget.period == ModelBudgetPeriod.MONTHLY:
             # Start of current month
             period_start = current_date.replace(day=1)
             if current_date.month == 12:
@@ -546,7 +562,7 @@ class BudgetService:
                 next_month = current_date.replace(month=current_date.month + 1, day=1)
             period_end = next_month - timedelta(days=1)
             
-        elif budget.period == BudgetPeriod.QUARTERLY:
+        elif budget.period == ModelBudgetPeriod.QUARTERLY:
             # Start of current quarter
             quarter_start_month = ((current_date.month - 1) // 3) * 3 + 1
             period_start = current_date.replace(month=quarter_start_month, day=1)

@@ -36,12 +36,12 @@ export const useAuthStore = create<AuthStore>()(
           const response = await apiClient.post<AuthResponse>('/auth/login', credentials);
           
           // Simplified validation (no token type checking)
-          if (!response || !response.accessToken || !response.refreshToken || !response.user) {
+          if (!response || !response.tokens?.access_token || !response.tokens?.refresh_token || !response.user) {
             throw new Error('Invalid authentication response structure');
           }
           
           // Store tokens securely
-          apiClient.setAuthTokens(response.accessToken, response.refreshToken, response.expiresIn);
+          apiClient.setAuthTokens(response.tokens.access_token, response.tokens.refresh_token, response.tokens.expires_in);
           
           set({
             user: response.user,
@@ -109,12 +109,12 @@ export const useAuthStore = create<AuthStore>()(
           });
 
           // Simplified validation (no dual token type handling)
-          if (!response || !response.accessToken || !response.refreshToken) {
+          if (!response || !response.tokens?.access_token || !response.tokens?.refresh_token) {
             throw new Error('Invalid refresh response structure');
           }
 
           // Update tokens securely
-          apiClient.setAuthTokens(response.accessToken, response.refreshToken, response.expiresIn);
+          apiClient.setAuthTokens(response.tokens.access_token, response.tokens.refresh_token, response.tokens.expires_in);
 
           // Update user data if provided in refresh response
           const currentState = get();

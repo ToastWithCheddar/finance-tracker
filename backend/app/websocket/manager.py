@@ -3,7 +3,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, List, Optional, Any, Set
 import asyncio
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import uuid 
 import logging
 
@@ -14,16 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 class RedisWebSocketManager:
-    """Redis-based WebSocket manager for scalable real-time messaging"""
+    """Simplified Redis-based WebSocket manager for basic real-time messaging"""
     
     def __init__(self):
         # In-memory connection tracking - only for active WebSocket connections
-        # This is local to each backend instance and only tracks active connections
         self.connections: Dict[str, Set[WebSocket]] = {}
         self.connection_user_map: Dict[WebSocket, str] = {}
         self.connection_metadata: Dict[WebSocket, Dict[str, Any]] = {}
 
-        # Redis client for pub/sub messaging and persistence
+        # Redis client for pub/sub messaging
         self.redis_client = redis_client
 
         # Connection tracking for statistics
@@ -52,9 +51,6 @@ class RedisWebSocketManager:
             
             # Send initial sync data
             await self.send_full_sync(user_id, websocket)
-            
-            # Send any missed notifications
-            await self.send_missed_notifications(user_id, websocket)
             
             # Start subscriber for this user if not already running
             await self._start_user_subscriber(user_id)
@@ -93,21 +89,90 @@ class RedisWebSocketManager:
     async def send_to_user(self, user_id: str, message: Dict[str, Any], persist: bool = True):
         """Send message to a user via Redis pub/sub"""
         try:
-            # Validate and enrich message
+            # Prepare message with basic enrichment
             enriched_message = await self._prepare_message(user_id, message)
             
-            # Persist message if requested
-            if persist:
-                await self.redis_client.persist_message(user_id, enriched_message)
-            
-            # Publish to Redis channel for this user
-            success = await self.redis_client.publish_to_user(user_id, enriched_message)
+            # Publish to user channel
+            channel = f"ws:user:{user_id}"
+            success = await self.redis_client.publish(channel, enriched_message)
             
             if not success:
                 logger.warning(f"Failed to publish message to user {user_id}")
                 
         except Exception as e:
             logger.error(f"Error sending message to user {user_id}: {str(e)}")
+
+    async def send_user_event(self, user_id: str, event, persist: bool = True):
+        """Send WebSocketEvent to a user (compatibility method for TransactionSyncService)"""
+        try:
+            # Ensure user_id is a string (convert UUID if needed)
+            user_id_str = str(user_id)
+            
+            # Convert WebSocketEvent to proper TypedWebSocketMessage format
+            if hasattr(event, 'type') and hasattr(event, 'data'):
+                # Convert WebSocketEvent to TypedWebSocketMessage format
+                event_type = event.type.value if hasattr(event.type, 'value') else str(event.type)
+                
+                # Ensure all UUIDs are converted to strings to avoid JSON serialization errors
+                sanitized_data = self._sanitize_data_for_json(event.data)
+                
+                message = {
+                    "id": f"event_{datetime.now(timezone.utc).timestamp()}_{user_id_str}",
+                    "type": event_type,
+                    "timestamp": datetime.now(timezone.utc),
+                    "user_id": user_id_str,
+                    "payload": sanitized_data
+                }
+            elif hasattr(event, 'to_dict'):
+                # Handle objects with to_dict method
+                base_message = event.to_dict()
+                sanitized_data = self._sanitize_data_for_json(base_message.get('data', {}))
+                
+                message = {
+                    "id": f"event_{datetime.now(timezone.utc).timestamp()}_{user_id_str}",
+                    "type": base_message.get('type', 'unknown'),
+                    "timestamp": datetime.now(timezone.utc),
+                    "user_id": user_id_str,
+                    "payload": sanitized_data
+                }
+            else:
+                # Fallback for other event formats
+                sanitized_data = self._sanitize_data_for_json(event if isinstance(event, dict) else {"data": event})
+                
+                message = {
+                    "id": f"event_{datetime.now(timezone.utc).timestamp()}_{user_id_str}",
+                    "type": "unknown",
+                    "timestamp": datetime.now(timezone.utc),
+                    "user_id": user_id_str,
+                    "payload": sanitized_data
+                }
+            
+            # Sanitize the entire message structure before sending
+            sanitized_message = self._sanitize_data_for_json(message)
+            
+            # Send via existing send_to_user method
+            await self.send_to_user(user_id_str, sanitized_message, persist)
+            
+        except Exception as e:
+            logger.error(f"Error sending user event to {user_id}: {str(e)}")
+
+    def _sanitize_data_for_json(self, data: Any) -> Any:
+        """Recursively sanitize data to ensure JSON serializability"""
+        if data is None:
+            return None
+        elif isinstance(data, (str, int, float, bool)):
+            return data
+        elif hasattr(data, '__str__') and hasattr(data, 'hex'):  # UUID-like objects
+            return str(data)
+        elif isinstance(data, datetime):
+            return data.isoformat()
+        elif isinstance(data, dict):
+            return {key: self._sanitize_data_for_json(value) for key, value in data.items()}
+        elif isinstance(data, (list, tuple)):
+            return [self._sanitize_data_for_json(item) for item in data]
+        else:
+            # Fallback: convert to string
+            return str(data)
 
     async def broadcast_to_users(self, user_ids: List[str], message: Dict[str, Any], persist: bool = True):
         """Send message to multiple users"""
@@ -131,12 +196,43 @@ class RedisWebSocketManager:
     async def send_full_sync(self, user_id: str, websocket: WebSocket):
         """Send complete dashboard state to a specific WebSocket connection"""
         try:
-            from ..services.analytics_service import get_analytics_service
+            from ..services.financial_health_service import get_financial_health_service
             from ..database import get_db
+            from datetime import datetime, timedelta
+            from ..models.transaction import Transaction
+            from ..models.account import Account
 
-            # Get dashboard data
+            # Get dashboard data using financial health service
             db = next(get_db())
-            dashboard_data = await get_analytics_service().get_dashboard_summary(db, user_id)
+            health_service = get_financial_health_service()
+            
+            # Calculate user financial health (includes net worth calculation)
+            financial_health = health_service.calculate_user_financial_health(db, user_id)
+            
+            # Get recent transactions count
+            thirty_days_ago = datetime.now() - timedelta(days=30)
+            recent_transactions = db.query(Transaction).filter(
+                Transaction.user_id == user_id,
+                Transaction.transaction_date >= thirty_days_ago.date()
+            ).count()
+            
+            # Get account count
+            account_count = db.query(Account).filter(
+                Account.user_id == user_id,
+                Account.is_active == True
+            ).count()
+            
+            dashboard_data = {
+                "net_worth": financial_health.get("net_worth", 0),
+                "total_liquid": financial_health.get("total_liquid", 0),
+                "total_debt": financial_health.get("total_debt", 0),
+                "total_investment": financial_health.get("total_investment", 0),
+                "financial_health_score": financial_health.get("overall_score", 0),
+                "financial_health_grade": financial_health.get("grade", "N/A"),
+                "account_count": account_count,
+                "recent_transactions": recent_transactions,
+                "recommendations": financial_health.get("recommendations", [])
+            }
 
             sync_message = {
                 "type": "full_sync",
@@ -151,46 +247,14 @@ class RedisWebSocketManager:
         except Exception as e:
             logger.error(f"Error sending full sync to user {user_id}: {str(e)}")
 
-    async def send_missed_notifications(self, user_id: str, websocket: WebSocket):
-        """Send missed notifications directly to a specific WebSocket"""
-        try:
-            # Get missed messages from Redis
-            missed_messages = await self.redis_client.get_missed_messages(user_id, limit=20)
-            
-            # Filter messages that are less than 1 hour old
-            current_time = datetime.now(timezone.utc)
-            recent_messages = []
-            
-            for message in missed_messages:
-                try:
-                    msg_time = datetime.fromisoformat(message.get("timestamp", ""))
-                    if current_time - msg_time < timedelta(hours=1):
-                        recent_messages.append(message)
-                except ValueError:
-                    continue
-            
-            # Send each recent message
-            for message in recent_messages:
-                try:
-                    await websocket.send_text(json.dumps(message))
-                except Exception as e:
-                    logger.error(f"Error sending missed notification: {str(e)}")
-                    
-            if recent_messages:
-                logger.debug(f"Sent {len(recent_messages)} missed notifications to user {user_id}")
-
-        except Exception as e:
-            logger.error(f"Error sending missed notifications to user {user_id}: {str(e)}")
-
     async def _start_user_subscriber(self, user_id: str):
         """Start Redis subscriber task for a user"""
         if user_id in self.subscriber_tasks:
             return  # Already running
             
         try:
-            channel = f"ws:user:{user_id}"
             task = asyncio.create_task(
-                self._user_message_subscriber(user_id, channel),
+                self._user_message_subscriber(user_id),
                 name=f"subscriber_{user_id}"
             )
             self.subscriber_tasks[user_id] = task
@@ -215,16 +279,14 @@ class RedisWebSocketManager:
             except Exception as e:
                 logger.error(f"Error stopping subscriber for user {user_id}: {str(e)}")
 
-    async def _user_message_subscriber(self, user_id: str, channel: str):
-        """Redis subscriber task for a specific user"""
-        async def message_handler(message: Dict[str, Any]):
+    async def _user_message_subscriber(self, user_id: str):
+        """Simple Redis subscriber task for a user"""
+        async def handle_message(message: Dict[str, Any]):
             """Handle incoming message from Redis"""
             try:
-                # Send message to all WebSocket connections for this user
-                if user_id in self.connections:
+                if user_id in self.connections and self.connections[user_id]:
                     disconnected_sockets = []
                     message_json = json.dumps(message)
-                    
                     for websocket in self.connections[user_id].copy():
                         try:
                             await websocket.send_text(message_json)
@@ -235,16 +297,16 @@ class RedisWebSocketManager:
                     # Clean up disconnected sockets
                     for websocket in disconnected_sockets:
                         await self.disconnect(websocket)
-                        
             except Exception as e:
-                logger.error(f"Error handling message for user {user_id}: {str(e)}")
+                logger.error(f"Error handling message for {user_id}: {str(e)}")
 
         async def error_handler(error: Exception):
-            """Handle subscriber errors"""
             logger.error(f"Subscriber error for user {user_id}: {str(error)}")
 
+        channel = f"ws:user:{user_id}"
+
         try:
-            await self.redis_client.subscribe(channel, message_handler, error_handler)
+            await self.redis_client.subscribe(channel, handle_message, error_handler)
         except asyncio.CancelledError:
             logger.debug(f"Subscriber task cancelled for user {user_id}")
             raise
@@ -254,19 +316,32 @@ class RedisWebSocketManager:
     async def _prepare_message(self, user_id: str, message: Dict[str, Any]) -> Dict[str, Any]:
         """Prepare and validate message for sending"""
         try:
+            # Ensure user_id is a string and sanitize the entire message before validation
+            user_id_str = str(user_id)
+            sanitized_message = self._sanitize_data_for_json(message)
+            
+            # Ensure the message has the required fields for validation
+            if "user_id" not in sanitized_message:
+                sanitized_message["user_id"] = user_id_str
+            if "id" not in sanitized_message:
+                sanitized_message["id"] = str(uuid.uuid4())
+            if "timestamp" not in sanitized_message:
+                sanitized_message["timestamp"] = datetime.now(timezone.utc)
+                
             # Validate message structure
-            typed_message = validate_websocket_message(message)
+            typed_message = validate_websocket_message(sanitized_message)
             return typed_message.model_dump()
             
         except Exception as e:
             logger.error(f"Error validating message: {str(e)}")
-            # Fallback to basic message format
-            return {
+            # Fallback to basic message format with sanitized data
+            sanitized_fallback = self._sanitize_data_for_json({
                 **message,
                 "id": str(uuid.uuid4()),
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "user_id": user_id,
-            }
+                "user_id": str(user_id),
+            })
+            return sanitized_fallback
 
     def is_user_connected(self, user_id: str) -> bool:
         """Check if a user has any active WebSocket connections"""
@@ -305,41 +380,6 @@ class RedisWebSocketManager:
                 "connected_users": len(self.get_connected_users()),
                 "error": str(e)
             }
-
-    async def cleanup_stale_connections(self):
-        """Clean up stale connections and old messages"""
-        try:
-            # Clean up old messages in Redis
-            await self.redis_client.cleanup_old_messages(max_age_hours=24)
-            
-            # Check for stale WebSocket connections
-            stale_connections = []
-            current_time = datetime.now(timezone.utc)
-            
-            for websocket, user_id in self.connection_user_map.items():
-                try:
-                    metadata = self.connection_metadata.get(websocket, {})
-                    last_activity = metadata.get("last_activity")
-                    
-                    if last_activity:
-                        last_activity_time = datetime.fromisoformat(last_activity)
-                        if (current_time - last_activity_time).total_seconds() > 3600:  # 1 hour
-                            stale_connections.append(websocket)
-                            
-                except Exception as e:
-                    logger.warning(f"Error checking connection staleness: {str(e)}")
-                    stale_connections.append(websocket)
-            
-            # Disconnect stale connections
-            for websocket in stale_connections:
-                try:
-                    await self.disconnect(websocket)
-                    logger.info("Cleaned up stale WebSocket connection")
-                except Exception as e:
-                    logger.error(f"Error cleaning up stale connection: {str(e)}")
-                    
-        except Exception as e:
-            logger.error(f"Error during cleanup: {str(e)}")
 
     async def shutdown(self):
         """Shutdown the WebSocket manager and cleanup resources"""

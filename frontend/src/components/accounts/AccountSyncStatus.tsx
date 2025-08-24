@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, WifiOff } from 'lucide-react';
+import { RefreshCw, WifiOff, XCircle } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 import { useWebSocket, type WebSocketMessage } from '../../hooks/useWebSocket';
@@ -162,9 +162,9 @@ export function AccountSyncStatus({ refreshTrigger = 0, onSyncComplete }: Accoun
               <div className="flex items-center space-x-3">
                 {getConnectionStatusIcon(account.health_status)}
                 <div>
-                  <h4 className="font-medium text-gray-900">{account.name}</h4>
+                  <h4 className="font-medium text-gray-900">{account.account_name}</h4>
                   <div className="flex items-center space-x-2 text-sm text-gray-600">
-                    <span className="capitalize">{account.type.replace('_', ' ')}</span>
+                    <span className="capitalize">{account.account_type.replace('_', ' ')}</span>
                     <span>•</span>
                     <span className={`px-2 py-1 rounded-full text-xs ${getConnectionStatusColor(account.health_status)}`}>
                       {getConnectionStatusText(account.health_status)}
@@ -179,7 +179,7 @@ export function AccountSyncStatus({ refreshTrigger = 0, onSyncComplete }: Accoun
                     {new Intl.NumberFormat('en-US', {
                       style: 'currency',
                       currency: account.currency
-                    }).format(account.balance)}
+                    }).format(account.balance_cents / 100)}
                   </div>
                   <div className="text-sm text-gray-500">
                     Last sync: {formatLastSync(account.last_sync)}
