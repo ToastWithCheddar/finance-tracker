@@ -1,7 +1,9 @@
 import { Card } from '../ui/Card';
 import { useGoalStats } from '../../hooks/useGoals';
 import { formatCurrency } from '../../utils';
+import { Target, DollarSign, BarChart3, TrendingUp, AlertTriangle, Lightbulb, Trophy } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { QuickContributionCard } from './QuickContributionCard';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
@@ -47,7 +49,7 @@ export function GoalsDashboard() {
               <p className="text-sm font-medium text-[hsl(var(--text))] opacity-70">Total Goals</p>
               <p className="text-3xl font-bold text-[hsl(var(--text))]">{stats.total_goals}</p>
             </div>
-            <div className="text-4xl">🎯</div>
+<Target className="h-10 w-10 text-blue-500" />
           </div>
           <div className="mt-2 text-sm text-[hsl(var(--text))] opacity-70">
             {stats.active_goals} active, {stats.completed_goals} completed
@@ -62,7 +64,7 @@ export function GoalsDashboard() {
                 {formatCurrency(stats.total_saved_cents)}
               </p>
             </div>
-            <div className="text-4xl">💰</div>
+<DollarSign className="h-10 w-10 text-green-500" />
           </div>
           <div className="mt-2 text-sm text-[hsl(var(--text))] opacity-70">
             of {formatCurrency(stats.total_target_cents)} target
@@ -77,7 +79,7 @@ export function GoalsDashboard() {
                 {stats.average_progress.toFixed(1)}%
               </p>
             </div>
-            <div className="text-4xl">📊</div>
+<BarChart3 className="h-10 w-10 text-purple-500" />
           </div>
           <div className="mt-2 text-sm text-[hsl(var(--text))] opacity-70">
             across all goals
@@ -92,13 +94,16 @@ export function GoalsDashboard() {
                 {formatCurrency(stats.this_month_contributions_cents)}
               </p>
             </div>
-            <div className="text-4xl">📈</div>
+<TrendingUp className="h-10 w-10 text-blue-500" />
           </div>
           <div className="mt-2 text-sm text-[hsl(var(--text))] opacity-70">
             contributions made
           </div>
         </Card>
       </div>
+
+      {/* Quick Contribution Section */}
+      <QuickContributionCard />
 
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -265,7 +270,7 @@ export function GoalsDashboard() {
           {stats.average_progress < 25 && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center space-x-2 mb-2">
-                <span className="text-yellow-600">⚠️</span>
+<AlertTriangle className="h-4 w-4 text-yellow-600" />
                 <span className="font-medium text-yellow-800">Low Progress</span>
               </div>
               <p className="text-sm text-yellow-700">
@@ -278,7 +283,7 @@ export function GoalsDashboard() {
           {stats.active_goals === 0 && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-center space-x-2 mb-2">
-                <span className="text-blue-600">💡</span>
+<Lightbulb className="h-4 w-4 text-blue-600" />
                 <span className="font-medium text-blue-800">Get Started</span>
               </div>
               <p className="text-sm text-blue-700">
@@ -290,7 +295,7 @@ export function GoalsDashboard() {
           {stats.completed_goals > 0 && (
             <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
               <div className="flex items-center space-x-2 mb-2">
-                <span className="text-green-600">🎉</span>
+<Trophy className="h-4 w-4 text-green-600" />
                 <span className="font-medium text-green-800">Great Job!</span>
               </div>
               <p className="text-sm text-green-700">

@@ -30,17 +30,15 @@ class User(BaseModel):
     # Preferences (simplified notifications)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     theme: Mapped[str] = mapped_column(String(20), default="light", nullable=False)
+    auto_categorization_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     
     # Additional User Preferences
     default_items_per_page: Mapped[int] = mapped_column(Integer, default=25, nullable=False)
-    auto_categorization_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     spending_alert_threshold_cents: Mapped[Optional[int]] = mapped_column(Integer, default=None, nullable=True)
    
     # Relationships
     accounts = relationship("Account", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user", cascade="all, delete-orphan")
-    plaid_recurring_transactions = relationship("PlaidRecurringTransaction", back_populates="user", cascade="all, delete-orphan")
-    categorization_rules = relationship("CategorizationRule", back_populates="user", cascade="all, delete-orphan")
     budgets = relationship("Budget", back_populates="user", cascade="all, delete-orphan")
     goals = relationship("Goal", back_populates="user", cascade="all, delete-orphan")
     notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")

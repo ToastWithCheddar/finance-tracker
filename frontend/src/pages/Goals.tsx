@@ -126,52 +126,54 @@ export default function Goals() {
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="flex items-center space-x-3">
-          <select
-            value={filters.status || ''}
-            onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value as GoalStatus || undefined }))}
-            className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
-          >
-            <option value="">All Status</option>
-            <option value="active">Active</option>
-            <option value="completed">Completed</option>
-            <option value="paused">Paused</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          
-          <select
-            value={filters.goal_type || ''}
-            onChange={(e) => setFilters(prev => ({ ...prev, goal_type: e.target.value as GoalType || undefined }))}
-            className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
-          >
-            <option value="">All Types</option>
-            <option value="savings">Savings</option>
-            <option value="debt_payoff">Debt Payoff</option>
-            <option value="emergency_fund">Emergency Fund</option>
-            <option value="investment">Investment</option>
-            <option value="purchase">Purchase</option>
-            <option value="other">Other</option>
-          </select>
-          
-          <select
-            value={filters.priority || ''}
-            onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value as GoalPriority || undefined }))}
-            className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
-          >
-            <option value="">All Priorities</option>
-            <option value="critical">Critical</option>
-            <option value="high">High</option>
-            <option value="medium">Medium</option>
-            <option value="low">Low</option>
-          </select>
-          
-          {(filters.status || filters.goal_type || filters.priority) && (
-            <Button onClick={clearFilters} variant="outline" size="sm">
-              Clear
-            </Button>
-          )}
-        </div>
+        {/* Filters - Only show for list and grid views */}
+        {viewMode !== 'dashboard' && (
+          <div className="flex items-center space-x-3">
+            <select
+              value={filters.status || ''}
+              onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value as GoalStatus || undefined }))}
+              className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
+            >
+              <option value="">All Status</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="paused">Paused</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            
+            <select
+              value={filters.goal_type || ''}
+              onChange={(e) => setFilters(prev => ({ ...prev, goal_type: e.target.value as GoalType || undefined }))}
+              className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
+            >
+              <option value="">All Types</option>
+              <option value="savings">Savings</option>
+              <option value="debt_payoff">Debt Payoff</option>
+              <option value="emergency_fund">Emergency Fund</option>
+              <option value="investment">Investment</option>
+              <option value="purchase">Purchase</option>
+              <option value="other">Other</option>
+            </select>
+            
+            <select
+              value={filters.priority || ''}
+              onChange={(e) => setFilters(prev => ({ ...prev, priority: e.target.value as GoalPriority || undefined }))}
+              className="px-3 py-1 text-sm rounded-md focus:outline-none focus:ring-2 bg-[hsl(var(--surface))] text-[hsl(var(--text))] border border-[hsl(var(--border))] focus:ring-[hsl(var(--brand))] focus:border-[hsl(var(--brand))]"
+            >
+              <option value="">All Priorities</option>
+              <option value="critical">Critical</option>
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+            
+            {(filters.status || filters.goal_type || filters.priority) && (
+              <Button onClick={clearFilters} variant="outline" size="sm">
+                Clear
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Content */}

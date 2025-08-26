@@ -35,7 +35,6 @@ class TestTransactionServiceCreateTransaction:
             transaction_date=date.today(),
             category_id=uuid4(),  # Category provided, so ML won't be called
             status="posted",
-            is_recurring=False,
             is_transfer=False,
             notes="Test notes",
             tags=["test"]

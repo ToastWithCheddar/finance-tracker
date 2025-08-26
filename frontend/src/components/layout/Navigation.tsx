@@ -22,7 +22,7 @@ export function Navigation({ className = '' }: NavigationProps) {
         <div className="flex items-center justify-between h-16">
           {/* Logo/Brand */}
           <div className="flex items-center space-x-3">
-            <div className="text-xl md:text-2xl font-extrabold tracking-tight bg-gradient-to-r from-[hsl(var(--brand))] via-emerald-400 to-teal-400 bg-clip-text text-transparent">
+            <div className="text-xl md:text-2xl font-extrabold tracking-tight bg-brand-gradient bg-clip-text text-transparent">
               Finance Tracker
             </div>
           </div>

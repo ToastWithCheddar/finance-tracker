@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, func, text
 from decimal import Decimal
 import uuid
+import calendar
 
 from ..models.budget import Budget, BudgetPeriod as ModelBudgetPeriod
 from ..models.transaction import Transaction
@@ -16,12 +17,129 @@ from ..schemas.budget import (
 from .notification_service import NotificationService
 
 
+class BudgetCalculationEngine:
+    """Unified budget calculation engine - single source of truth for all budget calculations"""
+    
+    @staticmethod
+    def calculate_period_boundaries(budget_period: 'ModelBudgetPeriod', 
+                                  reference_date: date,
+                                  budget_start: Optional[date] = None,
+                                  budget_end: Optional[date] = None) -> Tuple[date, date]:
+        """Centralized, tested period boundary calculation"""
+        
+        if budget_period == ModelBudgetPeriod.WEEKLY:
+            # Start of current week (Monday)
+            days_since_monday = reference_date.weekday()
+            period_start = reference_date - timedelta(days=days_since_monday)
+            period_end = period_start + timedelta(days=6)
+            
+        elif budget_period == ModelBudgetPeriod.MONTHLY:
+            # Start of current month
+            period_start = reference_date.replace(day=1)
+            if reference_date.month == 12:
+                next_month = reference_date.replace(year=reference_date.year + 1, month=1, day=1)
+            else:
+                next_month = reference_date.replace(month=reference_date.month + 1, day=1)
+            period_end = next_month - timedelta(days=1)
+            
+        elif budget_period == ModelBudgetPeriod.QUARTERLY:
+            # Start of current quarter
+            quarter_start_month = ((reference_date.month - 1) // 3) * 3 + 1
+            period_start = reference_date.replace(month=quarter_start_month, day=1)
+            
+            # Calculate end of quarter (last day of third month in quarter)
+            quarter_end_month = quarter_start_month + 2
+            # Use calendar.monthrange to get the last day of the month
+            _, last_day = calendar.monthrange(reference_date.year, quarter_end_month)
+            period_end = reference_date.replace(month=quarter_end_month, day=last_day)
+            
+        else:  # YEARLY
+            # Start of current year
+            period_start = reference_date.replace(month=1, day=1)
+            period_end = reference_date.replace(month=12, day=31)
+        
+        # Apply budget-specific start/end date constraints
+        if budget_start and period_start < budget_start:
+            period_start = budget_start
+        if budget_end and period_end > budget_end:
+            period_end = budget_end
+        
+        return period_start, period_end
+    
+    @staticmethod
+    def calculate_usage_single(db: Session, 
+                             budget: Budget, 
+                             calculation_date: Optional[date] = None) -> BudgetUsage:
+        """Calculate usage for a single budget with consistent logic"""
+        if not calculation_date:
+            calculation_date = date.today()
+        
+        # If calculation date is before budget start date, return zero usage
+        if calculation_date < budget.start_date:
+            return BudgetUsage(
+                budget_id=str(budget.id),
+                spent_cents=0,
+                remaining_cents=budget.amount_cents,
+                percentage_used=0.0,
+                is_over_budget=False,
+                days_remaining=None
+            )
+        
+        # Calculate period boundaries using unified method (read-only; no explicit transaction)
+        period_start, period_end = BudgetCalculationEngine.calculate_period_boundaries(
+            budget.period, calculation_date, budget.start_date, budget.end_date
+        )
+
+        # Get total spent in this period
+        spent_query = db.query(func.coalesce(func.sum(func.abs(Transaction.amount_cents)), 0))
+        spent_query = spent_query.filter(
+            Transaction.user_id == budget.user_id,
+            Transaction.transaction_date >= period_start,
+            Transaction.transaction_date <= period_end,
+            Transaction.amount_cents < 0  # Only expenses
+        )
+
+        # Filter by category if specified
+        if budget.category_id:
+            spent_query = spent_query.filter(Transaction.category_id == budget.category_id)
+
+        spent_cents = spent_query.scalar() or 0
+
+        return BudgetCalculationEngine._create_budget_usage(
+            budget.id, spent_cents, budget.amount_cents, 
+            period_end, calculation_date
+        )
+    
+    @staticmethod
+    def _create_budget_usage(budget_id: uuid.UUID, 
+                           spent_cents: int, 
+                           budget_amount_cents: int,
+                           period_end: date, 
+                           current_date: date) -> BudgetUsage:
+        """Create BudgetUsage object with consistent calculation logic"""
+        remaining_cents = budget_amount_cents - spent_cents
+        percentage_used = (spent_cents / budget_amount_cents) * 100 if budget_amount_cents > 0 else 0
+        
+        # Calculate days remaining in period (consistent logic)
+        days_remaining = (period_end - current_date).days if period_end > current_date else 0
+        
+        return BudgetUsage(
+            budget_id=str(budget_id),
+            spent_cents=spent_cents,
+            remaining_cents=remaining_cents,
+            percentage_used=round(percentage_used, 2),  # Consistent rounding
+            is_over_budget=spent_cents > budget_amount_cents,
+            days_remaining=days_remaining
+        )
+
+
 class BudgetService:
     
     @staticmethod
     def create_budget(db: Session, budget_create: BudgetCreate, user_id: uuid.UUID) -> Budget:
-        """Create a new budget"""
+        """Create a new budget with validation for overlapping general budgets"""
         data = budget_create.model_dump()
+        
         # Map schema period (lowercase string/enum) to model enum (uppercase)
         period_input = data.get("period")
         if period_input is not None:
@@ -31,6 +149,13 @@ class BudgetService:
             except KeyError:
                 # Fallback: default to MONTHLY if unexpected value (dev-only scope)
                 data["period"] = ModelBudgetPeriod.MONTHLY
+        
+        # Validate for overlapping general budgets (budgets without category)
+        if not data.get("category_id"):  # This is a general budget
+            BudgetService._validate_general_budget_overlap(
+                db, user_id, data["period"], data.get("start_date"), data.get("end_date")
+            )
+        
         budget = Budget(user_id=user_id, **data)
         db.add(budget)
         db.commit()
@@ -92,15 +217,16 @@ class BudgetService:
         Returns:
             List of tuples containing (Budget object, BudgetUsage object)
         """
+        # Read-only path; avoid nested explicit transactions
         # First get the basic budgets with eager loading
         budgets = BudgetService.get_budgets(db, user_id, filters, skip, limit)
-        
+
         if not budgets:
             return []
-        
+
         # Extract budget IDs for the aggregated query
         budget_ids = [budget.id for budget in budgets]
-        
+
         # Get optimized spending data for just these budgets
         # Note: only_active is handled by the initial get_budgets call, so we don't filter here
         budget_data = BudgetService._get_budget_spending_data(
@@ -110,10 +236,10 @@ class BudgetService:
             budget_ids=budget_ids,
             only_active=False  # Don't filter here since get_budgets already applied filters
         )
-        
+
         # Create a lookup dictionary for O(1) access
         usage_lookup = {data['budget_id']: data for data in budget_data}
-        
+
         # Combine budget objects with their usage data
         results = []
         for budget in budgets:
@@ -138,14 +264,14 @@ class BudgetService:
                     is_over_budget=False,
                     days_remaining=None
                 )
-            
+
             # Apply over_budget filter if specified
             if filters and filters.over_budget is not None:
                 if usage.is_over_budget != filters.over_budget:
                     continue
-            
+
             results.append((budget, usage))
-        
+
         return results
     
     @staticmethod
@@ -154,8 +280,9 @@ class BudgetService:
         budget: Budget, 
         budget_update: BudgetUpdate
     ) -> Budget:
-        """Update a budget"""
+        """Update a budget with validation for overlapping general budgets"""
         update_data = budget_update.model_dump(exclude_unset=True)
+        
         # Map schema enum/string to model enum for period if provided
         if "period" in update_data and update_data["period"] is not None:
             period_input = update_data["period"]
@@ -164,6 +291,35 @@ class BudgetService:
                 update_data["period"] = ModelBudgetPeriod[period_name]
             except KeyError:
                 update_data.pop("period", None)
+        
+        # Check if this update would create an overlapping general budget
+        will_be_general = (
+            # If category_id is being explicitly set to None
+            ("category_id" in update_data and update_data["category_id"] is None) or
+            # If budget is already general and category_id is not being changed
+            (budget.category_id is None and "category_id" not in update_data)
+        )
+        
+        if will_be_general:
+            # Use updated period if provided, otherwise current period
+            updated_period = update_data.get("period", budget.period)
+            updated_start_date = update_data.get("start_date", budget.start_date)
+            updated_end_date = update_data.get("end_date", budget.end_date)
+            
+            # Temporarily exclude this budget from overlap check
+            temp_budget_id = budget.id
+            budget.is_active = False
+            db.flush()  # Apply change temporarily
+            
+            try:
+                BudgetService._validate_general_budget_overlap(
+                    db, budget.user_id, updated_period, updated_start_date, updated_end_date
+                )
+            finally:
+                # Restore original state
+                budget.is_active = True
+                db.flush()
+        
         for field, value in update_data.items():
             setattr(budget, field, value)
         
@@ -185,54 +341,8 @@ class BudgetService:
         budget: Budget, 
         current_date: Optional[date] = None
     ) -> BudgetUsage:
-        """Calculate current budget usage"""
-        if not current_date:
-            current_date = date.today()
-        
-        # If current date is before budget start date, return zero usage
-        if current_date < budget.start_date:
-            return BudgetUsage(
-                budget_id=str(budget.id),
-                spent_cents=0,
-                remaining_cents=budget.amount_cents,
-                percentage_used=0.0,
-                is_over_budget=False,
-                days_remaining=None
-            )
-        
-        # Calculate period boundaries
-        period_start, period_end = BudgetService._get_period_boundaries(
-            budget, current_date
-        )
-        
-        # Get total spent in this period
-        spent_query = db.query(func.coalesce(func.sum(func.abs(Transaction.amount_cents)), 0))
-        spent_query = spent_query.filter(
-            Transaction.user_id == budget.user_id,
-            Transaction.transaction_date >= period_start,
-            Transaction.transaction_date <= period_end,
-            Transaction.amount_cents < 0  # Only expenses
-        )
-        
-        # Filter by category if specified
-        if budget.category_id:
-            spent_query = spent_query.filter(Transaction.category_id == budget.category_id)
-        
-        spent_cents = spent_query.scalar() or 0
-        remaining_cents = budget.amount_cents - spent_cents
-        percentage_used = (spent_cents / budget.amount_cents) * 100 if budget.amount_cents > 0 else 0
-        
-        # Calculate days remaining in period
-        days_remaining = (period_end - current_date).days if period_end > current_date else 0
-        
-        return BudgetUsage(
-            budget_id=str(budget.id),
-            spent_cents=spent_cents,
-            remaining_cents=remaining_cents,
-            percentage_used=round(percentage_used, 2),
-            is_over_budget=spent_cents > budget.amount_cents,
-            days_remaining=days_remaining
-        )
+        """Calculate current budget usage using unified calculation engine"""
+        return BudgetCalculationEngine.calculate_usage_single(db, budget, current_date)
     
     @staticmethod
     def _get_budget_spending_data(
@@ -264,6 +374,7 @@ class BudgetService:
                 Budget.start_date,
                 Budget.end_date,
                 Budget.category_id,
+                Budget.alert_threshold,
                 Category.name.label('category_name')
             )
             .outerjoin(Category, Category.id == Budget.category_id)
@@ -302,6 +413,7 @@ class BudgetService:
                 'amount_cents': result.amount_cents,
                 'category_id': result.category_id,
                 'category_name': result.category_name,
+                'alert_threshold': result.alert_threshold,
                 'period_start': period_start,
                 'period_end': period_end
             }
@@ -396,11 +508,12 @@ class BudgetService:
         budget_data = BudgetService._get_budget_spending_data(db, user_id)
         
         for data in budget_data:
-            # Check for alerts using hard-coded thresholds (90% warning, 100% exceeded)
+            # Check for alerts using the budget's configured alert threshold
+            alert_threshold_percentage = (data['alert_threshold'] * 100)  # Convert 0.8 to 80%
             
             if data['percentage_used'] >= 100:
                 alert_type = "exceeded"
-            elif data['percentage_used'] >= 90:
+            elif data['percentage_used'] >= alert_threshold_percentage:
                 alert_type = "warning"
             else:
                 continue  # No alert needed for this budget
@@ -454,8 +567,9 @@ class BudgetService:
         budget_data = BudgetService._get_budget_spending_data(db, user_id)
         
         for data in budget_data:
-            # Only create notifications for significant alerts (>= 90% or over budget)
-            if data['percentage_used'] >= 90:
+            # Only create notifications for alerts at or above the budget's alert threshold
+            alert_threshold_percentage = (data['alert_threshold'] * 100)  # Convert 0.8 to 80%
+            if data['percentage_used'] >= alert_threshold_percentage:
                 try:
                     notification = await NotificationService.create_budget_alert(
                         db=db,
@@ -546,45 +660,60 @@ class BudgetService:
     
     @staticmethod
     def _get_period_boundaries(budget: Budget, current_date: date) -> Tuple[date, date]:
-        """Calculate period start and end dates based on budget period"""
-        if budget.period == ModelBudgetPeriod.WEEKLY:
-            # Start of current week (Monday)
-            days_since_monday = current_date.weekday()
-            period_start = current_date - timedelta(days=days_since_monday)
-            period_end = period_start + timedelta(days=6)
-            
-        elif budget.period == ModelBudgetPeriod.MONTHLY:
-            # Start of current month
-            period_start = current_date.replace(day=1)
-            if current_date.month == 12:
-                next_month = current_date.replace(year=current_date.year + 1, month=1, day=1)
-            else:
-                next_month = current_date.replace(month=current_date.month + 1, day=1)
-            period_end = next_month - timedelta(days=1)
-            
-        elif budget.period == ModelBudgetPeriod.QUARTERLY:
-            # Start of current quarter
-            quarter_start_month = ((current_date.month - 1) // 3) * 3 + 1
-            period_start = current_date.replace(month=quarter_start_month, day=1)
-            quarter_end_month = quarter_start_month + 2
-            if quarter_end_month > 12:
-                period_end = current_date.replace(year=current_date.year + 1, month=quarter_end_month - 12, day=1)
-            else:
-                period_end = current_date.replace(month=quarter_end_month + 1, day=1)
-            period_end = period_end - timedelta(days=1)
-            
-        else:  # YEARLY
-            # Start of current year
-            period_start = current_date.replace(month=1, day=1)
-            period_end = current_date.replace(month=12, day=31)
+        """Calculate period start and end dates using unified calculation engine"""
+        return BudgetCalculationEngine.calculate_period_boundaries(
+            budget.period, current_date, budget.start_date, budget.end_date
+        )
+    
+    @staticmethod
+    def _validate_general_budget_overlap(
+        db: Session, 
+        user_id: uuid.UUID, 
+        period: ModelBudgetPeriod,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> None:
+        """Validate that creating a general budget won't cause confusion with overlapping periods"""
+        from ..core.exceptions import ValidationError
         
-        # Apply budget-specific start/end date constraints
-        if budget.start_date and period_start < budget.start_date:
-            period_start = budget.start_date
-        if budget.end_date and period_end > budget.end_date:
-            period_end = budget.end_date
+        # Get existing active general budgets for this user
+        existing_general_budgets = db.query(Budget).filter(
+            Budget.user_id == user_id,
+            Budget.category_id.is_(None),  # General budgets have no category
+            Budget.is_active == True
+        ).all()
         
-        return period_start, period_end
+        if not existing_general_budgets:
+            return  # No existing general budgets, safe to create
+        
+        # Check for period overlaps
+        current_date = date.today()
+        new_budget_start, new_budget_end = BudgetCalculationEngine.calculate_period_boundaries(
+            period, current_date, start_date, end_date
+        )
+        
+        overlapping_budgets = []
+        for existing_budget in existing_general_budgets:
+            existing_start, existing_end = BudgetCalculationEngine.calculate_period_boundaries(
+                existing_budget.period, current_date, 
+                existing_budget.start_date, existing_budget.end_date
+            )
+            
+            # Check if periods overlap
+            if (new_budget_start <= existing_end and new_budget_end >= existing_start):
+                overlapping_budgets.append(existing_budget)
+        
+        if overlapping_budgets:
+            budget_names = [b.name for b in overlapping_budgets[:3]]  # Show up to 3 names
+            if len(overlapping_budgets) > 3:
+                budget_names.append(f"and {len(overlapping_budgets) - 3} more")
+            
+            raise ValidationError(
+                f"You already have overlapping general budgets: {', '.join(budget_names)}. "
+                f"Multiple general budgets for the same period will track the same expenses, "
+                f"which may be confusing. Consider creating category-specific budgets instead, "
+                f"or deactivating the existing general budget first."
+            )
     
     @staticmethod
     def _get_spending_by_timeframe(

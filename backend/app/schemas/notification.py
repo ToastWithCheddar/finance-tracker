@@ -5,14 +5,13 @@ from enum import Enum
 from uuid import UUID
 
 from .base import BaseResponseSchema
-from ..models.notification import NotificationType, NotificationPriority
+from ..models.notification import NotificationType
 
 
 class NotificationBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=255, description="Notification title")
     message: str = Field(..., min_length=1, description="Notification message")
     type: NotificationType = Field(..., description="Notification type")
-    priority: NotificationPriority = Field(NotificationPriority.MEDIUM, description="Notification priority")
     action_url: Optional[str] = Field(None, max_length=512, description="Optional action URL")
     metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
 
@@ -33,10 +32,9 @@ class NotificationResponse(BaseResponseSchema):
     title: str = Field(..., description="Notification title")
     message: str = Field(..., description="Notification message")
     type: NotificationType = Field(..., description="Notification type")
-    priority: NotificationPriority = Field(..., description="Notification priority")
     is_read: bool = Field(..., description="Read status")
     action_url: Optional[str] = Field(None, description="Optional action URL")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Additional metadata")
+    metadata: Optional[Dict[str, Any]] = Field(None, alias="notification_metadata", description="Additional metadata")
 
 
 class NotificationFilter(BaseModel):
@@ -59,7 +57,6 @@ class NotificationStatsResponse(BaseModel):
     total_count: int = Field(..., description="Total notifications")
     unread_count: int = Field(..., description="Unread notifications")
     by_type: Dict[str, int] = Field(..., description="Count by notification type")
-    by_priority: Dict[str, int] = Field(..., description="Count by priority")
 
 
 class BulkMarkReadRequest(BaseModel):

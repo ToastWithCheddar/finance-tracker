@@ -1,5 +1,29 @@
 import { apiClient } from './api';
 
+// Types for activity feed
+export interface ActivityFeedOptions {
+  limit?: number;
+  table_name?: string;
+  since?: string; // ISO timestamp
+}
+
+export interface ActivityItem {
+  id: string;
+  table_name: string;
+  record_id?: string | number;
+  action: string;
+  message?: string;
+  created_at: string;
+  [key: string]: unknown;
+}
+
+export interface ActivityResponse {
+  items: ActivityItem[];
+  total?: number;
+  limit?: number;
+  since?: string;
+}
+
 export interface UserUpdateData {
   first_name?: string;
   last_name?: string;
@@ -10,8 +34,8 @@ export interface UserUpdateData {
   currency?: string;
   notifications_enabled?: boolean;
   theme?: string;
-  default_items_per_page?: number;
   auto_categorization_enabled?: boolean;
+  default_items_per_page?: number;
   spending_alert_threshold_cents?: number | null;
   [key: string]: unknown;
 }
@@ -30,8 +54,8 @@ export interface UserProfile {
   is_verified: boolean;
   notifications_enabled: boolean;
   theme: string;
-  default_items_per_page: number;
   auto_categorization_enabled: boolean;
+  default_items_per_page: number;
   spending_alert_threshold_cents?: number | null;
   created_at: string;
   updated_at?: string;

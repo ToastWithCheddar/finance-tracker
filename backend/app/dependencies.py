@@ -21,8 +21,6 @@ from app.services.transaction_sync_service import get_transaction_sync_service
 from app.services.account_sync_monitor import get_account_sync_monitor
 from app.services.reconciliation_service import get_enhanced_reconciliation_service
 from app.services.notification_service import NotificationService
-from app.services.auto_categorization_service import AutoCategorizationService
-from app.services.rule_template_service import RuleTemplateService
 from app.services.financial_health_service import FinancialHealthService
 
 # WebSocket manager
@@ -58,25 +56,6 @@ def get_notification_service() -> NotificationService:
     return NotificationService()
 
 
-# Engine services (stateless singletons with lazy caching)
-_auto_categorization_service_instance: AutoCategorizationService | None = None
-_rule_template_service_instance: RuleTemplateService | None = None
-
-
-def get_auto_categorization_service() -> AutoCategorizationService:
-    """Dependency injection for AutoCategorizationService."""
-    global _auto_categorization_service_instance
-    if _auto_categorization_service_instance is None:
-        _auto_categorization_service_instance = AutoCategorizationService()
-    return _auto_categorization_service_instance
-
-
-def get_rule_template_service() -> RuleTemplateService:
-    """Dependency injection for RuleTemplateService."""
-    global _rule_template_service_instance
-    if _rule_template_service_instance is None:
-        _rule_template_service_instance = RuleTemplateService()
-    return _rule_template_service_instance
 
 
 def get_financial_health_service() -> FinancialHealthService:

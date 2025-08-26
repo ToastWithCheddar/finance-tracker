@@ -15,6 +15,7 @@ module.exports = {
         border: 'hsl(var(--border))',
         brand: 'hsl(var(--brand))',
         accent: 'hsl(var(--accent))',
+        'brand-secondary': 'hsl(var(--brand-secondary))',
         primary: {
           50: '#f0fdf4',
           100: '#dcfce7',
@@ -192,14 +193,23 @@ module.exports = {
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'gradient-conic': 'conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))',
-        'income-gradient': 'linear-gradient(135deg, #ecfdf5, #d1fae5, #10b981)',
-        'expense-gradient': 'linear-gradient(135deg, #fef2f2, #fee2e2, #ef4444)',
-        'savings-gradient': 'linear-gradient(135deg, #eff6ff, #dbeafe, #3b82f6)',
-        'investment-gradient': 'linear-gradient(135deg, #faf5ff, #e9d5ff, #a855f7)',
-        'budget-gradient': 'linear-gradient(135deg, #fff7ed, #fed7aa, #f97316)',
-        'success-gradient': 'linear-gradient(135deg, #ecfdf5, #86efac, #22c55e)',
-        'warning-gradient': 'linear-gradient(135deg, #fefce8, #fde047, #eab308)',
-        'danger-gradient': 'linear-gradient(135deg, #fef2f2, #fca5a5, #ef4444)',
+        // Theme-aware gradients using CSS custom properties
+        'income-gradient': 'linear-gradient(135deg, hsl(var(--income-gradient-start)), hsl(var(--income-gradient-middle)), hsl(var(--income-gradient-end)))',
+        'expense-gradient': 'linear-gradient(135deg, hsl(var(--expense-gradient-start)), hsl(var(--expense-gradient-middle)), hsl(var(--expense-gradient-end)))',
+        'savings-gradient': 'linear-gradient(135deg, hsl(var(--savings-gradient-start)), hsl(var(--savings-gradient-middle)), hsl(var(--savings-gradient-end)))',
+        'investment-gradient': 'linear-gradient(135deg, hsl(var(--investment-gradient-start)), hsl(var(--investment-gradient-middle)), hsl(var(--investment-gradient-end)))',
+        'budget-gradient': 'linear-gradient(135deg, hsl(var(--budget-gradient-start)), hsl(var(--budget-gradient-middle)), hsl(var(--budget-gradient-end)))',
+        'success-gradient': 'linear-gradient(135deg, hsl(var(--success-gradient-start)), hsl(var(--success-gradient-middle)), hsl(var(--success-gradient-end)))',
+        'warning-gradient': 'linear-gradient(135deg, hsl(var(--warning-gradient-start)), hsl(var(--warning-gradient-middle)), hsl(var(--warning-gradient-end)))',
+        'danger-gradient': 'linear-gradient(135deg, hsl(var(--danger-gradient-start)), hsl(var(--danger-gradient-middle)), hsl(var(--danger-gradient-end)))',
+        // Button gradients
+        'button-primary-gradient': 'linear-gradient(135deg, hsl(var(--button-primary-start)), hsl(var(--button-primary-end)))',
+        'button-success-gradient': 'linear-gradient(135deg, hsl(var(--button-success-start)), hsl(var(--button-success-end)))',
+        'button-secondary-gradient': 'linear-gradient(135deg, hsl(var(--button-secondary-start)), hsl(var(--button-secondary-end)))',
+        // Page backgrounds
+        'page-gradient': 'linear-gradient(135deg, hsl(var(--page-gradient-start)), hsl(var(--page-gradient-end)))',
+        // Brand gradient
+        'brand-gradient': 'linear-gradient(135deg, hsl(var(--brand)), hsl(var(--accent)), hsl(var(--brand-secondary)))',
       },
       spacing: {
         '18': '4.5rem',

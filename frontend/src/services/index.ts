@@ -12,7 +12,6 @@ export { categoryService } from './categoryService';
 export { dashboardService } from './dashboardService';
 export { mlService } from './mlService';
 export { NotificationService } from './notificationService';
-export { plaidRecurringService } from './plaidRecurringService';
 
 // Service registry (now uses consolidated services)
 export {

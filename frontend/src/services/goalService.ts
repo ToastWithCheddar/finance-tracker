@@ -1,6 +1,18 @@
 import { apiClient } from './api';
 import { GoalStatus, GoalType, GoalPriority } from '../types/goals';
 import { BaseService } from './base/BaseService';
+import React from 'react';
+import { 
+  DollarSign, 
+  CreditCard, 
+  AlertTriangle, 
+  TrendingUp, 
+  ShoppingBag, 
+  Target,
+  CheckCircle,
+  Pause,
+  X
+} from 'lucide-react';
 import type {
   Goal,
   GoalCreate,
@@ -97,14 +109,14 @@ export class GoalService extends BaseService {
     return remainingAmount / monthsRemaining;
   }
 
-  getGoalTypeInfo(type: GoalType): { label: string; icon: string; color: string } {
-    const typeMap: Record<GoalType, { label: string; icon: string; color: string }> = {
-      [GoalType.SAVINGS]: { label: 'Savings', icon: '💰', color: 'green' },
-      [GoalType.DEBT_PAYOFF]: { label: 'Debt Payoff', icon: '💳', color: 'red' },
-      [GoalType.EMERGENCY_FUND]: { label: 'Emergency Fund', icon: '🚨', color: 'orange' },
-      [GoalType.INVESTMENT]: { label: 'Investment', icon: '📈', color: 'blue' },
-      [GoalType.PURCHASE]: { label: 'Purchase', icon: '🛍️', color: 'purple' },
-      [GoalType.OTHER]: { label: 'Other', icon: '🎯', color: 'gray' }
+  getGoalTypeInfo(type: GoalType): { label: string; icon: React.ComponentType<any>; color: string } {
+    const typeMap: Record<GoalType, { label: string; icon: React.ComponentType<any>; color: string }> = {
+      [GoalType.SAVINGS]: { label: 'Savings', icon: DollarSign, color: 'green' },
+      [GoalType.DEBT_PAYOFF]: { label: 'Debt Payoff', icon: CreditCard, color: 'red' },
+      [GoalType.EMERGENCY_FUND]: { label: 'Emergency Fund', icon: AlertTriangle, color: 'orange' },
+      [GoalType.INVESTMENT]: { label: 'Investment', icon: TrendingUp, color: 'blue' },
+      [GoalType.PURCHASE]: { label: 'Purchase', icon: ShoppingBag, color: 'purple' },
+      [GoalType.OTHER]: { label: 'Other', icon: Target, color: 'gray' }
     };
     return typeMap[type] || typeMap[GoalType.OTHER];
   }
@@ -119,22 +131,22 @@ export class GoalService extends BaseService {
     return priorityMap[priority] || priorityMap[GoalPriority.MEDIUM];
   }
 
-  getStatusInfo(status: GoalStatus): { label: string; color: string; icon: string } {
-    const statusMap: Record<GoalStatus, { label: string; color: string; icon: string }> = {
-      [GoalStatus.ACTIVE]: { label: 'Active', color: 'green', icon: '🎯' },
-      [GoalStatus.COMPLETED]: { label: 'Completed', color: 'blue', icon: '✅' },
-      [GoalStatus.PAUSED]: { label: 'Paused', color: 'yellow', icon: '⏸️' },
-      [GoalStatus.CANCELLED]: { label: 'Cancelled', color: 'red', icon: '❌' }
+  getStatusInfo(status: GoalStatus): { label: string; color: string; icon: React.ComponentType<any> } {
+    const statusMap: Record<GoalStatus, { label: string; color: string; icon: React.ComponentType<any> }> = {
+      [GoalStatus.ACTIVE]: { label: 'Active', color: 'green', icon: Target },
+      [GoalStatus.COMPLETED]: { label: 'Completed', color: 'blue', icon: CheckCircle },
+      [GoalStatus.PAUSED]: { label: 'Paused', color: 'yellow', icon: Pause },
+      [GoalStatus.CANCELLED]: { label: 'Cancelled', color: 'red', icon: X }
     };
     return statusMap[status] || statusMap[GoalStatus.ACTIVE];
   }
 
   formatCelebrationMessage(goalName: string, percentage: number): string {
     const messages: Record<number, string> = {
-      25: `🎉 Great start! You're 25% of the way to '${goalName}'!`,
-      50: `🚀 Halfway there! You've reached 50% of '${goalName}'!`,
-      75: `💪 Almost there! You're 75% complete with '${goalName}'!`,
-      100: `🎊 Congratulations! You've achieved your goal: '${goalName}'!`
+      25: `Great start! You're 25% of the way to '${goalName}'!`,
+      50: `Halfway there! You've reached 50% of '${goalName}'!`,
+      75: `Almost there! You're 75% complete with '${goalName}'!`,
+      100: `Congratulations! You've achieved your goal: '${goalName}'!`
     };
     return messages[percentage] || `Milestone reached: ${percentage}% of '${goalName}'`;
   }

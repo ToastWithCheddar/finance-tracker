@@ -83,3 +83,37 @@ export function formatDate(date: string | Date, options?: Intl.DateTimeFormatOpt
     ...options,
   });
 }
+
+/**
+ * Get yesterday's date in YYYY-MM-DD format
+ */
+export function getYesterday(): string {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  return yesterday.toISOString().split('T')[0];
+}
+
+/**
+ * Get start of week (Monday) for a given date
+ */
+export function getStartOfWeek(date: Date = new Date()): Date {
+  const startOfWeek = new Date(date);
+  const dayOfWeek = startOfWeek.getDay();
+  // Adjust for Monday as first day of week (getDay() returns 0 for Sunday, 1 for Monday, etc.)
+  const daysToSubtract = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+  startOfWeek.setDate(startOfWeek.getDate() - daysToSubtract);
+  return startOfWeek;
+}
+
+/**
+ * Get this week's date range (Monday to today) in YYYY-MM-DD format
+ */
+export function getThisWeekRange(): { startDate: string; endDate: string } {
+  const today = new Date();
+  const startOfWeek = getStartOfWeek(today);
+  
+  return {
+    startDate: startOfWeek.toISOString().split('T')[0],
+    endDate: today.toISOString().split('T')[0]
+  };
+}

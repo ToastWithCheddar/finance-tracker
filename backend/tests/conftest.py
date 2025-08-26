@@ -163,7 +163,6 @@ def sample_transaction_data() -> dict:
         "merchant": "Test Merchant",
         "transaction_date": datetime.now(timezone.utc).date(),
         "status": "completed",
-        "is_recurring": False,
         "is_transfer": False,
         "notes": "Test transaction for testing",
         "tags": ["test", "sample"]

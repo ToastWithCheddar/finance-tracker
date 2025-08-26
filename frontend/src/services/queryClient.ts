@@ -2,6 +2,7 @@ import { QueryClient, QueryCache, MutationCache } from '@tanstack/react-query';
 import { useAuthStore } from '../stores/authStore';
 import type { GoalFilters } from '../types/goals';
 import type { BudgetFilters } from '../types/budgets';
+import type { Transaction } from '../types/transaction';
 
 // Error handler for queries and mutations
 const errorHandler = (error: unknown) => {

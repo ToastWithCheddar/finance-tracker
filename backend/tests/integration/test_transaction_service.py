@@ -35,7 +35,6 @@ class TestTransactionServiceCreateTransactionIntegration:
             transaction_date=date.today(),
             category_id=test_category.id,
             status="posted",
-            is_recurring=False,
             is_transfer=False,
             notes="Morning coffee",
             tags=["coffee", "daily"]

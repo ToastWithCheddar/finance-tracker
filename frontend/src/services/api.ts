@@ -250,7 +250,7 @@ class ApiClient {
   async request<T>(
     method: HttpMethod,
     endpoint: string,
-    data?: Record<string, unknown>,
+    data?: unknown,
     options?: RequestOptions
   ): Promise<T> {
     let retried = false;
@@ -346,15 +346,15 @@ class ApiClient {
     return this.request<T>('GET', endpoint, undefined, { ...options, params });
   }
 
-  async post<T>(endpoint: string, data?: Record<string, unknown>, options?: RequestOptions): Promise<T> {
+  async post<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>('POST', endpoint, data, options);
   }
 
-  async put<T>(endpoint: string, data?: Record<string, unknown>, options?: RequestOptions): Promise<T> {
+  async put<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>('PUT', endpoint, data, options);
   }
 
-  async patch<T>(endpoint: string, data?: Record<string, unknown>, options?: RequestOptions): Promise<T> {
+  async patch<T>(endpoint: string, data?: unknown, options?: RequestOptions): Promise<T> {
     return this.request<T>('PATCH', endpoint, data, options);
   }
 

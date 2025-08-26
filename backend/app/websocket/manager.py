@@ -202,12 +202,8 @@ class RedisWebSocketManager:
             from ..models.transaction import Transaction
             from ..models.account import Account
 
-            # Get dashboard data using financial health service
+            # Build snapshot using FinancialHealthService
             db = next(get_db())
-            health_service = get_financial_health_service()
-            
-            # Calculate user financial health (includes net worth calculation)
-            financial_health = health_service.calculate_user_financial_health(db, user_id)
             
             # Get recent transactions count
             thirty_days_ago = datetime.now() - timedelta(days=30)
@@ -216,12 +212,15 @@ class RedisWebSocketManager:
                 Transaction.transaction_date >= thirty_days_ago.date()
             ).count()
             
-            # Get account count
-            account_count = db.query(Account).filter(
+            accounts = db.query(Account).filter(
                 Account.user_id == user_id,
                 Account.is_active == True
-            ).count()
-            
+            ).all()
+            account_count = len(accounts)
+
+            health_service = get_financial_health_service()
+            financial_health = health_service.calculate_user_financial_health(db, user_id)
+
             dashboard_data = {
                 "net_worth": financial_health.get("net_worth", 0),
                 "total_liquid": financial_health.get("total_liquid", 0),
@@ -231,7 +230,7 @@ class RedisWebSocketManager:
                 "financial_health_grade": financial_health.get("grade", "N/A"),
                 "account_count": account_count,
                 "recent_transactions": recent_transactions,
-                "recommendations": financial_health.get("recommendations", [])
+                "recommendations": financial_health.get("recommendations", []),
             }
 
             sync_message = {

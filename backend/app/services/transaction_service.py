@@ -23,9 +23,10 @@ from ..core.exceptions import (
 from ..models.transaction import Transaction
 from ..models.account import Account
 from ..models.category import Category
+from ..models.user import User
 from ..schemas.ml import MLCategorizationResponse
 from ..schemas.transaction import (
-    TransactionCreate, 
+    TransactionCreate,
     TransactionUpdate, 
     TransactionFilter, 
     TransactionPagination, 
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 class TransactionService:
     @staticmethod
-    async def create_transaction(db: Session, transaction: TransactionCreate, user_id: UUID) -> Transaction:
+    async def create_transaction(db: Session, transaction: TransactionCreate, user_id: UUID, user: Optional[User] = None) -> Transaction:
         # Enrich merchant if not provided but description exists
         if not transaction.merchant and transaction.description:
             try:
@@ -50,57 +51,88 @@ class TransactionService:
                 logger.warning(f"Merchant enrichment failed: {str(e)}")
                 # Continue without merchant enrichment
         
-        # If category is not provided, try to predict it using ML service
+        # If category is not provided, try to predict it using ML service (if user enabled)
         if not transaction.category_id and transaction.description:
-            ml_client = get_ml_client()
+            # Get user object if not provided
+            if user is None:
+                user = db.query(User).filter(User.id == user_id).first()
             
-            try:
-                # Call the type-safe ML service
-                ml_response = await ml_client.categorize_transaction(
-                    description=transaction.description,
-                    amount_cents=transaction.amount_cents,
-                    merchant=getattr(transaction, 'merchant', None),
-                    user_id=str(user_id)
-                )
+            # Check if user has ML auto-categorization enabled
+            if user and user.auto_categorization_enabled:
+                ml_client = get_ml_client()
                 
-                if ml_response.success and ml_response.data:
-                    categorization: MLCategorizationResponse = ml_response.data
+                try:
+                    # Call the type-safe ML service
+                    ml_response = await ml_client.categorize_transaction(
+                        description=transaction.description,
+                        amount_cents=transaction.amount_cents,
+                        merchant=getattr(transaction, 'merchant', None),
+                        user_id=str(user_id)
+                    )
                     
-                    # Check confidence and decide
-                    if categorization.confidence >= settings.ML_CONFIDENCE_THRESHOLD:
-                        transaction.category_id = categorization.category_id
-                        # Store ML metadata for potential feedback
-                        transaction_metadata = {
-                            "ml_predicted": True,
-                            "ml_confidence": categorization.confidence,
-                            "ml_reasoning": categorization.reasoning
-                        }
+                    if ml_response.success and ml_response.data:
+                        categorization: MLCategorizationResponse = ml_response.data
+                        
+                        # Check confidence and decide
+                        if categorization.confidence >= settings.ML_CONFIDENCE_THRESHOLD:
+                            # Validate that the suggested category belongs to the user
+                            from ..models.category import Category
+                            suggested_category = db.query(Category).filter(
+                                Category.id == categorization.category_id,
+                                Category.user_id == user_id
+                            ).first()
+                            
+                            if suggested_category:
+                                transaction.category_id = categorization.category_id
+                                # Store ML metadata for potential feedback
+                                transaction_metadata = {
+                                    "ml_predicted": True,
+                                    "ml_confidence": categorization.confidence,
+                                    "ml_reasoning": categorization.reasoning
+                                }
+                                logger.info(f"Applied ML categorization: '{categorization.category_name}' (confidence: {categorization.confidence})")
+                            else:
+                                logger.warning(f"ML suggested invalid category (ID: {categorization.category_id}) - category not found or not owned by user")
+                                # Try to find a similar category by name
+                                if categorization.category_name:
+                                    similar_category = db.query(Category).filter(
+                                        Category.user_id == user_id,
+                                        Category.name.ilike(f"%{categorization.category_name}%")
+                                    ).first()
+                                    
+                                    if similar_category:
+                                        transaction.category_id = similar_category.id
+                                        logger.info(f"Found similar user category: '{similar_category.name}' for ML suggestion '{categorization.category_name}'")
+                                    else:
+                                        logger.info("No similar user category found - transaction will remain uncategorized")
+                        else:
+                            # Low confidence - for sync operations, continue without categorization
+                            logger.info(f"ML prediction confidence too low ({categorization.confidence}) for automatic categorization")
+                            logger.info("Transaction will be created without ML categorization")
+                            # Continue without ML categorization
                     else:
-                        # Low confidence - for sync operations, continue without categorization
-                        logger.info(f"ML prediction confidence too low ({categorization.confidence}) for automatic categorization")
+                        # ML service failed - log but don't fail transaction creation
+                        error_msg = "Category prediction service unavailable"
+                        if ml_response.error:
+                            error_msg = ml_response.error.message
+                        
+                        logger.warning(f"ML categorization failed: {error_msg}")
                         logger.info("Transaction will be created without ML categorization")
                         # Continue without ML categorization
-                else:
-                    # ML service failed - log but don't fail transaction creation
-                    error_msg = "Category prediction service unavailable"
-                    if ml_response.error:
-                        error_msg = ml_response.error.message
-                    
-                    logger.warning(f"ML categorization failed: {error_msg}")
+                        
+                except HTTPException as e:
+                    # For automatic transaction sync, don't fail if ML service is unavailable
+                    # Only re-raise if this is an interactive user operation (not a sync)
+                    logger.warning(f"ML categorization failed during transaction creation: {str(e)}")
                     logger.info("Transaction will be created without ML categorization")
                     # Continue without ML categorization
-                    
-            except HTTPException as e:
-                # For automatic transaction sync, don't fail if ML service is unavailable
-                # Only re-raise if this is an interactive user operation (not a sync)
-                logger.warning(f"ML categorization failed during transaction creation: {str(e)}")
-                logger.info("Transaction will be created without ML categorization")
-                # Continue without ML categorization
-            except Exception as e:
-                # Catch-all for other errors - also don't fail for sync operations
-                logger.warning(f"Unexpected error during ML categorization: {str(e)}")
-                logger.info("Transaction will be created without ML categorization")
-                # Continue without ML categorization
+                except Exception as e:
+                    # Catch-all for other errors - also don't fail for sync operations
+                    logger.warning(f"Unexpected error during ML categorization: {str(e)}")
+                    logger.info("Transaction will be created without ML categorization")
+                    # Continue without ML categorization
+            else:
+                logger.debug("ML auto-categorization disabled for user or user not found")
 
         # Get transaction data for database - exclude 'amount' field as Transaction model uses 'amount_cents'
         transaction_data = transaction.model_dump(exclude={'amount', 'transaction_type'})
@@ -114,59 +146,6 @@ class TransactionService:
         db.refresh(db_transaction)
         return db_transaction
     
-    @staticmethod
-    async def submit_ml_feedback(
-        db: Session, 
-        transaction_id: UUID, 
-        correct_category_id: UUID, 
-        user_id: UUID
-    ) -> bool:
-        """
-        Submit feedback to ML service when user corrects a category
-        """
-        # Get the transaction
-        transaction = db.query(Transaction).filter(
-            Transaction.id == transaction_id,
-            Transaction.user_id == user_id
-        ).first()
-        
-        if not transaction:
-            return False
-            
-        ml_client = get_ml_client()
-        
-        try:
-            # Extract ML metadata if available
-            metadata = transaction.metadata_json or {}
-            predicted_category_id = transaction.ml_suggested_category_id
-            confidence = transaction.confidence_score
-            
-            # Submit feedback
-            feedback_response = await ml_client.submit_feedback(
-                transaction_id=transaction_id,
-                description=transaction.description,
-                amount_cents=transaction.amount_cents,
-                correct_category_id=correct_category_id,
-                user_id=str(user_id),
-                merchant=transaction.merchant,
-                predicted_category_id=predicted_category_id,
-                confidence=confidence
-            )
-            
-            if feedback_response.success:
-                # Update transaction metadata to record feedback submission
-                metadata["ml_feedback_submitted"] = True
-                metadata["ml_feedback_timestamp"] = datetime.now(timezone.utc).isoformat()
-                transaction.metadata_json = metadata
-                db.commit()
-                return True
-            else:
-                logger.error(f"Failed to submit ML feedback: {feedback_response.error}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error submitting ML feedback: {str(e)}")
-            return False
 
     @staticmethod
     def get_transaction(db: Session, transaction_id: UUID, user_id: UUID) -> Transaction:
@@ -181,18 +160,54 @@ class TransactionService:
         return transaction
 
     @staticmethod
-    def update_transaction(
+    async def update_transaction(
         db: Session,
         transaction: Transaction,
         transaction_update: TransactionUpdate
     ) -> Transaction:
         update_data = transaction_update.model_dump(exclude_unset=True)
+        
+        # Check if category is being updated (for ML learning)
+        category_changed = 'category_id' in update_data and update_data['category_id'] != transaction.category_id
+        new_category_id = update_data.get('category_id') if category_changed else None
+        
         for field, value in update_data.items():
             setattr(transaction, field, value)
         
         transaction.updated_at = datetime.now(timezone.utc)
         db.commit()
         db.refresh(transaction)
+        
+        # If category was manually updated, add this as a training example for ML
+        if category_changed and new_category_id and transaction.description:
+            try:
+                # Get the category name for ML training
+                from ..models.category import Category
+                category = db.query(Category).filter(Category.id == new_category_id).first()
+                
+                if category:
+                    # Prepare training example
+                    training_text = transaction.description
+                    if transaction.merchant:
+                        training_text = f"{transaction.merchant} {transaction.description}"
+                    
+                    # Add training example to ML service asynchronously
+                    ml_client = get_ml_client()
+                    ml_response = await ml_client.add_training_example(
+                        category=category.name,
+                        example=training_text,
+                        user_id=str(transaction.user_id)
+                    )
+                    
+                    if ml_response.success:
+                        logger.info(f"Added ML training example: '{training_text}' -> '{category.name}'")
+                    else:
+                        logger.warning(f"Failed to add ML training example: {ml_response.error.message if ml_response.error else 'Unknown error'}")
+                        
+            except Exception as e:
+                # Don't fail the transaction update if ML training fails
+                logger.warning(f"ML training example failed: {str(e)}")
+        
         return transaction
 
     @staticmethod
@@ -242,58 +257,86 @@ class TransactionService:
         filters: TransactionFilter,
         pagination: TransactionPagination
     ) -> Tuple[List[Transaction], int]:
+        logger.info(f"🔍 [TransactionService] Getting transactions for user {user_id} with filters: {filters.model_dump()}")
+        
         # Use eager loading to prevent N+1 queries
         query = db.query(Transaction).options(
             joinedload(Transaction.account),
             joinedload(Transaction.category)
         ).join(Transaction.account).filter(Transaction.user_id == user_id)
 
-        # Apply filters
+        applied_filters = []
+
+        # Apply filters with logging
         if filters.start_date:
             query = query.filter(Transaction.transaction_date >= filters.start_date)
+            applied_filters.append(f"start_date >= {filters.start_date}")
+            
         if filters.end_date:
             query = query.filter(Transaction.transaction_date <= filters.end_date)
+            applied_filters.append(f"end_date <= {filters.end_date}")
+            
         if filters.category_id:
-            if filters.category_id == '__uncategorized__':
+            if str(filters.category_id) == '__uncategorized__':
                 query = query.filter(Transaction.category_id.is_(None))
+                applied_filters.append("category_id IS NULL (uncategorized)")
             else:
                 query = query.filter(Transaction.category_id == filters.category_id)
+                applied_filters.append(f"category_id = {filters.category_id}")
+                
         if filters.status:
             query = query.filter(Transaction.status == filters.status)
+            applied_filters.append(f"status = {filters.status}")
+            
         if filters.min_amount_cents is not None:
             query = query.filter(Transaction.amount_cents >= filters.min_amount_cents)
+            applied_filters.append(f"amount_cents >= {filters.min_amount_cents}")
+            
         if filters.max_amount_cents is not None:
             query = query.filter(Transaction.amount_cents <= filters.max_amount_cents)
+            applied_filters.append(f"amount_cents <= {filters.max_amount_cents}")
+            
         if filters.account_id:
             query = query.filter(Transaction.account_id == filters.account_id)
-        if filters.is_recurring is not None:
-            query = query.filter(Transaction.is_recurring == filters.is_recurring)
+            applied_filters.append(f"account_id = {filters.account_id}")
+            
+        
         if filters.is_transfer is not None:
             query = query.filter(Transaction.is_transfer == filters.is_transfer)
+            applied_filters.append(f"is_transfer = {filters.is_transfer}")
+            
         if filters.search_query:
             search = f"%{filters.search_query}%"
-            query = query.filter(
-                or_(
-                    Transaction.description.ilike(search),
-                    Transaction.merchant.ilike(search),
-                    Transaction.notes.ilike(search),
-                    Category.name.ilike(search)
-                )
+            search_filter = or_(
+                Transaction.description.ilike(search),
+                Transaction.merchant.ilike(search),
+                Transaction.notes.ilike(search),
+                Category.name.ilike(search)
             )
+            query = query.filter(search_filter)
+            applied_filters.append(f"search_query ILIKE '%{filters.search_query}%' (description, merchant, notes, category)")
+            
         if filters.tags:
             # Assuming tags is stored as JSON array - adjust based on actual implementation
             for tag in filters.tags:
                 query = query.filter(Transaction.tags.contains([tag]))
+                applied_filters.append(f"tags contains '{tag}'")
+
+        logger.info(f"🔍 [TransactionService] Applied filters: {applied_filters}")
 
         # Get total count for pagination
         total_count = query.count()
+        logger.info(f"🔍 [TransactionService] Total count before pagination: {total_count}")
 
         # Apply pagination
         query = query.order_by(Transaction.transaction_date.desc())
         query = query.offset(pagination.offset)
         query = query.limit(pagination.limit)
 
-        return query.all(), total_count
+        results = query.all()
+        logger.info(f"🔍 [TransactionService] Returned {len(results)} transactions after pagination (offset: {pagination.offset}, limit: {pagination.limit})")
+
+        return results, total_count
 
     @staticmethod
     def get_transactions_with_grouping(
@@ -329,8 +372,6 @@ class TransactionService:
             query = query.filter(Transaction.amount_cents <= filters.max_amount_cents)
         if filters.account_id:
             query = query.filter(Transaction.account_id == filters.account_id)
-        if filters.is_recurring is not None:
-            query = query.filter(Transaction.is_recurring == filters.is_recurring)
         if filters.is_transfer is not None:
             query = query.filter(Transaction.is_transfer == filters.is_transfer)
         if filters.search_query:
@@ -473,7 +514,140 @@ class TransactionService:
             yield chunk
             offset += chunk_size
 
-
+    @staticmethod
+    def get_transaction_histogram(
+        db: Session,
+        user_id: UUID,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        category_id: Optional[str] = None,
+        account_id: Optional[str] = None,
+        amount_min: Optional[float] = None,
+        amount_max: Optional[float] = None,
+        bins: int = 10
+    ) -> dict:
+        """Get histogram data for transaction amounts"""
+        import numpy as np
+        import statistics
+        
+        # Build base query
+        query = db.query(Transaction).filter(Transaction.user_id == user_id)
+        
+        # Apply filters
+        if start_date:
+            query = query.filter(Transaction.transaction_date >= start_date)
+        if end_date:
+            query = query.filter(Transaction.transaction_date <= end_date)
+        if category_id:
+            try:
+                category_uuid = UUID(category_id)
+                query = query.filter(Transaction.category_id == category_uuid)
+            except ValueError:
+                pass  # Skip invalid UUID
+        if account_id:
+            try:
+                account_uuid = UUID(account_id)
+                query = query.filter(Transaction.account_id == account_uuid)
+            except ValueError:
+                pass  # Skip invalid UUID
+        if amount_min is not None:
+            amount_min_cents = int(amount_min * 100)
+            query = query.filter(func.abs(Transaction.amount_cents) >= amount_min_cents)
+        if amount_max is not None:
+            amount_max_cents = int(amount_max * 100)
+            query = query.filter(func.abs(Transaction.amount_cents) <= amount_max_cents)
+        
+        # Get all transaction amounts (absolute values for histogram)
+        transactions = query.all()
+        
+        if not transactions:
+            return {
+                "bins": [],
+                "statistics": {
+                    "total_transactions": 0,
+                    "total_amount": 0,
+                    "mean_amount": 0,
+                    "median_amount": 0,
+                    "min_amount": 0,
+                    "max_amount": 0
+                },
+                "filters_applied": {
+                    "start_date": start_date.isoformat() if start_date else None,
+                    "end_date": end_date.isoformat() if end_date else None,
+                    "category_id": category_id,
+                    "account_id": account_id,
+                    "amount_min": amount_min,
+                    "amount_max": amount_max
+                }
+            }
+        
+        # Convert to dollar amounts (absolute values)
+        amounts = [abs(t.amount_cents) / 100.0 for t in transactions]
+        total_amount_cents = sum(t.amount_cents for t in transactions)
+        
+        # Calculate statistics
+        mean_amount = statistics.mean(amounts)
+        median_amount = statistics.median(amounts)
+        min_amount = min(amounts)
+        max_amount = max(amounts)
+        
+        # Create histogram bins
+        if max_amount == min_amount:
+            # All amounts are the same, create a single bin
+            bin_edges = [min_amount - 0.01, max_amount + 0.01]
+        else:
+            bin_edges = np.linspace(min_amount, max_amount, bins + 1)
+        
+        # Calculate histogram
+        hist_counts, _ = np.histogram(amounts, bins=bin_edges)
+        
+        # Build response bins
+        response_bins = []
+        for i in range(len(hist_counts)):
+            range_min = bin_edges[i]
+            range_max = bin_edges[i + 1]
+            count = int(hist_counts[i])
+            
+            # Calculate total amount in this bin
+            bin_transactions = [t for t in transactions 
+                             if range_min <= abs(t.amount_cents) / 100.0 <= range_max]
+            bin_total_amount = sum(abs(t.amount_cents) for t in bin_transactions) / 100.0
+            
+            # Format range label
+            if range_min < 1:
+                range_label = f"${range_min:.2f} - ${range_max:.2f}"
+            elif range_max < 1000:
+                range_label = f"${range_min:.0f} - ${range_max:.0f}"
+            else:
+                range_label = f"${range_min:.0f} - ${range_max:.0f}"
+            
+            response_bins.append({
+                "range_min": range_min,
+                "range_max": range_max,
+                "count": count,
+                "amount_total": bin_total_amount,
+                "range_label": range_label
+            })
+        
+        return {
+            "bins": response_bins,
+            "statistics": {
+                "total_transactions": len(transactions),
+                "total_amount": total_amount_cents / 100.0,
+                "mean_amount": mean_amount,
+                "median_amount": median_amount,
+                "min_amount": min_amount,
+                "max_amount": max_amount
+            },
+            "filters_applied": {
+                "start_date": start_date.isoformat() if start_date else None,
+                "end_date": end_date.isoformat() if end_date else None,
+                "category_id": category_id,
+                "account_id": account_id,
+                "amount_min": amount_min,
+                "amount_max": amount_max
+            }
+        }
 
 
 # Provider function with lazy caching

@@ -1,27 +1,27 @@
 // There could be a better way to do this, but this is a quick and dirty solution to get the types working
 export const GoalStatus = {
-    ACTIVE : 'active',
-    COMPLETED : 'completed',
-    PAUSED : 'paused',
-    CANCELLED : 'cancelled'
+    ACTIVE : 'ACTIVE',
+    COMPLETED : 'COMPLETED',
+    PAUSED : 'PAUSED',
+    CANCELLED : 'CANCELLED'
   } as const;
   export type GoalStatus = typeof GoalStatus[keyof typeof GoalStatus];
   
   export const GoalType = {
-    SAVINGS : 'savings',
-    DEBT_PAYOFF : 'debt_payoff',
-    EMERGENCY_FUND : 'emergency_fund',
-    PURCHASE : 'purchase',
-    INVESTMENT : 'investment',
-    OTHER : 'other'
+    SAVINGS : 'SAVINGS',
+    DEBT_PAYOFF : 'DEBT_PAYOFF',
+    EMERGENCY_FUND : 'EMERGENCY_FUND',
+    PURCHASE : 'PURCHASE',
+    INVESTMENT : 'INVESTMENT',
+    OTHER : 'OTHER'
   } as const;
   export type GoalType = typeof GoalType[keyof typeof GoalType];
   
   export const GoalPriority = {
-    LOW : 'low',
-    MEDIUM : 'medium',
-    HIGH : 'high',
-    CRITICAL : 'critical'
+    LOW : 'LOW',
+    MEDIUM : 'MEDIUM',
+    HIGH : 'HIGH',
+    CRITICAL : 'CRITICAL'
   } as const;
   export type GoalPriority = typeof GoalPriority[keyof typeof GoalPriority];
   
@@ -42,7 +42,6 @@ export const GoalStatus = {
     percentage: number;
     amount_reached_cents: number;
     reached_date: string;
-    celebrated: boolean;
     celebration_message?: string;
     created_at: string;
   }
@@ -106,7 +105,6 @@ export const GoalStatus = {
   
   export interface GoalContributionCreate {
     amount_cents: number;
-    note?: string;
     [key: string]: unknown;
   }
   

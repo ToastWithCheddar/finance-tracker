@@ -15,6 +15,8 @@ from app.core.exceptions import DataIntegrityError, BusinessLogicError, Validati
 from app.database import get_db
 from app.dependencies import get_transaction_service, get_websocket_manager_dep, get_owned_transaction
 from app.services.transaction_service import TransactionService
+from app.services.notification_service import NotificationService
+from app.models.notification import NotificationType
 from app.schemas.transaction import (
     TransactionCreate,
     TransactionUpdate,
@@ -45,7 +47,7 @@ async def create_transaction(
     manager = Depends(get_websocket_manager_dep)
 ):
     try:
-        new_transaction = await TransactionService.create_transaction(db, transaction, current_user.id)
+        new_transaction = await TransactionService.create_transaction(db, transaction, current_user.id, current_user)
     except SQLAlchemyError as e:
         logger.error(f"Database error creating transaction: {str(e)}")
         raise DataIntegrityError("Failed to create transaction due to database error")
@@ -63,8 +65,54 @@ async def create_transaction(
         except Exception as e:
             logger.warning(f"Error sending real-time notification: {str(e)}")
 
+    # Create persistent notification
+    if notify:
+        try:
+            amount_display = abs(new_transaction.amount_cents) / 100.0
+            transaction_type = "income" if new_transaction.amount_cents > 0 else "expense"
+            
+            await NotificationService.create_notification(
+                db=db,
+                user_id=current_user.id,
+                type=NotificationType.TRANSACTION_ALERT,
+                title=f"New {transaction_type.title()} Added",
+                message=f"${amount_display:.2f} - {new_transaction.description or 'No description'}",
+                action_url=f"/transactions?id={new_transaction.id}",
+                metadata={
+                    "transaction_id": str(new_transaction.id),
+                    "amount_cents": new_transaction.amount_cents,
+                    "transaction_type": transaction_type
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Error creating transaction notification: {str(e)}")
+
     return new_transaction
 
+@router.get("/histogram", response_model=dict)
+def get_transaction_histogram(
+    start_date: Optional[date] = Query(None, description="Start date filter"),
+    end_date: Optional[date] = Query(None, description="End date filter"),
+    category_id: Optional[str] = Query(None, description="Category ID filter"),
+    account_id: Optional[str] = Query(None, description="Account ID filter"),
+    amount_min: Optional[float] = Query(None, description="Minimum amount filter (in dollars)"),
+    amount_max: Optional[float] = Query(None, description="Maximum amount filter (in dollars)"),
+    bins: int = Query(10, ge=5, le=50, description="Number of histogram bins"),
+    db: Session = Depends(get_db_with_user_context),
+    current_user: User = Depends(get_current_user)
+):
+    """Get histogram data for transaction amounts"""
+    return TransactionService.get_transaction_histogram(
+        db=db,
+        user_id=current_user.id,
+        start_date=start_date,
+        end_date=end_date,
+        category_id=category_id,
+        account_id=account_id,
+        amount_min=amount_min,
+        amount_max=amount_max,
+        bins=bins
+    )
 
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 def get_transaction(
@@ -75,33 +123,92 @@ def get_transaction(
 @router.put("/{transaction_id}", response_model=TransactionResponse)
 async def update_transaction(
     transaction_update: TransactionUpdate,
+    notify: bool = Query(default=True, description="Send real-time notification"),
     transaction = Depends(get_owned_transaction),
     db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user),
     manager = Depends(get_websocket_manager_dep)
 ):
-    updated_transaction = TransactionService.update_transaction(db, transaction, transaction_update)
+    updated_transaction = await TransactionService.update_transaction(db, transaction, transaction_update)
 
-    await manager.send_to_user(str(current_user.id), {
-        "type": "transaction_updated",
-        "payload": _serialize_transaction(updated_transaction)
-    })
+    if notify and manager.is_user_connected(str(current_user.id)):
+        try:
+            await manager.send_to_user(str(current_user.id), {
+                "type": "transaction_updated",
+                "payload": _serialize_transaction(updated_transaction)
+            })
+        except Exception as e:
+            logger.warning(f"Error sending real-time notification: {str(e)}")
+
+    # Create persistent notification
+    if notify:
+        try:
+            amount_display = abs(updated_transaction.amount_cents) / 100.0
+            transaction_type = "income" if updated_transaction.amount_cents > 0 else "expense"
+            
+            await NotificationService.create_notification(
+                db=db,
+                user_id=current_user.id,
+                type=NotificationType.TRANSACTION_ALERT,
+                title="Transaction Updated",
+                message=f"${amount_display:.2f} - {updated_transaction.description or 'No description'}",
+                action_url=f"/transactions?id={updated_transaction.id}",
+                metadata={
+                    "transaction_id": str(updated_transaction.id),
+                    "amount_cents": updated_transaction.amount_cents,
+                    "transaction_type": transaction_type
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Error creating transaction update notification: {str(e)}")
 
     return updated_transaction
 
 @router.delete("/{transaction_id}")
 async def delete_transaction(
+    notify: bool = Query(default=True, description="Send real-time notification"),
     transaction = Depends(get_owned_transaction),
     db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user),
     manager = Depends(get_websocket_manager_dep)
 ):
+    # Store transaction details for notification before deletion
+    transaction_amount = transaction.amount_cents
+    transaction_description = transaction.description
+    transaction_id = transaction.id
+    
     TransactionService.delete_transaction(db, transaction)
 
-    await manager.send_to_user(str(current_user.id), {
-        "type": "transaction_deleted",
-        "payload": {"id": transaction.id}
-    })
+    if notify and manager.is_user_connected(str(current_user.id)):
+        try:
+            await manager.send_to_user(str(current_user.id), {
+                "type": "transaction_deleted",
+                "payload": {"id": transaction_id}
+            })
+        except Exception as e:
+            logger.warning(f"Error sending real-time notification: {str(e)}")
+
+    # Create persistent notification
+    if notify:
+        try:
+            amount_display = abs(transaction_amount) / 100.0
+            transaction_type = "income" if transaction_amount > 0 else "expense"
+            
+            await NotificationService.create_notification(
+                db=db,
+                user_id=current_user.id,
+                type=NotificationType.TRANSACTION_ALERT,
+                title="Transaction Deleted",
+                message=f"Deleted {transaction_type}: ${amount_display:.2f} - {transaction_description or 'No description'}",
+                action_url="/transactions",
+                metadata={
+                    "deleted_transaction_id": str(transaction_id),
+                    "amount_cents": transaction_amount,
+                    "transaction_type": transaction_type
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Error creating transaction deletion notification: {str(e)}")
 
     return {"message": "Transaction deleted successfully"}
 
@@ -112,13 +219,19 @@ def get_transactions(
     db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
+    logger.info(f"🔍 [TransactionRoute] GET /transactions called for user {current_user.id}")
+    logger.info(f"🔍 [TransactionRoute] Raw filters: {filters.model_dump()}")
+    logger.info(f"🔍 [TransactionRoute] Pagination: offset={pagination.offset}, limit={pagination.limit}")
+    
     # Check if grouping is requested
     if filters.group_by and filters.group_by != "none":
+        logger.info(f"🔍 [TransactionRoute] Using grouped method with group_by={filters.group_by}")
         # Use the new grouped method - returns TransactionGroupedResponse
         return TransactionService.get_transactions_with_grouping(
             db, current_user.id, filters, pagination
         )
     else:
+        logger.info("🔍 [TransactionRoute] Using flat method")
         # Use the original flat method
         transactions, total_count = TransactionService.get_transactions_with_filters(
             db, current_user.id, filters, pagination
@@ -127,13 +240,16 @@ def get_transactions(
         # Calculate pagination values
         has_more = total_count > pagination.offset + len(transactions)
         
-        return TransactionListResponse(
+        response = TransactionListResponse(
             transactions=transactions,
             total=total_count,
             limit=pagination.limit,
             offset=pagination.offset,
             has_more=has_more
         )
+        
+        logger.info(f"🔍 [TransactionRoute] Returning response with {len(transactions)} transactions, total={total_count}, has_more={has_more}")
+        return response
 
 @router.post("/import")
 async def import_transactions(
@@ -241,6 +357,24 @@ async def bulk_delete_transactions(
         except Exception as e:
             logger.warning(f"Error sending real-time notification: {str(e)}")
 
+    # Create persistent notification
+    if notify and deleted_count > 0:
+        try:
+            await NotificationService.create_notification(
+                db=db,
+                user_id=current_user.id,
+                type=NotificationType.TRANSACTION_ALERT,
+                title="Transactions Deleted",
+                message=f"Successfully deleted {deleted_count} transaction{'s' if deleted_count != 1 else ''}",
+                action_url="/transactions",
+                metadata={
+                    "deleted_count": deleted_count,
+                    "deleted_ids": [str(uuid) for uuid in deleted_ids]
+                }
+            )
+        except Exception as e:
+            logger.warning(f"Error creating bulk deletion notification: {str(e)}")
+
     return {
         "message": f"Successfully deleted {deleted_count} transactions",
         "deleted_count": deleted_count
@@ -294,6 +428,7 @@ def get_transaction_categories(
         Transaction.user_id == current_user.id
     ).distinct().all()
     return [category[0] for category in categories if category[0]]
+
 
 @router.get("/export")
 async def export_transactions(

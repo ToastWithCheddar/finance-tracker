@@ -21,6 +21,54 @@ body {
   --border: 220 13% 91%;
   --brand: 156 72% 41%;
   --accent: 160 84% 39%;
+  --brand-secondary: 180 100% 25%;
+
+  /* Gradient color stops for light mode */
+  --income-gradient-start: 151 81% 96%;
+  --income-gradient-middle: 149 80% 90%;
+  --income-gradient-end: 158 64% 52%;
+  
+  --expense-gradient-start: 0 86% 97%;
+  --expense-gradient-middle: 0 93% 94%;
+  --expense-gradient-end: 0 84% 60%;
+  
+  --savings-gradient-start: 214 100% 97%;
+  --savings-gradient-middle: 214 95% 93%;
+  --savings-gradient-end: 217 91% 60%;
+  
+  --investment-gradient-start: 270 100% 98%;
+  --investment-gradient-middle: 270 100% 87%;
+  --investment-gradient-end: 267 84% 81%;
+  
+  --budget-gradient-start: 33 100% 97%;
+  --budget-gradient-middle: 32 98% 83%;
+  --budget-gradient-end: 24 95% 53%;
+  
+  --success-gradient-start: 151 81% 96%;
+  --success-gradient-middle: 142 76% 73%;
+  --success-gradient-end: 142 71% 45%;
+  
+  --warning-gradient-start: 54 92% 95%;
+  --warning-gradient-middle: 52 98% 77%;
+  --warning-gradient-end: 45 94% 47%;
+  
+  --danger-gradient-start: 0 86% 97%;
+  --danger-gradient-middle: 0 90% 80%;
+  --danger-gradient-end: 0 84% 60%;
+
+  /* Button gradients for light mode */
+  --button-primary-start: 217 91% 60%;
+  --button-primary-end: 267 84% 81%;
+  
+  --button-success-start: 158 64% 52%;
+  --button-success-end: 217 91% 60%;
+  
+  --button-secondary-start: 210 40% 95%;
+  --button-secondary-end: 220 13% 91%;
+
+  /* Page gradients for light mode */
+  --page-gradient-start: 151 81% 96%;
+  --page-gradient-end: 214 100% 97%;
 }
 
 /* Emerald Noir theme variables */
@@ -31,6 +79,54 @@ body {
   --border: 160 6% 22%;
   --brand: 156 72% 41%;
   --accent: 160 84% 39%;
+  --brand-secondary: 180 100% 35%;
+
+  /* Gradient color stops for dark mode */
+  --income-gradient-start: 158 64% 15%;
+  --income-gradient-middle: 158 64% 20%;
+  --income-gradient-end: 158 64% 35%;
+  
+  --expense-gradient-start: 0 84% 15%;
+  --expense-gradient-middle: 0 84% 20%;
+  --expense-gradient-end: 0 84% 35%;
+  
+  --savings-gradient-start: 217 91% 15%;
+  --savings-gradient-middle: 217 91% 20%;
+  --savings-gradient-end: 217 91% 35%;
+  
+  --investment-gradient-start: 267 84% 15%;
+  --investment-gradient-middle: 267 84% 20%;
+  --investment-gradient-end: 267 84% 35%;
+  
+  --budget-gradient-start: 24 95% 15%;
+  --budget-gradient-middle: 24 95% 20%;
+  --budget-gradient-end: 24 95% 35%;
+  
+  --success-gradient-start: 142 71% 15%;
+  --success-gradient-middle: 142 71% 20%;
+  --success-gradient-end: 142 71% 35%;
+  
+  --warning-gradient-start: 45 94% 15%;
+  --warning-gradient-middle: 45 94% 20%;
+  --warning-gradient-end: 45 94% 35%;
+  
+  --danger-gradient-start: 0 84% 15%;
+  --danger-gradient-middle: 0 84% 20%;
+  --danger-gradient-end: 0 84% 35%;
+
+  /* Button gradients for dark mode */
+  --button-primary-start: 217 91% 45%;
+  --button-primary-end: 267 84% 55%;
+  
+  --button-success-start: 158 64% 45%;
+  --button-success-end: 217 91% 45%;
+  
+  --button-secondary-start: 160 10% 15%;
+  --button-secondary-end: 160 6% 22%;
+
+  /* Page gradients for dark mode */
+  --page-gradient-start: 160 10% 8%;
+  --page-gradient-end: 160 6% 12%;
 }
 
 /* Custom component styles with dark mode support */

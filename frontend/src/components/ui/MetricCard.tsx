@@ -45,34 +45,34 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       case 'income':
         return {
           cardClass: 'bg-income-gradient border-income-200 shadow-lg shadow-income-100/50 dark:shadow-income-800/50',
-          iconColor: 'text-income-600 dark:text-income-400',
-          titleColor: 'text-income-700 dark:text-income-300',
-          valueColor: 'text-income-900 dark:text-income-100',
-          changeColor: 'text-income-600 dark:text-income-400',
+          iconColor: 'text-income-600 dark:text-green-300',
+          titleColor: 'text-income-700 dark:text-gray-300',
+          valueColor: 'text-income-900 dark:text-gray-100',
+          changeColor: 'text-income-600 dark:text-gray-400',
         };
       case 'expense':
         return {
           cardClass: 'bg-expense-gradient border-expense-200 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50',
-          iconColor: 'text-expense-600 dark:text-expense-400',
-          titleColor: 'text-expense-700 dark:text-expense-300',
-          valueColor: 'text-expense-900 dark:text-expense-100',
-          changeColor: 'text-expense-600 dark:text-expense-400',
+          iconColor: 'text-expense-600 dark:text-red-300',
+          titleColor: 'text-expense-700 dark:text-gray-300',
+          valueColor: 'text-expense-900 dark:text-gray-100',
+          changeColor: 'text-expense-600 dark:text-gray-400',
         };
       case 'success':
         return {
           cardClass: 'bg-success-gradient border-success-200 shadow-lg shadow-success-100/50 dark:shadow-success-800/50',
-          iconColor: 'text-success-600 dark:text-success-400',
-          titleColor: 'text-success-700 dark:text-success-300',
-          valueColor: 'text-success-900 dark:text-success-100',
-          changeColor: 'text-success-600 dark:text-success-400',
+          iconColor: 'text-success-600 dark:text-green-300',
+          titleColor: 'text-success-700 dark:text-gray-300',
+          valueColor: 'text-success-900 dark:text-gray-100',
+          changeColor: 'text-success-600 dark:text-gray-400',
         };
       case 'savings':
         return {
           cardClass: 'bg-savings-gradient border-savings-200 shadow-lg shadow-savings-100/50 dark:shadow-savings-800/50',
-          iconColor: 'text-savings-600 dark:text-savings-400',
-          titleColor: 'text-savings-700 dark:text-savings-300',
-          valueColor: 'text-savings-900 dark:text-savings-100',
-          changeColor: 'text-savings-600 dark:text-savings-400',
+          iconColor: 'text-savings-600 dark:text-blue-300',
+          titleColor: 'text-savings-700 dark:text-gray-300',
+          valueColor: 'text-savings-900 dark:text-gray-100',
+          changeColor: 'text-savings-600 dark:text-gray-400',
         };
       default:
         return {
@@ -91,12 +91,12 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   if (change && changeType !== 'neutral' && theme === 'default') {
     const isPositive = changeType === 'positive';
     cardTheme.cardClass = isPositive 
-      ? 'bg-success-gradient border-success-200 shadow-lg shadow-success-100/50 dark:shadow-success-800/50'
-      : 'bg-expense-gradient border-expense-200 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50';
-    cardTheme.iconColor = isPositive ? 'text-success-600 dark:text-success-400' : 'text-expense-600 dark:text-expense-400';
-    cardTheme.titleColor = isPositive ? 'text-success-700 dark:text-success-300' : 'text-expense-700 dark:text-expense-300';
+      ? 'bg-success-gradient border-success-200 dark:border-success-700 shadow-lg shadow-success-100/50 dark:shadow-success-800/50'
+      : 'bg-expense-gradient border-expense-200 dark:border-expense-700 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50';
+    cardTheme.iconColor = isPositive ? 'text-success-600 dark:text-success-300' : 'text-expense-600 dark:text-expense-300';
+    cardTheme.titleColor = isPositive ? 'text-success-700 dark:text-success-200' : 'text-expense-700 dark:text-expense-200';
     cardTheme.valueColor = isPositive ? 'text-success-900 dark:text-success-100' : 'text-expense-900 dark:text-expense-100';
-    cardTheme.changeColor = isPositive ? 'text-success-600 dark:text-success-400' : 'text-expense-600 dark:text-expense-400';
+    cardTheme.changeColor = isPositive ? 'text-success-600 dark:text-success-300' : 'text-expense-600 dark:text-expense-300';
   }
 
   const ChangeIcon = changeType === 'positive' ? TrendingUp : TrendingDown;
@@ -187,7 +187,7 @@ export const MetricCard: React.FC<MetricCardProps> = ({
             )}
           </div>
           <div className="ml-4">
-            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white">
+            <div className="w-12 h-12 rounded-lg bg-button-primary-gradient flex items-center justify-center text-white">
               {IconComponent && <IconComponent className="h-6 w-6" />}
               {icon && !IconComponent && icon}
             </div>

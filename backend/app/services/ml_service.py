@@ -13,8 +13,6 @@ from ..config import settings
 from ..schemas.ml import (
     MLCategorizationRequest,
     MLCategorizationResponse,
-    MLFeedbackRequest,
-    MLFeedbackResponse,
     MLHealthResponse,
     MLBatchCategorizationRequest,
     MLBatchCategorizationResponse,
@@ -178,7 +176,7 @@ class MLServiceClient:
                 method="POST",
                 url=f"{self.config.base_url}/ml/categorize",
                 timeout=self.config.timeout_seconds,
-                json_data=request_data.model_dump(),
+                json_data=request_data.model_dump(mode="json"),
                 headers={"Content-Type": "application/json"}
             )
             
@@ -253,130 +251,6 @@ class MLServiceClient:
                 )
             )
     
-    async def submit_feedback(
-        self,
-        transaction_id: UUID,
-        description: str,
-        amount_cents: int,
-        correct_category_id: UUID,
-        user_id: str,
-        merchant: Optional[str] = None,
-        predicted_category_id: Optional[UUID] = None,
-        confidence: Optional[float] = None
-    ) -> MLServiceResponse:
-        """
-        Submit feedback to improve ML model
-        
-        Args:
-            transaction_id: Transaction ID
-            description: Transaction description
-            amount_cents: Transaction amount in cents
-            correct_category_id: Correct category ID
-            user_id: User ID
-            merchant: Optional merchant name
-            predicted_category_id: Previously predicted category ID
-            confidence: Previous prediction confidence
-            
-        Returns:
-            MLServiceResponse with feedback result
-        """
-        if not self.config.enable_feedback:
-            return MLServiceResponse(
-                success=False,
-                error=MLErrorResponse(
-                    error="feedback_disabled",
-                    message="ML feedback is disabled in configuration"
-                )
-            )
-        
-        try:
-            feedback_data = MLFeedbackRequest(
-                transaction_id=transaction_id,
-                description=description,
-                amount_cents=amount_cents,
-                merchant=merchant,
-                correct_category_id=correct_category_id,
-                predicted_category_id=predicted_category_id,
-                confidence=confidence,
-                user_id=user_id
-            )
-            
-            start_time = datetime.now(timezone.utc)
-            
-            response = await self._make_request_with_retry(
-                method="POST",
-                url=f"{self.config.base_url}/ml/feedback",
-                timeout=self.config.timeout_seconds,
-                json_data=feedback_data.model_dump(),
-                headers={"Content-Type": "application/json"}
-            )
-            
-            duration_ms = int((datetime.now(timezone.utc) - start_time).total_seconds() * 1000)
-                
-            if response.status_code == 200:
-                response_data = response.json()
-                feedback_result = MLFeedbackResponse.model_validate(response_data)
-                
-                return MLServiceResponse(
-                    success=True,
-                    data=feedback_result,
-                    request_duration_ms=duration_ms
-                )
-            else:
-                try:
-                    error_data = response.json()
-                    error = MLErrorResponse.model_validate(error_data)
-                except Exception:
-                    error = MLErrorResponse(
-                        error="http_error",
-                        message=f"HTTP {response.status_code}: {response.text}"
-                    )
-                
-                return MLServiceResponse(
-                    success=False,
-                    error=error,
-                    request_duration_ms=duration_ms
-                )
-                    
-        except httpx.TimeoutException as e:
-            logger.error(f"ML service feedback timeout after all retries: {str(e)}")
-            return MLServiceResponse(
-                success=False,
-                error=MLErrorResponse(
-                    error="timeout",
-                    message=f"ML feedback request timed out after {self.config.max_retries + 1} attempts"
-                )
-            )
-            
-        except (httpx.ConnectError, httpx.NetworkError) as e:
-            logger.error(f"ML service feedback connection error after all retries: {str(e)}")
-            return MLServiceResponse(
-                success=False,
-                error=MLErrorResponse(
-                    error="connection_error",
-                    message=f"Failed to connect to ML service for feedback after {self.config.max_retries + 1} attempts: {str(e)}"
-                )
-            )
-            
-        except httpx.RequestError as e:
-            logger.error(f"ML service feedback request error after all retries: {str(e)}")
-            return MLServiceResponse(
-                success=False,
-                error=MLErrorResponse(
-                    error="request_error",
-                    message=f"ML feedback request failed after {self.config.max_retries + 1} attempts: {str(e)}"
-                )
-            )
-            
-        except Exception as e:
-            logger.error(f"Unexpected error submitting ML feedback: {str(e)}")
-            return MLServiceResponse(
-                success=False,
-                error=MLErrorResponse(
-                    error="feedback_error",
-                    message=f"Failed to submit feedback: {str(e)}"
-                )
-            )
     
     async def batch_categorize(
         self, 
@@ -415,7 +289,7 @@ class MLServiceClient:
                 method="POST",
                 url=f"{self.config.base_url}/ml/batch-categorize",
                 timeout=self.config.timeout_seconds * 2,  # Double timeout for batch
-                json_data=batch_request.model_dump(),
+                json_data=batch_request.model_dump(mode="json"),
                 headers={"Content-Type": "application/json"}
             )
             
@@ -588,7 +462,7 @@ class MLServiceClient:
                 method="POST",
                 url=f"{self.config.base_url}/ml/add-example",
                 timeout=self.config.timeout_seconds,
-                json_data=request_data.model_dump(),
+                json_data=request_data.model_dump(mode="json"),
                 headers={"Content-Type": "application/json"}
             )
             

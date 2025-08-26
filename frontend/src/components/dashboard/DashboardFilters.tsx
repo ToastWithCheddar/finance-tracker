@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Calendar } from 'lucide-react';
 import { Button } from '../ui/Button';
+import { getStartOfWeek } from '../../utils/date';
 import type { DashboardFilters as FilterType } from '../../services/dashboardService';
 
 interface DashboardFiltersProps {
@@ -21,17 +22,40 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
   const [showCustomRange, setShowCustomRange] = useState(false);
   const [customStartDate, setCustomStartDate] = useState(filters.start_date || '');
   const [customEndDate, setCustomEndDate] = useState(filters.end_date || '');
+  const [selectedRangeKey, setSelectedRangeKey] = useState<string | null>(null);
+
+  // Initialize selectedRangeKey based on current filters
+  React.useEffect(() => {
+    if (filters.start_date && filters.end_date) {
+      const presets = getDateRangePresets();
+      console.log('[DEBUG DashboardFilters] Initializing selectedRangeKey. Current filters:', filters);
+      console.log('[DEBUG DashboardFilters] Available presets:', presets);
+      
+      // Find matching predefined range
+      for (const range of PREDEFINED_RANGES) {
+        const preset = presets[range.key];
+        if (preset.start_date === filters.start_date && preset.end_date === filters.end_date) {
+          console.log('[DEBUG DashboardFilters] Found matching range key:', range.key);
+          setSelectedRangeKey(range.key);
+          return;
+        }
+      }
+      
+      // No predefined range matches, clear selectedRangeKey
+      console.log('[DEBUG DashboardFilters] No predefined range matches, clearing selectedRangeKey');
+      setSelectedRangeKey(null);
+    }
+  }, [filters.start_date, filters.end_date]);
 
   const getDateRangePresets = () => {
     const now = new Date();
     const today = now.toISOString().split('T')[0];
     
-    // This week
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
+    // This week (Monday to today)
+    const startOfWeek = getStartOfWeek(now);
     const thisWeekStart = startOfWeek.toISOString().split('T')[0];
     
-    // This month
+    // This month (start of month to today, consistent with TransactionFilters)
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     
     // Last month
@@ -59,7 +83,9 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
   const handlePredefinedRangeClick = (rangeKey: string) => {
     console.log('[DEBUG DashboardFilters] handlePredefinedRangeClick called with:', rangeKey);
     const presets = getDateRangePresets();
+    console.log('[DEBUG DashboardFilters] Date range presets:', presets);
     const range = presets[rangeKey as keyof typeof presets];
+    console.log(`[DEBUG DashboardFilters] Selected range "${rangeKey}":`, range);
     
     if (range) {
       const newFilters = {
@@ -68,8 +94,14 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
         end_date: range.end_date,
       };
       console.log('[DEBUG DashboardFilters] About to call onFiltersChange with:', newFilters);
+      console.log('[DEBUG DashboardFilters] Date range for', rangeKey, ':', range);
+      
+      // Track which range key was explicitly selected
+      setSelectedRangeKey(rangeKey);
       onFiltersChange(newFilters);
       setShowCustomRange(false);
+    } else {
+      console.log('[DEBUG DashboardFilters] No range found for key:', rangeKey);
     }
   };
 
@@ -82,6 +114,9 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
         end_date: customEndDate,
       };
       console.log('[DEBUG DashboardFilters] About to call onFiltersChange with custom range:', newFilters);
+      
+      // Clear selected range key for custom ranges
+      setSelectedRangeKey(null);
       onFiltersChange(newFilters);
       setShowCustomRange(false);
     }
@@ -98,6 +133,15 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
   };
 
   const getCurrentRangeLabel = () => {
+    // If we have a selected range key, use it for the label
+    if (selectedRangeKey) {
+      const selectedRange = PREDEFINED_RANGES.find(range => range.key === selectedRangeKey);
+      if (selectedRange) {
+        return selectedRange.label;
+      }
+    }
+    
+    // Fall back to date matching for cases where selectedRangeKey is not set
     const presets = getDateRangePresets();
     
     for (const range of PREDEFINED_RANGES) {
@@ -119,17 +163,21 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
         </div>
         
         <div className="flex flex-wrap gap-2">
-          {PREDEFINED_RANGES.map((range) => (
-            <Button
-              key={range.key}
-              variant={getCurrentRangeLabel() === range.label ? "primary" : "outline"}
-              size="sm"
-              onClick={() => handlePredefinedRangeClick(range.key)}
-              className="text-xs"
-            >
-              {range.label}
-            </Button>
-          ))}
+          {PREDEFINED_RANGES.map((range) => {
+            const isSelected = selectedRangeKey === range.key;
+            console.log(`[DEBUG DashboardFilters] Button ${range.key}: selectedRangeKey=${selectedRangeKey}, isSelected=${isSelected}`);
+            return (
+              <Button
+                key={range.key}
+                variant={isSelected ? "primary" : "outline"}
+                size="sm"
+                onClick={() => handlePredefinedRangeClick(range.key)}
+                className="text-xs"
+              >
+                {range.label}
+              </Button>
+            );
+          })}
           
           <Button
             variant={showCustomRange ? "primary" : "outline"}

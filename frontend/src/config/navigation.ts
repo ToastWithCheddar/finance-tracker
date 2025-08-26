@@ -22,7 +22,7 @@ export const navigationItems: NavigationItem[] = [
     path: '/transactions', 
     label: 'Transactions', 
     icon: ReceiptText, 
-    description: 'Browse transactions, manage recurring payments, and automation rules', 
+    description: 'Browse and manage your transactions', 
     color: 'text-green-600 dark:text-green-400', 
     hoverColor: 'hover:bg-green-50 dark:hover:bg-green-900/30' 
   },

@@ -9,6 +9,7 @@ import type {
   GoalFilters,
   MilestoneAlert
 } from '../types/goals';
+import { GoalStatus as GoalStatusConst } from '../types/goals';
 import { useEffect } from 'react';
 import { queryKeys } from '../services/queryClient';
 
@@ -119,7 +120,7 @@ export function useUpdateGoal() {
       queryClient.invalidateQueries({ queryKey: goalKeys.detail(updatedGoal.id) });
       queryClient.invalidateQueries({ queryKey: goalKeys.stats() });
       
-      if (updatedGoal.status === 'completed') {
+      if (updatedGoal.status === GoalStatusConst.COMPLETED) {
         toast.success(`🎊 Congratulations! "${updatedGoal.name}" is now complete!`, {
           duration: 6000,
         });

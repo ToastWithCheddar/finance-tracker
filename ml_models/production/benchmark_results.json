@@ -1,0 +1,28 @@
+{
+  "pytorch": {
+    "inference_time_s": 1.0217502117156982,
+    "avg_time_per_sample_ms": 10.217502117156982,
+    "throughput_per_second": 97.87127896169693
+  },
+  "transaction_classifier": {
+    "inference_time_s": 3.6276230812072754,
+    "avg_time_per_sample_ms": 36.276230812072754,
+    "throughput_per_second": 27.566259713707613,
+    "model_size_mb": 86.77501964569092,
+    "model_path": "models/production/transaction_classifier.onnx"
+  },
+  "transaction_classifier_dynamic_q8": {
+    "inference_time_s": 1.4533565044403076,
+    "avg_time_per_sample_ms": 14.533565044403076,
+    "throughput_per_second": 68.80624244256596,
+    "model_size_mb": 22.076144218444824,
+    "model_path": "models/production/transaction_classifier_dynamic_q8.onnx"
+  },
+  "transaction_classifier_static_q8": {
+    "inference_time_s": 1.7769999504089355,
+    "avg_time_per_sample_ms": 17.769999504089355,
+    "throughput_per_second": 56.27462171678019,
+    "model_size_mb": 22.09363555908203,
+    "model_path": "models/production/transaction_classifier_static_q8.onnx"
+  }
+}

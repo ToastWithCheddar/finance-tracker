@@ -22,24 +22,7 @@ export interface MLConfidenceScore {
   };
 }
 
-export interface MLFeedback {
-  transactionId: string;
-  predictedCategoryId: string;
-  actualCategoryId: string;
-  userConfirmed: boolean;
-  feedbackType: 'correction' | 'confirmation' | 'rejection';
-  timestamp: string;
-  confidence: number;
-  reasoning?: string;
-}
 
-export interface MLTrainingData {
-  transactionDescription: string;
-  amount: number;
-  categoryId: string;
-  userId: string;
-  feedback: MLFeedback[];
-}
 
 export interface MLModelPerformance {
   modelVersion: string;
@@ -96,23 +79,7 @@ export interface MLBatchCategorizeResponse {
   averageConfidence: number;
 }
 
-export interface MLFeedbackRequest {
-  transactionId: string;
-  predictedCategoryId: string;
-  actualCategoryId: string;
-  userAction: 'accepted' | 'corrected' | 'rejected';
-  confidence: number;
-  description: string;
-  amountCents: number;
-}
 
-export interface MLFeedbackResponse {
-  feedbackId: string;
-  processed: boolean;
-  modelWillRetrain: boolean;
-  estimatedImpact: 'low' | 'medium' | 'high';
-  message: string;
-}
 
 export interface MLInsights {
   userId: string;
@@ -148,6 +115,5 @@ export interface MLConfiguration {
   enableSuggestions: boolean;
   enableBatchProcessing: boolean;
   maxAlternativeCategories: number;
-  feedbackLearningEnabled: boolean;
   retrainingFrequency: 'daily' | 'weekly' | 'monthly';
 }

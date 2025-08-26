@@ -6,13 +6,13 @@ from enum import Enum
 
 from .manager import redis_websocket_manager as manager
 from .schemas import (
-    MessageType, NotificationPriority,
+    MessageType,
     create_dashboard_update_message, create_transaction_message,
     create_budget_alert_message, create_goal_progress_message,
     create_notification_message, DashboardUpdatePayload,
     TransactionPayload, BudgetAlertPayload, GoalProgressPayload,
     GoalAchievedPayload, AccountSyncPayload, AccountSyncErrorPayload,
-    NotificationPayload, SystemAlertPayload, AIInsightPayload,
+    NotificationPayload, SystemAlertPayload,
     PingPayload, BulkTransactionImportPayload, BalanceUpdatePayload
 )
 
@@ -137,18 +137,14 @@ class WebSocketEvents:
         """Emit budget alert with different severity levels"""
         spent_percentage = (budget_data.get("spent_cents", 0) / budget_data.get("amount_cents", 1)) * 100
         
-        # Determine priority based on spending percentage
+        # Determine alert message based on spending percentage
         if spent_percentage >= 100:
-            priority = NotificationPriority.CRITICAL
             alert_message = f"Budget exceeded! You've spent {spent_percentage:.1f}% of your {budget_data.get('name')} budget."
         elif spent_percentage >= 90:
-            priority = NotificationPriority.HIGH
             alert_message = f"Budget warning: {spent_percentage:.1f}% of your {budget_data.get('name')} budget used."
         elif spent_percentage >= 75:
-            priority = NotificationPriority.MEDIUM
             alert_message = f"Budget update: {spent_percentage:.1f}% of your {budget_data.get('name')} budget used."
         else:
-            priority = NotificationPriority.LOW
             alert_message = f"Budget check: {spent_percentage:.1f}% of your {budget_data.get('name')} budget used."
 
         message = {
@@ -162,7 +158,6 @@ class WebSocketEvents:
                 "remaining_cents": budget_data.get("remaining_cents"),
                 "percentage_used": spent_percentage,
                 "alert_type": alert_type,
-                "priority": priority,
                 "message": alert_message,
                 "period": budget_data.get("period"),
                 "threshold_reached": spent_percentage >= budget_data.get("alert_threshold", 80)
@@ -205,7 +200,6 @@ class WebSocketEvents:
                 "achieved_amount_cents": goal_data.get("current_amount_cents"),
                 "achievement_date": datetime.now(timezone.utc).isoformat(),
                 "celebration_message": f"🎉 Congratulations! You've achieved your '{goal_data.get('name')}' goal!",
-                "priority": NotificationPriority.HIGH
             }
         }
         await manager.send_to_user(user_id, message)
@@ -242,50 +236,11 @@ class WebSocketEvents:
                 "error_code": error_details.get("error_code"),
                 "retry_suggested": error_details.get("retry_suggested", True),
                 "failed_at": datetime.now(timezone.utc).isoformat(),
-                "priority": NotificationPriority.MEDIUM
             }
         }
         await manager.send_to_user(user_id, message)
 
-    # ========== AI & INSIGHTS EVENTS ==========
-    
-    @staticmethod
-    async def emit_ai_insight(user_id: str, insight_data: Dict[str, Any]):
-        """Emit AI-generated financial insight"""
-        message = {
-            "type": MessageType.AI_INSIGHT_GENERATED,
-            "payload": {
-                "insight_id": insight_data.get("id"),
-                "title": insight_data.get("title"),
-                "description": insight_data.get("description"),
-                "insight_type": insight_data.get("type"),  # spending_pattern, saving_opportunity, etc.
-                "data": insight_data.get("data", {}),
-                "confidence_score": insight_data.get("confidence_score"),
-                "actionable": insight_data.get("actionable", False),
-                "action_items": insight_data.get("action_items", []),
-                "priority": insight_data.get("priority", NotificationPriority.MEDIUM),
-                "generated_at": datetime.now(timezone.utc).isoformat()
-            }
-        }
-        await manager.send_to_user(user_id, message)
-
-    @staticmethod
-    async def emit_spending_pattern_detected(user_id: str, pattern_data: Dict[str, Any]):
-        """Emit detected spending pattern"""
-        message = {
-            "type": MessageType.SPENDING_PATTERN_DETECTED,
-            "payload": {
-                "pattern_type": pattern_data.get("type"),  # unusual_spending, recurring_expense, etc.
-                "category": pattern_data.get("category"),
-                "description": pattern_data.get("description"),
-                "amount_cents": pattern_data.get("amount_cents"),
-                "frequency": pattern_data.get("frequency"),
-                "confidence": pattern_data.get("confidence"),
-                "suggestion": pattern_data.get("suggestion"),
-                "detected_at": datetime.now(timezone.utc).isoformat()
-            }
-        }
-        await manager.send_to_user(user_id, message)
+    # ========== AI & INSIGHTS EVENTS (removed) ==========
 
     # ========== NOTIFICATION EVENTS ==========
     
@@ -295,7 +250,6 @@ class WebSocketEvents:
         title: str, 
         message: str, 
         notification_type: str = "info",
-        priority: NotificationPriority = NotificationPriority.MEDIUM,
         action_url: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ):
@@ -307,7 +261,6 @@ class WebSocketEvents:
                 "title": title,
                 "message": message,
                 "notification_type": notification_type,  # success, error, warning, info
-                "priority": priority,
                 "action_url": action_url,
                 "metadata": metadata or {},
                 "created_at": datetime.now(timezone.utc).isoformat(),
@@ -321,7 +274,6 @@ class WebSocketEvents:
         user_ids: List[str], 
         alert_type: str, 
         message: str, 
-        priority: NotificationPriority = NotificationPriority.HIGH
     ):
         """Emit system-wide alert to multiple users"""
         alert_message = {
@@ -329,7 +281,6 @@ class WebSocketEvents:
             "payload": {
                 "alert_type": alert_type,
                 "message": message,
-                "priority": priority,
                 "system_wide": True,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
@@ -362,4 +313,3 @@ class WebSocketEvents:
             }
         }
         await manager.send_to_user(user_id, message, persist=False)
-

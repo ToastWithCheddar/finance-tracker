@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, Suspense, lazy } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui';
@@ -15,15 +15,12 @@ import type {
   Transaction
 } from '../types/transaction';
 import type { TransactionFilters as TransactionFiltersType } from '../services/transactionService';
-import { ReceiptText, RefreshCcw, Settings } from 'lucide-react';
-
-// Lazy load tab components for better performance
-const RecurringTab = lazy(() => import('../components/transactions/RecurringTab').then(module => ({ default: module.RecurringTab })));
-const AutomationRulesTab = lazy(() => import('../features/automation/components/AutomationRulesTab').then(module => ({ default: module.AutomationRulesTab })));
+import { ReceiptText, Brain } from 'lucide-react';
+import { mlService } from '../services/mlService';
 
 
 // Tab definitions
-type TransactionTab = 'all' | 'recurring' | 'automation';
+type TransactionTab = 'all';
 
 interface TabConfig {
   id: TransactionTab;
@@ -44,18 +41,6 @@ export function Transactions() {
       label: 'All Transactions',
       icon: ReceiptText,
       description: 'Browse, filter, and manage all your transactions'
-    },
-    {
-      id: 'recurring',
-      label: 'Recurring & Subscriptions',
-      icon: RefreshCcw,
-      description: 'Manage recurring payments and subscription tracking'
-    },
-    {
-      id: 'automation',
-      label: 'Automation Rules',
-      icon: Settings,
-      description: 'Configure categorization rules and templates'
     }
   ];
 
@@ -119,6 +104,7 @@ export function Transactions() {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isExportDropdownOpen, setIsExportDropdownOpen] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<any>();
+  const [isBatchCategorizing, setIsBatchCategorizing] = useState(false);
   
   // Removed: Date grouping state no longer needed
   
@@ -131,6 +117,9 @@ export function Transactions() {
     page: currentPage,
     per_page: itemsPerPage,
   };
+  
+  console.log('🔍 [Transactions] Final queryFilters for API:', queryFilters);
+  console.log('🔍 [Transactions] Stats filters (no pagination):', filters);
 
   // Always fetch flat transaction data - no more grouping
   const { data: transactionData, isLoading, error } = useTransactions(queryFilters);
@@ -194,6 +183,8 @@ export function Transactions() {
 
   // Handle filter changes (triggers new API call)
   const handleFiltersChange = (newFilters: TransactionFilter) => {
+    console.log('🔍 [Transactions] Filters changed from:', filters);
+    console.log('🔍 [Transactions] Filters changed to:', newFilters);
     setFilters(newFilters);
     setCurrentPage(1); // Reset to first page when filters change
   };
@@ -204,6 +195,107 @@ export function Transactions() {
         setIsFormOpen(false);
       },
     });
+  };
+
+  const handleBatchCategorize = async () => {
+    if (!transactions.length) return;
+    
+    // Find uncategorized transactions (those without categoryId)
+    const uncategorizedTransactions = transactions.filter(t => !t.categoryId);
+    
+    if (uncategorizedTransactions.length === 0) {
+      alert('All visible transactions are already categorized!');
+      return;
+    }
+
+    const confirmed = confirm(`This will automatically categorize ${uncategorizedTransactions.length} uncategorized transactions using AI. Continue?`);
+    if (!confirmed) return;
+
+    try {
+      setIsBatchCategorizing(true);
+      
+      // Process in chunks to avoid overwhelming the system
+      const CHUNK_SIZE = 50;
+      const chunks = [];
+      for (let i = 0; i < uncategorizedTransactions.length; i += CHUNK_SIZE) {
+        chunks.push(uncategorizedTransactions.slice(i, i + CHUNK_SIZE));
+      }
+
+      let totalCategorized = 0;
+      const updatedTransactionIds: string[] = []; // Track for potential rollback
+
+      // Process each chunk sequentially
+      for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
+        const chunk = chunks[chunkIndex];
+        
+        try {
+          // Prepare batch request for this chunk
+          const batchRequest = {
+            transactions: chunk.map(t => ({
+              id: t.id,
+              description: t.description,
+              amount: t.amountCents
+            }))
+          };
+
+          // Call ML service for batch categorization
+          const result = await mlService.batchCategorizeTransactions(batchRequest);
+          
+          // Update transactions with high confidence suggestions
+          const predictions = result.results ?? [];
+          for (let i = 0; i < predictions.length; i++) {
+            const pred = predictions[i];
+            const confidence = pred.prediction?.confidence ?? 0;
+            const suggestedCategoryId = pred.prediction?.categoryId;
+            if (suggestedCategoryId && confidence >= 0.7) { // Only auto-apply high confidence
+              try {
+                const originalTransaction = chunk[i];
+                await update({
+                  transactionId: originalTransaction.id,
+                  transaction: { id: originalTransaction.id, categoryId: suggestedCategoryId }
+                });
+                
+                // Track successful updates for potential rollback
+                updatedTransactionIds.push(originalTransaction.id);
+                totalCategorized++;
+              } catch (error) {
+                console.error(`Failed to update transaction ${chunk[i].id}:`, error);
+                // Continue with next transaction rather than failing entire batch
+              }
+            }
+          }
+
+          // Show progress for large batches
+          if (chunks.length > 1) {
+            console.log(`Processed chunk ${chunkIndex + 1}/${chunks.length} (${totalCategorized} categorized so far)`);
+          }
+
+        } catch (chunkError) {
+          console.error(`Failed to process chunk ${chunkIndex + 1}:`, chunkError);
+          // Continue with next chunk rather than failing entire batch
+          if (chunks.length > 1) {
+            console.log(`Skipping failed chunk ${chunkIndex + 1}, continuing with remaining chunks`);
+          }
+        }
+      }
+      
+      // Store rollback info in session storage for "undo" functionality
+      if (updatedTransactionIds.length > 0) {
+        sessionStorage.setItem('lastBatchUpdate', JSON.stringify({
+          timestamp: Date.now(),
+          updatedTransactionIds,
+          totalCount: updatedTransactionIds.length
+        }));
+      }
+      
+      alert(`Successfully auto-categorized ${totalCategorized} transactions!${updatedTransactionIds.length > 0 ? '\n\nNote: You can undo this batch operation if needed.' : ''}`);
+      
+    } catch (error) {
+      console.error('Batch categorization failed:', error);
+      alert('Batch categorization failed. Please try again.');
+    } finally {
+      setIsBatchCategorizing(false);
+    }
   };
 
   const handleUpdateTransaction = (data: TransactionUpdate) => {
@@ -290,9 +382,7 @@ export function Transactions() {
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold">Transactions</h1>
-              <p className="text-[hsl(var(--text))/0.7] mt-2">
-                {tabs.find(t => t.id === activeTab)?.description}
-              </p>
+              <p className="text-[hsl(var(--text))/0.7] mt-2">Browse, filter, and manage all your transactions</p>
             </div>
             
             {/* Tab-specific action buttons */}
@@ -352,15 +442,27 @@ export function Transactions() {
                   )}
                 </div>
                 
-                <Button
-                  onClick={() => {
-                    setEditingTransaction(undefined);
-                    setIsFormOpen(true);
-                  }}
-                  className="bg-brand hover:brightness-110"
-                >
-                  Add Transaction
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      setEditingTransaction(undefined);
+                      setIsFormOpen(true);
+                    }}
+                    className="bg-brand hover:brightness-110"
+                  >
+                    Add Transaction
+                  </Button>
+                  
+                  <Button
+                    onClick={handleBatchCategorize}
+                    disabled={isBatchCategorizing || transactions.filter(t => !t.categoryId).length === 0}
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <Brain className="h-4 w-4" />
+                    {isBatchCategorizing ? 'Categorizing...' : 'Smart Categorize'}
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -429,29 +531,7 @@ export function Transactions() {
           </>
         )}
 
-        {activeTab === 'recurring' && (
-          <div className="mb-8">
-            <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
-                <LoadingSpinner size="lg" />
-              </div>
-            }>
-              <RecurringTab />
-            </Suspense>
-          </div>
-        )}
-
-        {activeTab === 'automation' && (
-          <div className="mb-8">
-            <Suspense fallback={
-              <div className="flex items-center justify-center py-12">
-                <LoadingSpinner size="lg" />
-              </div>
-            }>
-              <AutomationRulesTab />
-            </Suspense>
-          </div>
-        )}
+        
 
         {/* Pagination - Only for All Transactions tab */}
         {activeTab === 'all' && !isLoading && totalPages > 1 && (
@@ -475,7 +555,7 @@ export function Transactions() {
                 // Calculate the range of pages to show (sliding window)
                 const maxPagesToShow = 5;
                 let startPage = Math.max(1, currentPage - Math.floor(maxPagesToShow / 2));
-                let endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
+                const endPage = Math.min(totalPages, startPage + maxPagesToShow - 1);
                 
                 // Adjust if we're near the end
                 if (endPage - startPage + 1 < maxPagesToShow) {

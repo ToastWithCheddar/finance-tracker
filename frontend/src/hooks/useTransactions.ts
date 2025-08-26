@@ -110,14 +110,23 @@ export function useCreateTransaction() {
       // Invalidate transaction lists and stats
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-      // Invalidate aggregated stats for all filters
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+      // Invalidate ALL stats queries regardless of filters using predicate
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          query.queryKey[0] === 'transactions' && 
+          query.queryKey[1] === 'stats'
+      });
       
       // Also invalidate budget-related queries since transactions affect budgets
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       
-      // Invalidate dashboard data
+      // Invalidate all dashboard data including category breakdown
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
+      
+      console.log('✅ Transaction created - invalidated all related queries');
+      console.log('🔄 Invalidated ALL stats queries using predicate matcher');
     },
   });
 }
@@ -138,10 +147,19 @@ export function useUpdateTransaction() {
       
       // Invalidate related queries
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.lists() });
-      // Invalidate aggregated stats for all filters (use prefix, not factory with undefined)
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+      // Invalidate ALL stats queries regardless of filters using predicate
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          query.queryKey[0] === 'transactions' && 
+          query.queryKey[1] === 'stats'
+      });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
+      
+      console.log('✅ Transaction updated - invalidated all related queries');
+      console.log('🔄 Invalidated ALL stats queries using predicate matcher');
     },
   });
 }
@@ -158,9 +176,19 @@ export function useDeleteTransaction() {
       
       // Invalidate list queries
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.lists() });
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+      // Invalidate ALL stats queries regardless of filters using predicate
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          query.queryKey[0] === 'transactions' && 
+          query.queryKey[1] === 'stats'
+      });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
+      
+      console.log('✅ Transaction deleted - invalidated all related queries');
+      console.log('🔄 Invalidated ALL stats queries using predicate matcher');
     },
   });
 }
@@ -179,9 +207,19 @@ export function useBulkDeleteTransactions() {
       
       // Invalidate list queries
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.lists() });
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+      // Invalidate ALL stats queries regardless of filters using predicate
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          query.queryKey[0] === 'transactions' && 
+          query.queryKey[1] === 'stats'
+      });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
+      
+      console.log('✅ Bulk delete completed - invalidated all related queries');
+      console.log('🔄 Invalidated ALL stats queries using predicate matcher');
     },
   });
 }
@@ -195,9 +233,18 @@ export function useImportCSV() {
     onSuccess: (result: CSVImportResponse) => {
       // Invalidate all transaction-related queries
       queryClient.invalidateQueries({ queryKey: TRANSACTION_KEYS.all });
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+      // Invalidate ALL stats queries regardless of filters using predicate
+      queryClient.invalidateQueries({ 
+        predicate: (query) => 
+          Array.isArray(query.queryKey) && 
+          query.queryKey[0] === 'transactions' && 
+          query.queryKey[1] === 'stats'
+      });
       queryClient.invalidateQueries({ queryKey: ['budgets'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
+      
+      console.log('✅ CSV import completed - invalidated all related queries');
       
       return result;
     },

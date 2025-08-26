@@ -22,9 +22,12 @@ export function AlertTestingSection({ budget }: AlertTestingSectionProps) {
     }
 
     alertActions.sendTest({
-      budget_id: budget.id,
-      test_threshold: 0.8,
-      test_amount_cents: Math.round(testAmount * 100)
+      budgetId: budget.id,
+      testData: {
+        budget_id: budget.id,
+        test_threshold: 0.8,
+        test_amount_cents: Math.round(testAmount * 100)
+      }
     });
   };
 
@@ -37,8 +40,11 @@ export function AlertTestingSection({ budget }: AlertTestingSectionProps) {
 
     alertActions.preview({
       budgetId: budget.id,
-      testThreshold: 0.8,
-      testAmountCents: Math.round(testAmount * 100)
+      params: {
+        budgetId: budget.id,
+        testThreshold: 0.8,
+        testAmountCents: Math.round(testAmount * 100)
+      }
     });
   };
 

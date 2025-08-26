@@ -124,8 +124,6 @@ export function getTransactionStatusVisuals(status: string) {
 // Export category colors utility
 export * from './categoryColors';
 
-// Export frequency utilities
-export * from './frequency';
 
 // Export user utilities
 export * from './userUtils';

@@ -14,11 +14,11 @@ export function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-primary-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-page-gradient flex items-center justify-center px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full">
         {/* Logo/Brand */}
         <div className="text-center mb-8">
-          <div className="mx-auto h-12 w-12 bg-primary-600 rounded-xl flex items-center justify-center">
+          <div className="mx-auto h-12 w-12 bg-button-primary-gradient rounded-xl flex items-center justify-center">
             <svg
               className="h-8 w-8 text-white"
               fill="none"

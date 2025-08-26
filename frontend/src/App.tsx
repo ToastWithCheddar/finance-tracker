@@ -10,7 +10,6 @@ import { Login } from './pages/Login';
 import { RealtimeDashboard } from './components/dashboard/RealtimeDashboard';
 import { Profile } from './pages/Profile';
 import { Transactions } from './pages/Transactions';
-import { Recurring } from './pages/Recurring';
 import { Categories } from './pages/Categories';
 import { Budgets } from './pages/Budgets';
 import Goals from './pages/Goals';
@@ -56,16 +55,6 @@ function App() {
                   }
                 />
                 
-                <Route
-                  path="/recurring"
-                  element={
-                    <ProtectedRoute>
-                      <Layout>
-                        <Recurring />
-                      </Layout>
-                    </ProtectedRoute>
-                  }
-                />
                 
                 <Route
                   path="/categories"

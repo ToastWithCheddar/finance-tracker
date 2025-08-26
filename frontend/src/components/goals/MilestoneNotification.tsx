@@ -3,6 +3,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { useRealtimeStore } from '../../stores/realtimeStore';
 import { formatCurrency } from '../../utils';
+import { Trophy, Sparkles, Star, Zap, TrendingUp } from 'lucide-react';
 import type { MilestoneAlert } from '../../types/goals';
 
 interface CelebrationModalProps {
@@ -40,14 +41,20 @@ function CelebrationModal({ alert, isOpen, onClose }: CelebrationModalProps) {
                   animationDuration: `${2 + Math.random() * 2}s`
                 }}
               >
-                {['🎉', '🎊', '⭐', '🌟', '✨'][Math.floor(Math.random() * 5)]}
+{[
+                  <Sparkles key={i} className="h-6 w-6 text-yellow-500" />,
+                  <Star key={i} className="h-6 w-6 text-blue-500" />,
+                  <Zap key={i} className="h-6 w-6 text-purple-500" />
+                ][Math.floor(Math.random() * 3)]}
               </div>
             ))}
           </div>
         )}
 
         <Card className="p-8 text-center relative border-2 border-[hsl(var(--border))]">
-          <div className="text-6xl mb-4 animate-pulse">🎊</div>
+          <div className="mb-4 animate-pulse flex justify-center">
+            <Sparkles className="h-24 w-24 text-yellow-500" />
+          </div>
           
           <h2 className="text-2xl font-bold text-[hsl(var(--text))] mb-2">
             Milestone Achieved!
@@ -69,9 +76,9 @@ function CelebrationModal({ alert, isOpen, onClose }: CelebrationModalProps) {
           <div className="flex justify-center space-x-4">
             <Button
               onClick={onClose}
-              className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white"
+              className="bg-button-primary-gradient hover:opacity-90 text-white transition-opacity duration-200"
             >
-              🎉 Awesome!
+<Trophy className="h-4 w-4 mr-2" /> Awesome!
             </Button>
           </div>
         </Card>
@@ -117,14 +124,20 @@ function GoalCompletionModal({ goalName, finalAmount, isOpen, onClose }: GoalCom
                   animationDuration: `${1 + Math.random()}s`
                 }}
               >
-                {['🎆', '🎇', '✨', '🌟', '💫'][Math.floor(Math.random() * 5)]}
+{[
+                  <Sparkles key={i} className="h-8 w-8 text-yellow-400" />,
+                  <Star key={i} className="h-8 w-8 text-blue-400" />,
+                  <Zap key={i} className="h-8 w-8 text-purple-400" />
+                ][Math.floor(Math.random() * 3)]}
               </div>
             ))}
           </div>
         )}
 
         <Card className="p-10 text-center relative border-4 border-[hsl(var(--border))]">
-          <div className="text-8xl mb-6 animate-bounce">🏆</div>
+          <div className="mb-6 animate-bounce flex justify-center">
+            <Trophy className="h-32 w-32 text-yellow-500" />
+          </div>
           
           <h1 className="text-3xl font-bold text-[hsl(var(--text))] mb-4">
             Goal Completed!
@@ -148,15 +161,15 @@ function GoalCompletionModal({ goalName, finalAmount, isOpen, onClose }: GoalCom
           
           <div className="space-y-4">
             <p className="text-lg text-gray-700">
-              🎉 You've successfully reached your financial goal! This is a huge achievement that shows your dedication and smart financial planning.
+You've successfully reached your financial goal! This is a huge achievement that shows your dedication and smart financial planning.
             </p>
             
             <div className="flex justify-center space-x-4">
               <Button
                 onClick={onClose}
-                className="bg-gradient-to-r from-green-500 to-blue-600 hover:from-green-600 hover:to-blue-700 text-white px-8 py-3 text-lg"
+                className="bg-button-success-gradient hover:opacity-90 text-white px-8 py-3 text-lg transition-opacity duration-200"
               >
-                🎊 Celebrate!
+<Sparkles className="h-4 w-4 mr-2" /> Celebrate!
               </Button>
             </div>
           </div>
@@ -242,9 +255,11 @@ export function MilestoneNotificationBadge() {
 
   return (
     <div className="fixed top-4 right-4 z-40">
-      <Card className="p-3 bg-gradient-to-r from-green-500 to-blue-500 text-white shadow-lg">
+      <Card className="p-3 bg-success-gradient text-white shadow-lg">
         <div className="flex items-center space-x-2">
-          <div className="text-xl animate-bounce">🎉</div>
+          <div className="animate-bounce">
+            <Trophy className="h-6 w-6 text-yellow-500" />
+          </div>
           <div>
             <div className="font-semibold text-sm">
               {totalNotifications} Achievement{totalNotifications > 1 ? 's' : ''}!
@@ -302,7 +317,9 @@ export function ProgressAnimation({
     <div className="fixed bottom-4 right-4 z-40">
       <Card className="p-4 bg-white shadow-lg border-l-4 border-l-green-500 max-w-sm">
         <div className="flex items-center space-x-3">
-          <div className="text-2xl animate-pulse">📈</div>
+          <div className="animate-pulse">
+            <TrendingUp className="h-8 w-8 text-green-500" />
+          </div>
           <div className="flex-1">
             <div className="font-semibold text-sm text-gray-900 mb-1">
               Progress Update: {goalName}

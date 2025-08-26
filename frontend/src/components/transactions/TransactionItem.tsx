@@ -2,12 +2,12 @@ import { useState } from 'react';
 import type { Transaction } from '../../types/transaction';
 import { Card, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
-import { Input } from '../ui/Input';
+import { mlService } from '../../services/mlService';
 
 import { formatCurrency } from '../../utils/currency';
 import { formatDate } from '../../utils/date';
 import { getTransactionStatusVisuals } from '../../utils';
-import { ChevronDown, Pencil, Trash2, Building, Tag, FileText, Calendar, CreditCard, Check, X, Clock, CheckCheck, Circle } from 'lucide-react';
+import { ChevronDown, Pencil, Trash2, Building, Tag, FileText, Calendar, CreditCard, Check, Clock, CheckCheck, Circle, Brain, ThumbsUp, ThumbsDown } from 'lucide-react';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -28,7 +28,37 @@ export function TransactionItem({
 }: TransactionItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   
-
+  const handleMLFeedback = async (isHelpful: boolean) => {
+    const categoryName = transaction.categoryName || transaction.category_name;
+    if (!transaction.description || !categoryName) return;
+    
+    try {
+      if (isHelpful) {
+        // Thumbs up: reinforce the current categorization
+        const trainingText = transaction.merchant 
+          ? `${transaction.merchant} ${transaction.description}` 
+          : transaction.description;
+        
+        await mlService.addCategoryExample({
+          category: categoryName,
+          example: trainingText
+        });
+        
+        console.log(`✅ Positive feedback: Reinforced '${categoryName}' with example '${trainingText}'`);
+      } else {
+        // Thumbs down: User disagrees with categorization
+        // In a full implementation, we'd show a category picker here
+        // For now, just log the negative feedback
+        console.log(`❌ Negative feedback: User disagrees with '${categoryName}' for '${transaction.description}'`);
+        
+        // TODO: Show modal to let user pick correct category, then add that as training example
+        alert('Thanks for the feedback! In the future, this will let you pick the correct category to improve AI accuracy.');
+      }
+    } catch (error) {
+      console.error('Failed to submit ML feedback:', error);
+      alert('Failed to submit feedback. Please try again.');
+    }
+  };
 
   const isIncome = transaction.amountCents > 0;
   const amountColor = isIncome ? 'text-green-600' : 'text-gray-900 dark:text-gray-100';
@@ -45,7 +75,35 @@ export function TransactionItem({
   };
 
   const formatAccountInfo = () => {
-    return `${transaction.accountName} (${transaction.accountType})`;
+    const name = transaction.accountName || 'Unknown Account';
+    const type = transaction.accountType;
+    return type ? `${name} (${type})` : name;
+  };
+
+  const getMLConfidenceBadge = () => {
+    const confidence = transaction.confidenceScore || transaction.confidence_score;
+    if (!confidence) return null;
+
+    let level: string;
+    let colorClass: string;
+    
+    if (confidence >= 0.8) {
+      level = 'High';
+      colorClass = 'bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400';
+    } else if (confidence >= 0.5) {
+      level = 'Med';
+      colorClass = 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400';
+    } else {
+      level = 'Low';
+      colorClass = 'bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400';
+    }
+
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full ${colorClass}`}>
+        <Brain className="h-3 w-3" />
+        {level}
+      </span>
+    );
   };
 
 
@@ -81,6 +139,7 @@ export function TransactionItem({
                         {statusVisuals.label}
                       </span>
                     )}
+                    {getMLConfidenceBadge()}
                   </div>
                   {/* Prominent Date Display */}
                   <div className="flex items-center text-sm font-medium text-gray-600 dark:text-gray-300 ml-2">
@@ -164,8 +223,6 @@ export function TransactionItem({
                 })}</span>
               </div>
 
-
-
               {/* Transaction Status */}
               {transaction.status && (
                 <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
@@ -179,7 +236,6 @@ export function TransactionItem({
 
               {/* Currency */}
               <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
-                
                 <strong className="mr-2">Currency:</strong>
                 <span>{transaction.currency || 'USD'}</span>
               </div>
@@ -219,7 +275,7 @@ export function TransactionItem({
             {/* Location */}
             {transaction.location && (
               <div className="flex items-start text-sm text-gray-600 dark:text-gray-400">
-                
+                <Building className="h-4 w-4 mr-2 mt-0.5 text-gray-400 dark:text-gray-500 flex-shrink-0" />
                 <div>
                   <strong className="mr-2">Location:</strong>
                   <span className="break-words">{transaction.location.address}</span>
@@ -227,42 +283,56 @@ export function TransactionItem({
               </div>
             )}
 
-            {/* Recurring Information */}
-            {transaction.isRecurring && transaction.recurringRule && (
-              <div className="flex items-start text-sm text-gray-600 dark:text-gray-400">
-                
-                <div>
-                  <strong className="mr-2">Recurring:</strong>
-                  <span>
-                    {transaction.recurringRule.frequency}
-                    {transaction.recurringRule.interval > 1 && ` (every ${transaction.recurringRule.interval})`}
-                    {transaction.recurringRule.endDate && ` until ${formatDate(transaction.recurringRule.endDate)}`}
-                  </span>
-                </div>
-              </div>
-            )}
+            {/* Recurring Information removed */}
 
             {/* ML Confidence Score */}
             {transaction.confidenceScore !== undefined && (
-              <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+              <div className="space-y-2">
+                <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                  <strong className="mr-2">ML Confidence:</strong>
+                  <span className={`px-2 py-0.5 text-xs rounded-full ${
+                    transaction.confidenceScore >= 0.8 
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200'
+                      : transaction.confidenceScore >= 0.6
+                      ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200'
+                      : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
+                  }`}>
+                    {Math.round(transaction.confidenceScore * 100)}%
+                  </span>
+                </div>
                 
-                <strong className="mr-2">ML Confidence:</strong>
-                <span className={`px-2 py-0.5 text-xs rounded-full ${
-                  transaction.confidenceScore >= 0.8 
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200'
-                    : transaction.confidenceScore >= 0.6
-                    ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200'
-                    : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
-                }`}>
-                  {Math.round(transaction.confidenceScore * 100)}%
-                </span>
+                {/* ML Feedback Buttons */}
+                {transaction.mlSuggestedCategoryId && (
+                  <div className="flex items-center text-sm text-gray-600 dark:text-gray-400">
+                    <strong className="mr-2">Was this categorization helpful?</strong>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleMLFeedback(true)}
+                        className="text-green-600 hover:text-green-700 hover:bg-green-50 dark:hover:bg-green-900/20 px-2 py-1"
+                      >
+                        <ThumbsUp className="h-3 w-3 mr-1" />
+                        Yes
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleMLFeedback(false)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 px-2 py-1"
+                      >
+                        <ThumbsDown className="h-3 w-3 mr-1" />
+                        No
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Plaid Transaction ID for debugging */}
             {transaction.plaidTransactionId && (
               <div className="flex items-center text-xs text-gray-500 dark:text-gray-500">
-                
                 <strong className="mr-2">Plaid ID:</strong>
                 <span className="font-mono truncate">{transaction.plaidTransactionId}</span>
               </div>

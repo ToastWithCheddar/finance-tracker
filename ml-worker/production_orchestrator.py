@@ -354,39 +354,6 @@ class ProductionOrchestrator:
             logger.error(f"Production inference failed: {e}")
             raise
     
-    async def submit_feedback(
-        self, 
-        transaction_id: str,
-        predicted_category: str,
-        actual_category: str,
-        user_id: str = None
-    ):
-        """Submit user feedback for model improvement"""
-        
-        is_correct = predicted_category == actual_category
-        
-        # Update monitoring metrics
-        if self.model_monitor:
-            # This would require tracking transaction ID to model version mapping
-            # For now, we'll use the current model
-            self.model_monitor.record_inference(
-                inference_time_ms=0,  # Not available for feedback
-                predicted_category=predicted_category,
-                confidence=0.0,  # Not available for feedback
-                confidence_level="unknown",
-                model_version="production_feedback",
-                is_correct=is_correct
-            )
-        
-        # Update A/B test results if applicable
-        if self.ab_framework and self.current_experiment_id:
-            # Find the result to update
-            results = self.ab_framework.results[self.current_experiment_id]
-            for result in reversed(results):
-                if (result.user_id == user_id and 
-                    result.prediction == predicted_category):
-                    result.is_correct = is_correct
-                    break
     
     def get_production_status(self) -> Dict[str, Any]:
         """Get comprehensive production system status"""

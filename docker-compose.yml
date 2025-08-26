@@ -81,6 +81,8 @@ services:
     env_file:
       - .env
     restart: unless-stopped
+    environment:
+      - MODELS_DIR=/app/models
     volumes:
       - ./ml-worker:/app:cached
       - ./ml_models:/app/models:cached

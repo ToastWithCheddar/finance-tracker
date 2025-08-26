@@ -22,7 +22,7 @@ async def create_goal(
     goal_service: GoalService = Depends(get_goal_service)
 ):
     """Create a new financial goal"""
-    return goal_service.create_goal(db, current_user.id, goal_data)
+    return await goal_service.create_goal(db, current_user.id, goal_data)
 
 @router.get("", response_model=GoalsResponse)
 async def get_goals(
@@ -65,7 +65,7 @@ async def update_goal(
     goal_service: GoalService = Depends(get_goal_service)
 ):
     """Update an existing goal"""
-    goal = goal_service.update_goal(db, current_user.id, goal_id, goal_data)
+    goal = await goal_service.update_goal(db, current_user.id, goal_id, goal_data)
     if not goal:
         raise HTTPException(status_code=404, detail="Goal not found")
     return goal
@@ -78,7 +78,7 @@ async def delete_goal(
     goal_service: GoalService = Depends(get_goal_service)
 ):
     """Delete a goal and all related data"""
-    success = goal_service.delete_goal(db, current_user.id, goal_id)
+    success = await goal_service.delete_goal(db, current_user.id, goal_id)
     if not success:
         raise HTTPException(status_code=404, detail="Goal not found")
     return {"message": "Goal deleted successfully"}

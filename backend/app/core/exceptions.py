@@ -109,11 +109,6 @@ class CategoryNotFoundError(ResourceNotFoundError):
         super().__init__("Category", category_id)
 
 
-class CategorizationRuleNotFoundError(ResourceNotFoundError):
-    """Raised when a categorization rule is not found."""
-    
-    def __init__(self, rule_id: Optional[str] = None):
-        super().__init__("Categorization rule", rule_id)
 
 
 class DuplicateResourceError(FinanceTrackerException):

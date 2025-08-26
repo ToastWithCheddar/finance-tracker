@@ -221,25 +221,7 @@ class PlaidClientService:
                 'error': str(e)
             }
     
-    async def fetch_recurring_transactions(self, access_token: str) -> Dict[str, Any]:
-        """Fetch recurring transactions from Plaid"""
-        try:
-            result = await self._make_request('transactions/recurring/get', {
-                'access_token': access_token
-            })
-            
-            return {
-                'success': True,
-                'inflow_streams': result.get('inflow_streams', []),
-                'outflow_streams': result.get('outflow_streams', [])
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to fetch recurring transactions: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+    # Removed: fetch_recurring_transactions (feature deprecated)
     
     async def get_connection_status(self, access_token: str) -> Dict[str, Any]:
         """Get connection status for a Plaid item"""

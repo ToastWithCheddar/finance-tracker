@@ -6,13 +6,10 @@ from .user_session import UserSession
 from .category import Category  
 from .account import Account
 from .transaction import Transaction
-from .plaid_recurring_transaction import PlaidRecurringTransaction
-from .categorization_rule import CategorizationRule
-from .categorization_rule_template import CategorizationRuleTemplate
 from .budget import Budget
 from .budget_alert_settings import BudgetAlertSettings
 from .goal import Goal
-from .notification import Notification, NotificationType, NotificationPriority
+from .notification import Notification, NotificationType
 from .ml_model import MLModelPerformance
 
 # Configure relationships after all models are loaded
@@ -31,14 +28,10 @@ __all__ = [
     "Category",
     "Account", 
     "Transaction",
-    "PlaidRecurringTransaction",
-    "CategorizationRule",
-    "CategorizationRuleTemplate",
     "Budget",
     "BudgetAlertSettings",
     "Goal",
     "Notification",
     "NotificationType",
-    "NotificationPriority",
     "MLModelPerformance",
 ]

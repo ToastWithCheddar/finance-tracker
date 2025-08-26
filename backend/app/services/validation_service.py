@@ -14,7 +14,6 @@ class TransactionMetadataSchema(BaseModel):
     plaid_metadata: Optional[Dict[str, Any]] = None
     ml_predictions: Optional[Dict[str, Any]] = None
     user_tags: Optional[List[str]] = None
-    recurring_rule: Optional[Dict[str, Any]] = None
     location_data: Optional[Dict[str, Any]] = None
 
 class LocationSchema(BaseModel):
@@ -27,14 +26,6 @@ class LocationSchema(BaseModel):
     country: Optional[str] = None
     postal_code: Optional[str] = None
 
-class RecurringRuleSchema(BaseModel):
-    """Schema for recurring transaction rules"""
-    frequency: str  # daily, weekly, monthly, yearly
-    interval: int = 1  # every N periods
-    end_date: Optional[str] = None
-    max_occurrences: Optional[int] = None
-    day_of_month: Optional[int] = None
-    day_of_week: Optional[int] = None
 
 class DataValidationService:
     """Service for validating JSONB data and ensuring data integrity"""
@@ -43,7 +34,6 @@ class DataValidationService:
         self.schemas = {
             'transaction_metadata': TransactionMetadataSchema,
             'location': LocationSchema,
-            'recurring_rule': RecurringRuleSchema,
         }
     
     def validate_transaction_metadata(self, metadata: Dict[str, Any]) -> tuple[bool, List[str]]:
@@ -76,35 +66,7 @@ class DataValidationService:
             errors = [f"{error['loc'][0]}: {error['msg']}" for error in e.errors()]
             return False, errors
     
-    def validate_recurring_rule(self, rule: Dict[str, Any]) -> tuple[bool, List[str]]:
-        """Validate recurring transaction rule"""
-        try:
-            RecurringRuleSchema(**rule)
-            
-            # Additional business logic validation
-            frequency = rule.get('frequency')
-            if frequency not in ['daily', 'weekly', 'monthly', 'yearly']:
-                return False, ['Invalid frequency value']
-            
-            interval = rule.get('interval', 1)
-            if interval < 1:
-                return False, ['Interval must be positive']
-            
-            # Validate day constraints
-            if frequency == 'monthly' and 'day_of_month' in rule:
-                day = rule['day_of_month']
-                if not (1 <= day <= 31):
-                    return False, ['day_of_month must be between 1 and 31']
-            
-            if frequency == 'weekly' and 'day_of_week' in rule:
-                day = rule['day_of_week']
-                if not (0 <= day <= 6):  # 0 = Monday, 6 = Sunday
-                    return False, ['day_of_week must be between 0 and 6']
-            
-            return True, []
-        except ValidationError as e:
-            errors = [f"{error['loc'][0]}: {error['msg']}" for error in e.errors()]
-            return False, errors
+    # Removed: recurring rule validation
     
     def sanitize_jsonb_field(self, data: Any) -> Dict[str, Any]:
         """Sanitize and prepare JSONB data for storage"""

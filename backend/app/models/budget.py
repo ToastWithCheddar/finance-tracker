@@ -1,4 +1,4 @@
-from sqlalchemy import String, BigInteger, Boolean, Date, ForeignKey, Float, Index, Enum
+from sqlalchemy import String, BigInteger, Boolean, Date, ForeignKey, Float, Index, Enum, CheckConstraint, UniqueConstraint
 from sqlalchemy.orm import relationship, mapped_column, Mapped
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from .base import BaseModel
@@ -46,8 +46,18 @@ class Budget(BaseModel):
         return f"<Budget(id={self.id}, name='{self.name}', amount_cents={self.amount_cents}, period={self.period.value}, is_active={self.is_active})>"
     
     __table_args__ = (
+        # Indexes for performance
         Index('idx_budget_user_period', 'user_id', 'period'),
         Index('idx_budget_user_active', 'user_id', 'is_active'),
         Index('idx_budget_date_range', 'start_date', 'end_date'),
         Index('idx_budget_category_active', 'category_id', 'is_active'),
+        Index('idx_budget_user_category_period', 'user_id', 'category_id', 'period'),  # For budget calculations
+        
+        # Data integrity constraints
+        CheckConstraint('end_date IS NULL OR end_date >= start_date', name='check_valid_date_range'),
+        CheckConstraint('amount_cents > 0', name='check_positive_amount'),
+        CheckConstraint('alert_threshold >= 0.0 AND alert_threshold <= 1.0', name='check_alert_threshold_range'),
+        
+        # Prevent duplicate budget names for same user and period
+        UniqueConstraint('user_id', 'name', 'period', name='uq_budget_user_name_period'),
     )

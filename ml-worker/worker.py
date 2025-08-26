@@ -1,9 +1,16 @@
 from celery import Celery
+from celery.signals import worker_ready
 import os
 import logging
 import asyncio
+import threading
 from datetime import datetime
 from typing import Dict, List
+# Reduce HF tokenizers fork warnings and potential deadlocks in Celery prefork
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+# Force CPU inference; prevents any accidental GPU selection if present
+os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
+
 from ml_classification_service import classifier
 from production_orchestrator import create_production_orchestrator
 from model_monitoring import model_monitor
@@ -27,53 +34,83 @@ app.conf.update(
     enable_utc=True,
 )
 
-# Global production orchestrator
+# Global production orchestrator (unused in light startup)
 production_orchestrator = None
 
-# Initialize ML classifier on worker startup
-@app.on_after_configure.connect
-def setup_periodic_tasks(sender, **kwargs):
-    """Setup periodic tasks and initialize production ML system"""
-    global production_orchestrator
-    
+def _is_light_startup() -> bool:
+    """Always use light startup to avoid heavy init paths."""
+    return True
+
+
+def _ensure_onnx_in_background():
+    """Create minimal ONNX artifacts if missing, without blocking worker start.
+    Generates base ONNX and dynamic-quantized variant. Skips benchmarks/static quant.
+    """
     try:
-        # Create production orchestrator with model variants
-        models_config = [
-            {'name': 'sentence_transformer', 'type': 'base'},
-            {'name': 'onnx_optimized', 'type': 'onnx'},
-            {'name': 'quantized', 'type': 'onnx_quantized'}
-        ]
-        
-        production_orchestrator = create_production_orchestrator(
-            models_config=models_config,
-            monitoring_enabled=True,
-            ab_testing_enabled=True
-        )
-        
-        # Initialize production system asynchronously
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(production_orchestrator.initialize_production())
-        loop.close()
-        
-        logger.info("🚀 Production ML system initialized successfully")
-        
+        from onnx_converter import onnx_converter
+        models_dir = "models/production"
+        os.makedirs(models_dir, exist_ok=True)
+        base_path = os.path.join(models_dir, "transaction_classifier.onnx")
+        dyn_path = os.path.join(models_dir, "transaction_classifier_dynamic_q8.onnx")
+
+        if os.path.exists(dyn_path) and os.path.exists(base_path):
+            logger.info("ONNX artifacts already present; skipping generation")
+            return
+
+        logger.info("Starting background ONNX export (base + dynamic quantization)")
+        # Load model on CPU and export
+        onnx_converter.load_model()
+        onnx_converter.export_to_onnx(base_path)
+        onnx_converter.quantize_dynamic(base_path, dyn_path)
+        logger.info("✅ Background ONNX export complete")
     except Exception as e:
-        logger.error(f"Failed to initialize production ML system: {e}")
-        # Fallback to basic classifier
+        logger.warning(f"Background ONNX export skipped due to error: {e}")
+
+
+# Initialize ML classifier on worker startup
+@worker_ready.connect
+def setup_worker_tasks(sender, **kwargs):
+    """Setup periodic tasks and initialize ML system.
+    In light startup, preload basic model/prototypes and skip heavy production init
+    so the worker can accept tasks immediately.
+    """
+    global production_orchestrator
+
+    # Light startup path: fast readiness, no heavy production init
+    if _is_light_startup():
         try:
+            models_dir = classifier._models_root()
+            prototypes_path = os.path.join(models_dir, 'category_prototypes.pkl')
+            
+            # Ensure model is loaded and ready
+            logger.info(f"Loading model from models directory: {models_dir}")
             classifier.load_model()
-            classifier.initialize_category_prototypes()
             
-            # Try to load existing prototypes
+            if not classifier.sentence_model:
+                raise ValueError("Failed to load sentence model")
+            
             try:
-                classifier.load_prototypes('models/category_prototypes.pkl')
-            except:
-                logger.info("No existing prototypes found, using defaults")
-            
-            logger.info("Fallback to basic ML Classification service")
-        except Exception as fallback_error:
-            logger.error(f"Fallback initialization also failed: {fallback_error}")
+                classifier.load_prototypes(prototypes_path)
+                if not classifier.category_prototypes:
+                    raise ValueError("Empty prototypes after load")
+                logger.info(f"Loaded {len(classifier.category_prototypes)} prototypes from {prototypes_path}")
+            except Exception as e:
+                logger.info(f"No valid prototypes found ({e}); initializing defaults")
+                classifier.initialize_category_prototypes()
+                try:
+                    os.makedirs(os.path.dirname(prototypes_path), exist_ok=True)
+                    classifier.save_prototypes(prototypes_path)
+                    logger.info(f"Saved {len(classifier.category_prototypes)} initial prototypes to {prototypes_path}")
+                except Exception as save_err:
+                    logger.warning(f"Could not save prototypes: {save_err}")
+
+            # Skip creating production orchestrator to avoid heavy startup
+            # Kick off minimal ONNX generation in the background
+            threading.Thread(target=_ensure_onnx_in_background, daemon=True).start()
+            logger.info("✅ Light ML startup complete - model ready for inference")
+            return
+        except Exception as e:
+            logger.error(f"Light startup failed: {e}", exc_info=True)
 
 @app.task(bind=True, max_retries=3)
 def classify_transaction(self, transaction_data: Dict):
@@ -136,66 +173,34 @@ def classify_transaction(self, transaction_data: Dict):
 def batch_classify_transactions(self, transactions: List[Dict]):
     """Classify multiple transactions in batch"""
     try:
+        batch_size = len(transactions)
+        logger.info(f"Starting batch classification for {batch_size} transactions")
+        
+        # Ensure model is loaded in worker process
+        if not classifier.sentence_model:
+            logger.info("Loading model in worker process...")
+            classifier.load_model()
+            
+        if not classifier.category_prototypes:
+            logger.info("Loading prototypes in worker process...")
+            prototypes_path = 'models/category_prototypes.pkl'
+            try:
+                classifier.load_prototypes(prototypes_path)
+            except Exception:
+                classifier.initialize_category_prototypes()
+        
+        start_time = datetime.now()
         results = classifier.batch_classify(transactions)
-        logger.info(f"Batch classified {len(transactions)} transactions")
+        end_time = datetime.now()
+        
+        processing_time = (end_time - start_time).total_seconds()
+        logger.info(f"✅ Batch classified {batch_size} transactions in {processing_time:.2f}s ({processing_time/batch_size:.3f}s per transaction)")
         return results
         
     except Exception as e:
-        logger.error(f"Batch classification failed: {e}")
+        logger.error(f"Batch classification failed for {len(transactions)} transactions: {e}", exc_info=True)
         raise self.retry(countdown=60 * (2 ** self.request.retries), exc=e)
 
-@app.task
-def collect_user_feedback(feedback_data: Dict):
-    """Collect user feedback for model improvement with production tracking"""
-    global production_orchestrator
-    
-    try:
-        if production_orchestrator:
-            # Use production orchestrator for feedback
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            
-            loop.run_until_complete(
-                production_orchestrator.submit_feedback(
-                    transaction_id=feedback_data['transaction_id'],
-                    predicted_category=feedback_data['predicted_category'],
-                    actual_category=feedback_data['actual_category'],
-                    user_id=feedback_data['user_id']
-                )
-            )
-            
-            loop.close()
-        
-        # Also collect in basic classifier for compatibility
-        classifier.collect_feedback(
-            transaction_id=feedback_data['transaction_id'],
-            predicted_category=feedback_data['predicted_category'],
-            actual_category=feedback_data['actual_category'],
-            user_id=feedback_data['user_id']
-        )
-        
-        logger.info(f"Feedback collected for transaction {feedback_data['transaction_id']}")
-        return {"status": "feedback_collected"}
-        
-    except Exception as e:
-        logger.error(f"Failed to collect feedback: {e}")
-        return {"status": "error", "message": str(e)}
-
-@app.task
-def update_model_from_feedback(user_id: str):
-    """Update model prototypes based on user feedback"""
-    try:
-        classifier.update_from_feedback(user_id)
-        
-        # Save updated prototypes
-        classifier.save_prototypes('models/category_prototypes.pkl')
-        
-        logger.info(f"Model updated from feedback for user {user_id}")
-        return {"status": "model_updated"}
-        
-    except Exception as e:
-        logger.error(f"Failed to update model: {e}")
-        return {"status": "error", "message": str(e)}
 
 @app.task
 def add_category_example(category: str, example: str, user_id: str = None):

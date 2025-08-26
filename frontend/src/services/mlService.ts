@@ -13,11 +13,6 @@ export interface MLCategorizeResponse {
   all_similarities?: Record<string, number>;
 }
 
-export interface MLFeedbackRequest {
-  transaction_id: string;
-  predicted_category: string;
-  actual_category: string;
-}
 
 export interface MLPerformanceMetrics {
   total_predictions: number;
@@ -45,6 +40,16 @@ export interface BatchCategorizeRequest {
   }>;
 }
 
+export interface BatchCategorizeResponse {
+  results: Array<{
+    id: string;
+    prediction?: {
+      categoryId: string;
+      confidence: number;
+    };
+  }>;
+}
+
 export interface CategoryExampleRequest {
   category: string;
   example: string;
@@ -55,22 +60,16 @@ class MLService {
    * Categorize a single transaction using ML model
    */
   async categorizeTransaction(request: MLCategorizeRequest): Promise<MLCategorizeResponse> {
-    return await api.post<MLCategorizeResponse>('/ml/categorise', request);
+    return await api.post<MLCategorizeResponse>('/ml/categorize', request);
   }
 
   /**
    * Categorize multiple transactions in batch
    */
-  async batchCategorizeTransactions(request: BatchCategorizeRequest) {
-    return await api.post('/ml/batch-categorise', request);
+  async batchCategorizeTransactions(request: BatchCategorizeRequest): Promise<BatchCategorizeResponse> {
+    return await api.post<BatchCategorizeResponse>('/ml/batch-categorize', request);
   }
 
-  /**
-   * Submit user feedback for model improvement
-   */
-  async submitFeedback(request: MLFeedbackRequest) {
-    return await api.post('/ml/feedback', request);
-  }
 
   /**
    * Add a new example to a category for training
@@ -116,7 +115,7 @@ class MLService {
       }
       
       return null; // Low confidence, let user decide
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Auto-categorization failed:', error);
       return null;
     }
@@ -145,7 +144,7 @@ class MLService {
         suggestions,
         model_version: result.model_version
       };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to get category suggestions:', error);
       return null;
     }
@@ -161,8 +160,8 @@ class MLService {
       try {
         const result = await this.addCategoryExample(example);
         results.push({ ...example, status: 'success', result });
-      } catch (error) {
-        results.push({ ...example, status: 'error', error: error.message });
+      } catch (error: any) {
+        results.push({ ...example, status: 'error', error: error?.message ?? String(error) });
       }
     }
     
@@ -201,7 +200,7 @@ class MLService {
         overall_accuracy: performance.accuracy,
         user_feedback_count: performance.total_feedback
       };
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Failed to get training suggestions:', error);
       return null;
     }
@@ -227,7 +226,7 @@ class MLService {
         description,
         amount: amount || 0
       });
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Live classification failed:', error);
       return null;
     }

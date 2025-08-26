@@ -34,7 +34,6 @@ class Account(BaseModel):
     # Relationships
     user = relationship("User", back_populates="accounts")
     transactions = relationship("Transaction", back_populates="account", cascade="all, delete-orphan")
-    plaid_recurring_transactions = relationship("PlaidRecurringTransaction", back_populates="account", cascade="all, delete-orphan")
     
     @property
     def balance_dollars(self) -> float:

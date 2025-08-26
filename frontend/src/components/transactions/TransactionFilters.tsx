@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { getYesterday, getThisWeekRange } from '../../utils/date';
 import type { TransactionFilters } from '../../types/transaction';
 
 interface TransactionFiltersProps {
@@ -25,7 +26,70 @@ export function TransactionFilters({
       ...filters,
       [key]: value || undefined, // Convert empty strings to undefined
     };
+    console.log('🔍 [TransactionFilters] Filter changed:', { key, value, newFilters });
     onFiltersChange(newFilters);
+  };
+
+  // Handle multiple filter changes atomically to prevent race conditions
+  const handleMultipleFilterChanges = (updates: Partial<TransactionFilters>) => {
+    const newFilters = {
+      ...filters,
+      ...updates,
+    };
+    // Clean up undefined values
+    Object.keys(newFilters).forEach(key => {
+      if (newFilters[key as keyof TransactionFilters] === undefined || newFilters[key as keyof TransactionFilters] === '') {
+        delete newFilters[key as keyof TransactionFilters];
+      }
+    });
+    console.log('🔍 [TransactionFilters] Multiple filters changed:', { updates, newFilters });
+    onFiltersChange(newFilters);
+  };
+
+  // Helper functions to check if specific quick filters are active
+  const isQuickFilterActive = (quickFilterType: string): boolean => {
+    const today = new Date();
+    const todayStr = today.toISOString().split('T')[0];
+    
+    switch (quickFilterType) {
+      case 'yesterday': {
+        const yesterday = getYesterday();
+        return filters.dateFrom === yesterday && filters.dateTo === yesterday;
+      }
+      case 'thisWeek': {
+        const { startDate, endDate } = getThisWeekRange();
+        return filters.dateFrom === startDate && filters.dateTo === endDate;
+      }
+      case 'thisMonth': {
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const startOfMonthStr = startOfMonth.toISOString().split('T')[0];
+        return filters.dateFrom === startOfMonthStr && filters.dateTo === todayStr;
+      }
+      case 'lastMonth': {
+        const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+        const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+        return filters.dateFrom === lastMonth.toISOString().split('T')[0] && 
+               filters.dateTo === endOfLastMonth.toISOString().split('T')[0];
+      }
+      case 'last7Days': {
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setDate(today.getDate() - 7);
+        return filters.dateFrom === sevenDaysAgo.toISOString().split('T')[0] && 
+               filters.dateTo === todayStr;
+      }
+      case 'last30Days': {
+        const thirtyDaysAgo = new Date(today);
+        thirtyDaysAgo.setDate(today.getDate() - 30);
+        return filters.dateFrom === thirtyDaysAgo.toISOString().split('T')[0] && 
+               filters.dateTo === todayStr;
+      }
+      case 'incomeOnly':
+        return filters.transaction_type === 'income';
+      case 'expenseOnly':
+        return filters.transaction_type === 'expense';
+      default:
+        return false;
+    }
   };
 
 
@@ -196,72 +260,134 @@ export function TransactionFilters({
               <span className="text-sm font-medium text-gray-700 mr-2">Quick filters:</span>
               
               <Button
-                variant="outline"
+                variant={isQuickFilterActive('yesterday') ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  const yesterday = getYesterday();
+                  handleMultipleFilterChanges({
+                    dateFrom: yesterday,
+                    dateTo: yesterday,
+                    // Clear transaction type when setting date range
+                    transaction_type: undefined
+                  });
+                }}
+              >
+                Yesterday
+              </Button>
+              
+              <Button
+                variant={isQuickFilterActive('thisWeek') ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  const { startDate, endDate } = getThisWeekRange();
+                  handleMultipleFilterChanges({
+                    dateFrom: startDate,
+                    dateTo: endDate,
+                    // Clear transaction type when setting date range
+                    transaction_type: undefined
+                  });
+                }}
+              >
+                This Week
+              </Button>
+              
+              <Button
+                variant={isQuickFilterActive('thisMonth') ? 'primary' : 'outline'}
                 size="sm"
                 onClick={() => {
                   const today = new Date();
                   const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-                  handleFilterChange('dateFrom', startOfMonth.toISOString().split('T')[0]);
-                  handleFilterChange('dateTo', today.toISOString().split('T')[0]);
+                  handleMultipleFilterChanges({
+                    dateFrom: startOfMonth.toISOString().split('T')[0],
+                    dateTo: today.toISOString().split('T')[0],
+                    // Clear transaction type when setting date range
+                    transaction_type: undefined
+                  });
                 }}
               >
                 This Month
               </Button>
               
               <Button
-                variant="outline"
+                variant={isQuickFilterActive('lastMonth') ? 'primary' : 'outline'}
                 size="sm"
                 onClick={() => {
                   const today = new Date();
                   const lastMonth = new Date(today.getFullYear(), today.getMonth() - 1, 1);
                   const endOfLastMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-                  handleFilterChange('dateFrom', lastMonth.toISOString().split('T')[0]);
-                  handleFilterChange('dateTo', endOfLastMonth.toISOString().split('T')[0]);
+                  handleMultipleFilterChanges({
+                    dateFrom: lastMonth.toISOString().split('T')[0],
+                    dateTo: endOfLastMonth.toISOString().split('T')[0],
+                    // Clear transaction type when setting date range
+                    transaction_type: undefined
+                  });
                 }}
               >
                 Last Month
               </Button>
               
               <Button
-                variant="outline"
+                variant={isQuickFilterActive('last7Days') ? 'primary' : 'outline'}
                 size="sm"
                 onClick={() => {
                   const today = new Date();
                   const sevenDaysAgo = new Date(today);
                   sevenDaysAgo.setDate(today.getDate() - 7);
-                  handleFilterChange('dateFrom', sevenDaysAgo.toISOString().split('T')[0]);
-                  handleFilterChange('dateTo', today.toISOString().split('T')[0]);
+                  handleMultipleFilterChanges({
+                    dateFrom: sevenDaysAgo.toISOString().split('T')[0],
+                    dateTo: today.toISOString().split('T')[0],
+                    // Clear transaction type when setting date range
+                    transaction_type: undefined
+                  });
                 }}
               >
                 Last 7 Days
               </Button>
               
               <Button
-                variant="outline"
+                variant={isQuickFilterActive('last30Days') ? 'primary' : 'outline'}
                 size="sm"
                 onClick={() => {
                   const today = new Date();
                   const thirtyDaysAgo = new Date(today);
                   thirtyDaysAgo.setDate(today.getDate() - 30);
-                  handleFilterChange('dateFrom', thirtyDaysAgo.toISOString().split('T')[0]);
-                  handleFilterChange('dateTo', today.toISOString().split('T')[0]);
+                  handleMultipleFilterChanges({
+                    dateFrom: thirtyDaysAgo.toISOString().split('T')[0],
+                    dateTo: today.toISOString().split('T')[0],
+                    // Clear transaction type when setting date range
+                    transaction_type: undefined
+                  });
                 }}
               >
                 Last 30 Days
               </Button>
 
               <Button
-                variant="outline"
+                variant={isQuickFilterActive('incomeOnly') ? 'primary' : 'outline'}
                 size="sm"
-                onClick={() => handleFilterChange('transaction_type', 'income')}
+                onClick={() => {
+                  handleMultipleFilterChanges({
+                    transaction_type: 'income',
+                    // Clear date filters when setting transaction type
+                    dateFrom: undefined,
+                    dateTo: undefined
+                  });
+                }}
               >
                 💰 Income Only
               </Button>
 
               <Button
-                variant="outline"
+                variant={isQuickFilterActive('expenseOnly') ? 'primary' : 'outline'}
                 size="sm"
-                onClick={() => handleFilterChange('transaction_type', 'expense')}
+                onClick={() => {
+                  handleMultipleFilterChanges({
+                    transaction_type: 'expense',
+                    // Clear date filters when setting transaction type
+                    dateFrom: undefined,
+                    dateTo: undefined
+                  });
+                }}
               >
                 💸 Expenses Only
               </Button>

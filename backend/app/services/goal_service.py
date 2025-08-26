@@ -16,7 +16,10 @@ from ..websocket.manager import RedisWebSocketManager
 from .notification_service import NotificationService
 from .base_service import BaseService
 import json
+import logging
 from uuid import UUID
+
+logger = logging.getLogger(__name__)
 
 class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
     """CRUD service for Goal entities with business logic for contributions and milestones."""
@@ -24,7 +27,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         super().__init__(Goal)
         self.websocket_manager = websocket_manager
 
-    def create_goal(self, db: Session, user_id: UUID, goal_data: GoalCreate) -> Goal:
+    async def create_goal(self, db: Session, user_id: UUID, goal_data: GoalCreate) -> Goal:
         """Create a new financial goal"""
         goal = Goal(
             user_id=user_id,
@@ -34,6 +37,23 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         db.add(goal)
         db.commit()
         db.refresh(goal)
+        
+        # Create notification
+        try:
+            await NotificationService.create_goal_created_notification(
+                db=db,
+                user_id=user_id,
+                goal_name=goal.name,
+                target_amount_cents=goal.target_amount_cents,
+                target_date=goal.target_date,
+                goal_id=goal.id
+            )
+            logger.info(f"Successfully created goal created notification for goal {goal.id}")
+        except Exception as e:
+            import traceback
+            logger.error(f"Failed to create goal created notification for goal {goal.id}: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+            # Don't re-raise to avoid breaking goal creation, but log extensively
         
         # Send real-time update
         if self.websocket_manager:
@@ -94,11 +114,20 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
             and_(Goal.id == goal_id, Goal.user_id == user_id)
         ).first()
 
-    def update_goal(self, db: Session, user_id: UUID, goal_id: UUID, goal_data: GoalUpdate) -> Optional[Goal]:
+    async def update_goal(self, db: Session, user_id: UUID, goal_id: UUID, goal_data: GoalUpdate) -> Optional[Goal]:
         """Update an existing goal"""
         goal = self.get_goal(db, user_id, goal_id)
         if not goal:
             return None
+        
+        # Store original values for change tracking
+        original_values = {
+            "name": goal.name,
+            "target_amount_cents": goal.target_amount_cents,
+            "target_date": goal.target_date,
+            "description": goal.description,
+            "status": goal.status
+        }
         
         update_data = goal_data.model_dump(exclude_unset=True)
         
@@ -118,6 +147,41 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         db.commit()
         db.refresh(goal)
         
+        # Create notification for changes
+        try:
+            changes = {}
+            for field, original_value in original_values.items():
+                current_value = getattr(goal, field)
+                if current_value != original_value:
+                    changes[field] = {"old": original_value, "new": current_value}
+            
+            if changes:
+                # Check if it's a status change specifically
+                if "status" in changes and len(changes) == 1:
+                    await NotificationService.create_goal_status_changed_notification(
+                        db=db,
+                        user_id=user_id,
+                        goal_name=goal.name,
+                        old_status=changes["status"]["old"].value,
+                        new_status=changes["status"]["new"].value,
+                        goal_id=goal.id
+                    )
+                    logger.info(f"Successfully created goal status changed notification for goal {goal.id}")
+                else:
+                    # General update notification
+                    await NotificationService.create_goal_updated_notification(
+                        db=db,
+                        user_id=user_id,
+                        goal_name=goal.name,
+                        changes=changes,
+                        goal_id=goal.id
+                    )
+                    logger.info(f"Successfully created goal updated notification for goal {goal.id}")
+        except Exception as e:
+            import traceback
+            logger.error(f"Failed to create goal updated notification for goal {goal.id}: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
+        
         # Send real-time update
         if self.websocket_manager:
             # Ensure websocket payload is JSON-serializable
@@ -126,14 +190,34 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         
         return goal
 
-    def delete_goal(self, db: Session, user_id: UUID, goal_id: UUID) -> bool:
+    async def delete_goal(self, db: Session, user_id: UUID, goal_id: UUID) -> bool:
         """Delete a goal and all related data"""
         goal = self.get_goal(db, user_id, goal_id)
         if not goal:
             return False
         
+        # Store goal info for notification before deletion
+        goal_name = goal.name
+        current_progress_cents = goal.current_amount_cents
+        target_amount_cents = goal.target_amount_cents
+        
         db.delete(goal)
         db.commit()
+        
+        # Create notification
+        try:
+            await NotificationService.create_goal_deleted_notification(
+                db=db,
+                user_id=user_id,
+                goal_name=goal_name,
+                current_progress_cents=current_progress_cents,
+                target_amount_cents=target_amount_cents
+            )
+            logger.info(f"Successfully created goal deleted notification for goal {goal_id}")
+        except Exception as e:
+            import traceback
+            logger.error(f"Failed to create goal deleted notification for goal {goal_id}: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
         
         # Send real-time update
         if self.websocket_manager:
@@ -150,13 +234,15 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         transaction_id: Optional[UUID] = None
     ) -> Optional[GoalContribution]:
         """Add a contribution to a goal"""
-        goal = db.query(Goal).options(
-            joinedload(Goal.contributions),
-            joinedload(Goal.milestones)
-        ).filter(
+        # Get goal with row-level lock (no joins to avoid FOR UPDATE conflict)
+        goal = db.query(Goal).filter(
             Goal.id == goal_id, 
             Goal.user_id == user_id
         ).with_for_update().first()
+        
+        # Load relationships after locking
+        if goal:
+            db.refresh(goal)
         
         if not goal or goal.status not in [GoalStatus.ACTIVE]:
             return None
@@ -165,6 +251,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         contribution = GoalContribution(
             goal_id=goal_id,
             amount_cents=contribution_data.amount_cents,
+            contribution_date=datetime.now(timezone.utc).date(),
             transaction_id=transaction_id
         )
         
@@ -184,6 +271,23 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         db.commit()
         db.refresh(contribution)
         db.refresh(goal)
+        
+        # Create contribution notification (separate from milestones)
+        try:
+            await NotificationService.create_contribution_added_notification(
+                db=db,
+                user_id=user_id,
+                goal_name=goal.name,
+                contribution_amount_cents=contribution_data.amount_cents,
+                new_total_cents=goal.current_amount_cents,
+                target_amount_cents=goal.target_amount_cents,
+                goal_id=goal.id
+            )
+            logger.info(f"Successfully created contribution added notification for goal {goal.id}")
+        except Exception as e:
+            import traceback
+            logger.error(f"Failed to create contribution added notification for goal {goal.id}: {e}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
         
         # Send real-time updates
         if self.websocket_manager:
@@ -335,12 +439,12 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
         
         this_month = sum(
             c.amount_cents for c in contributions 
-            if c.contribution_date >= this_month_start
+            if c.contribution_date >= this_month_start.date()
         )
         
         last_month = sum(
             c.amount_cents for c in contributions 
-            if last_month_start <= c.contribution_date < this_month_start
+            if last_month_start.date() <= c.contribution_date < this_month_start.date()
         )
         
         # Monthly trend (last 12 months)
@@ -389,8 +493,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
                 milestone = GoalMilestone(
                     goal_id=goal.id,
                     percentage=percentage,
-                    amount_reached_cents=goal.current_amount_cents,
-                    celebration_message=self._get_celebration_message(goal.name, percentage)
+                    amount_reached_cents=goal.current_amount_cents
                 )
                 
                 db.add(milestone)
@@ -405,7 +508,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
                             db=db,
                             user_id=goal.user_id,
                             goal_name=goal.name,
-                            final_amount=goal.current_amount_cents / 100,  # Convert to dollars
+                            final_amount_cents=goal.current_amount_cents,
                             goal_id=goal.id
                         )
                     else:
@@ -415,8 +518,8 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
                             user_id=goal.user_id,
                             goal_name=goal.name,
                             milestone_percentage=percentage,
-                            current_amount=goal.current_amount_cents / 100,  # Convert to dollars
-                            target_amount=goal.target_amount_cents / 100,  # Convert to dollars
+                            current_amount_cents=goal.current_amount_cents,
+                            target_amount_cents=goal.target_amount_cents,
                             goal_id=goal.id
                         )
                 except Exception as e:
@@ -462,8 +565,7 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
                 goal_id=goal.id,
                 goal_name=goal.name,
                 milestone_percentage=milestone.percentage,
-                amount_reached=milestone.amount_reached,
-                celebration_message=milestone.celebration_message,
+                amount_reached_cents=milestone.amount_reached_cents,
                 reached_date=milestone.reached_date
             )
             

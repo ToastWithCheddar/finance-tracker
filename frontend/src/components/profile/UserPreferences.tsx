@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Settings, Save, Sun, Moon, Bell, BellOff, Globe, DollarSign, List, Brain, TrendingUp } from 'lucide-react';
+import { Settings, Save, Sun, Moon, Bell, BellOff, Globe, DollarSign, List, TrendingUp, Brain } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui';
@@ -15,11 +15,11 @@ export function UserPreferences({ profile, onUpdate }: UserPreferencesProps) {
   const [preferences, setPreferences] = useState({
     theme: profile.theme,
     notifications_enabled: profile.notifications_enabled,
+    auto_categorization_enabled: profile.auto_categorization_enabled,
     locale: profile.locale,
     timezone: profile.timezone,
     currency: profile.currency,
     default_items_per_page: profile.default_items_per_page,
-    auto_categorization_enabled: profile.auto_categorization_enabled,
     spending_alert_threshold_cents: profile.spending_alert_threshold_cents || null,
   });
 
@@ -30,11 +30,11 @@ export function UserPreferences({ profile, onUpdate }: UserPreferencesProps) {
       const updateData: UserUpdateData = {
         theme: preferences.theme,
         notifications_enabled: preferences.notifications_enabled,
+        auto_categorization_enabled: preferences.auto_categorization_enabled,
         locale: preferences.locale,
         timezone: preferences.timezone,
         currency: preferences.currency,
         default_items_per_page: preferences.default_items_per_page,
-        auto_categorization_enabled: preferences.auto_categorization_enabled,
         spending_alert_threshold_cents: preferences.spending_alert_threshold_cents,
       };
       
@@ -45,11 +45,11 @@ export function UserPreferences({ profile, onUpdate }: UserPreferencesProps) {
       setPreferences({
         theme: updatedProfile.theme,
         notifications_enabled: updatedProfile.notifications_enabled,
+        auto_categorization_enabled: updatedProfile.auto_categorization_enabled,
         locale: updatedProfile.locale,
         timezone: updatedProfile.timezone,
         currency: updatedProfile.currency,
         default_items_per_page: updatedProfile.default_items_per_page,
-        auto_categorization_enabled: updatedProfile.auto_categorization_enabled,
         spending_alert_threshold_cents: updatedProfile.spending_alert_threshold_cents || null,
       });
     } catch (error) {
@@ -233,11 +233,13 @@ export function UserPreferences({ profile, onUpdate }: UserPreferencesProps) {
           <div>
             <h3 className="text-lg font-medium text-[hsl(var(--text))] mb-3">Financial Preferences</h3>
             <div className="space-y-4">
+              
+              {/* ML Auto-categorization Toggle */}
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Brain className="h-5 w-5 text-[hsl(var(--text))] opacity-60" />
                   <div>
-                    <div className="font-medium text-[hsl(var(--text))]">Auto-categorization</div>
+                    <div className="font-medium text-[hsl(var(--text))]">Smart Categorization</div>
                     <div className="text-sm text-[hsl(var(--text))] opacity-70">Automatically categorize transactions using AI</div>
                   </div>
                 </div>

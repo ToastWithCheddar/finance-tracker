@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useNotifications, useUnreadNotificationsCount, useRealtimeStore } from '../../stores/realtimeStore';
 import { useAuthStore, useAuthUser } from '../../stores/authStore';
 import { useDropdown } from '../../hooks/useDropdown';
+import { useMarkAllAsRead } from '../../hooks/useNotifications';
 import { getUserInitials, getDisplayName } from '../../utils/userUtils';
 
 export function ConnectionStatusChip() {
@@ -37,16 +38,20 @@ export function DateChip() {
 export function NotificationsBell() {
   const unread = useUnreadNotificationsCount();
   const notifications = useNotifications();
-  const markAllNotificationsRead = useRealtimeStore((state) => state.markAllNotificationsRead);
+  const markAllAsReadMutation = useMarkAllAsRead();
   
   const { isOpen, toggle, close, triggerRef } = useDropdown({
     containerSelector: '.notifications-bell',
   });
 
   const handleMarkAllRead = () => {
-    markAllNotificationsRead();
-    // Close the dropdown after marking all as read
-    close();
+    // The hook now handles both API call and realtime store sync automatically
+    markAllAsReadMutation.mutate(undefined, {
+      onSettled: () => {
+        // Close the dropdown after operation completes (success or error)
+        close();
+      }
+    });
   };
 
   return (
@@ -67,10 +72,11 @@ export function NotificationsBell() {
             <div className="text-sm font-medium">Notifications</div>
             <button 
               onClick={handleMarkAllRead}
-              className="text-xs inline-flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity"
-              disabled={unread === 0}
+              className="text-xs inline-flex items-center gap-1 opacity-80 hover:opacity-100 transition-opacity disabled:opacity-50"
+              disabled={unread === 0 || markAllAsReadMutation.isPending}
             >
-              <CheckCheck className="h-3 w-3" /> Mark all read
+              <CheckCheck className="h-3 w-3" /> 
+              {markAllAsReadMutation.isPending ? 'Marking...' : 'Mark all read'}
             </button>
           </div>
           <div className="max-h-80 overflow-y-auto">

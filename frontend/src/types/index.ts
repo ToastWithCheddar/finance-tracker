@@ -6,8 +6,6 @@ export type * from './goals';
 export type * from './budgets';
 export type * from './websocket';
 export type * from './ml';
-export type * from './plaidRecurring';
-export type * from '../features/automation/types/categorizationRules';
 
 // Re-export specific types from api to avoid conflicts with errors
 export type {

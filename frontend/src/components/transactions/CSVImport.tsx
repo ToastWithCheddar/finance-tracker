@@ -144,7 +144,7 @@ export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
       '25.50,Food & Dining,Lunch at restaurant,2024-01-15,expense',
       '3000.00,Salary,Monthly salary,2024-01-01,income',
       '45.00,Transportation,Gas,2024-01-14,expense',
-      '12.99,Entertainment,Netflix subscription,2024-01-13,expense'
+      '12.99,Entertainment,Netflix charge,2024-01-13,expense'
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });

@@ -1,11 +1,3 @@
-export interface RecurringRule {
-  frequency: 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
-  interval: number;
-  endDate?: string;
-  dayOfWeek?: number; // 0-6 for weekly
-  dayOfMonth?: number; // 1-31 for monthly
-  monthOfYear?: number; // 1-12 for yearly
-}
 
 export interface Transaction {
   id: string;
@@ -28,9 +20,6 @@ export interface Transaction {
   merchant?: string;
   transactionDate: string;
   transaction_date?: string | Date; // Backend field name - can be Date or string
-  isRecurring: boolean;
-  is_recurring?: boolean; // Backend field name
-  recurringRule?: RecurringRule;
   location?: {
     lat: number;
     lng: number;
@@ -65,8 +54,6 @@ export interface CreateTransactionRequest {
   transactionDate: string;
   transaction_date?: string; // Backend field name
   transaction_type: 'income' | 'expense';
-  isRecurring?: boolean;
-  recurringRule?: RecurringRule;
   notes?: string;
   tags?: string[];
   [key: string]: unknown;
@@ -80,13 +67,20 @@ export interface UpdateTransactionRequest extends Partial<CreateTransactionReque
 
 export interface TransactionFilters {
   accountId?: string;
+  account_id?: string; // Backend compatibility
   categoryId?: string;
+  category_id?: string; // Backend compatibility
   dateFrom?: string;
   dateTo?: string;
+  start_date?: string; // Backend compatibility
+  end_date?: string; // Backend compatibility
   amountMinCents?: number;
   amountMaxCents?: number;
+  min_amount_cents?: number; // Backend compatibility
+  max_amount_cents?: number; // Backend compatibility
   tags?: string[];
   search?: string;
+  search_query?: string; // Backend compatibility
   page?: number;
   per_page?: number;
   limit?: number;

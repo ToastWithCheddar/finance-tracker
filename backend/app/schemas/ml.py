@@ -27,22 +27,6 @@ class MLCategorizationResponse(BaseModel):
     reasoning: Optional[str] = Field(None, description="Explanation of the prediction")
     alternative_categories: List[Dict[str, Any]] = Field(default_factory=list, description="Alternative category suggestions")
 
-class MLFeedbackRequest(BaseModel):
-    """Request schema for ML feedback/learning"""
-    transaction_id: UUID = Field(..., description="Transaction ID")
-    description: str = Field(..., description="Transaction description")
-    amount_cents: int = Field(..., description="Transaction amount in cents")
-    merchant: Optional[str] = Field(None, description="Merchant name")
-    correct_category_id: UUID = Field(..., description="Correct category ID")
-    predicted_category_id: Optional[UUID] = Field(None, description="Previously predicted category ID")
-    confidence: Optional[ConfidenceScore] = Field(None, description="Previous prediction confidence")
-    user_id: UUID = Field(..., description="User ID")
-
-class MLFeedbackResponse(BaseModel):
-    """Response schema for ML feedback submission"""
-    success: bool = Field(..., description="Whether feedback was processed successfully")
-    message: str = Field(..., description="Response message")
-    model_updated: bool = Field(default=False, description="Whether the model was updated")
 
 class MLHealthResponse(BaseModel):
     """Response schema for ML service health check"""

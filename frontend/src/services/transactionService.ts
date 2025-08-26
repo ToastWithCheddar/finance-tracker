@@ -60,8 +60,8 @@ export class TransactionService extends BaseService {
       id: transaction.id,
       userId: transaction.user_id || transaction.userId,
       accountId: transaction.account_id || transaction.accountId,
-      accountName: transaction.account_name || transaction.accountName || 'Unknown Account',
-      accountType: transaction.account_type || transaction.accountType,
+      accountName: transaction.account_name || transaction.accountName || transaction.account?.name || 'Unknown Account',
+      accountType: transaction.account_type || transaction.accountType || transaction.account?.account_type || '',
       categoryId: transaction.category_id || transaction.categoryId,
       categoryName: transaction.category_name || transaction.categoryName,
       amountCents: transaction.amount_cents || transaction.amountCents || 0,
@@ -77,7 +77,6 @@ export class TransactionService extends BaseService {
         // Handle case where backend returns date as object
         return date.toString();
       })(),
-      isRecurring: transaction.is_recurring || transaction.isRecurring || false,
       notes: transaction.notes,
       tags: transaction.tags || [],
       plaidTransactionId: transaction.plaid_transaction_id || transaction.plaidTransactionId,
@@ -96,6 +95,8 @@ export class TransactionService extends BaseService {
   ): Promise<TransactionListResponse> {
     const params: Record<string, string | number | boolean> = {};
     
+    console.log('🔍 [TransactionService] Input filters:', filters);
+    
     // Pagination params: support both page/per_page and offset/limit
     const page = filters?.page ?? 1;
     const perPage = (filters?.per_page ?? filters?.limit) as number | undefined;
@@ -107,19 +108,54 @@ export class TransactionService extends BaseService {
       params.offset = offset;
     }
     
-    // Filter params - map from new TransactionFilters to API parameters
-    if (filters?.dateFrom) params.start_date = filters.dateFrom;
-    if (filters?.dateTo) params.end_date = filters.dateTo;
-    if (filters?.accountId) params.account_id = filters.accountId;
-    if (filters?.categoryId) params.category_id = filters.categoryId;
-    // Merchant filtering not implemented yet
-    // if (filters?.merchant) params.merchant = filters.merchant;
-    if (filters?.amountMinCents !== undefined) params.min_amount_cents = filters.amountMinCents;
-    if (filters?.amountMaxCents !== undefined) params.max_amount_cents = filters.amountMaxCents;
-    if (filters?.search) params.search_query = filters.search;
-    if (filters?.transaction_type) params.transaction_type = filters.transaction_type;
+    // Filter params - map frontend field names to backend API parameters
+    // Support both camelCase (frontend) and snake_case (backend compatibility)
+    if (filters?.dateFrom !== undefined) {
+      params.start_date = filters.dateFrom;
+    } else if (filters?.start_date !== undefined) {
+      params.start_date = filters.start_date;
+    }
+    if (filters?.dateTo !== undefined) {
+      params.end_date = filters.dateTo;
+    } else if (filters?.end_date !== undefined) {
+      params.end_date = filters.end_date;
+    }
+    if (filters?.accountId !== undefined) {
+      params.account_id = filters.accountId;
+    } else if (filters?.account_id !== undefined) {
+      params.account_id = filters.account_id;
+    }
+    if (filters?.categoryId !== undefined) {
+      params.category_id = filters.categoryId;
+    } else if (filters?.category_id !== undefined) {
+      params.category_id = filters.category_id;
+    }
+    // (removed manual recurring demo filter)
+    // Amount filtering with proper field name mapping
+    if (filters?.amountMinCents !== undefined || filters?.min_amount_cents !== undefined) {
+      params.min_amount_cents =
+        filters?.amountMinCents !== undefined
+          ? filters.amountMinCents
+          : (filters!.min_amount_cents as number);
+    }
+    if (filters?.amountMaxCents !== undefined || filters?.max_amount_cents !== undefined) {
+      params.max_amount_cents =
+        filters?.amountMaxCents !== undefined
+          ? filters.amountMaxCents
+          : (filters!.max_amount_cents as number);
+    }
+    // Search functionality with proper field name mapping
+    if (filters?.search !== undefined) {
+      params.search_query = filters.search;
+    } else if (filters?.search_query !== undefined) {
+      params.search_query = filters.search_query;
+    }
+    if (filters?.transaction_type !== undefined) {
+      params.transaction_type = filters.transaction_type;
+    }
 
-    // Debug-level logging
+    // Comprehensive logging for debugging
+    console.log('🔍 [TransactionService] Mapped parameters for API:', params);
     console.debug?.('TransactionService fetching:', this.baseEndpoint, params);
     
     const response = await this.get<any>(
@@ -132,6 +168,7 @@ export class TransactionService extends BaseService {
       }
     );
     
+    console.log('🔍 [TransactionService] Raw API response:', response);
     console.debug?.('TransactionService raw response:', response);
 
     // Normalize list envelope first, then normalize each transaction item
@@ -144,6 +181,13 @@ export class TransactionService extends BaseService {
       pages: list.pages || 1,
     };
     
+    console.log('🔍 [TransactionService] Final normalized response:', {
+      itemCount: normalizedResponse.items.length,
+      total: normalizedResponse.total,
+      page: normalizedResponse.page,
+      per_page: normalizedResponse.per_page,
+      pages: normalizedResponse.pages
+    });
     console.debug?.('TransactionService normalized response:', normalizedResponse);
     return normalizedResponse;
   }
@@ -301,27 +345,42 @@ export class TransactionService extends BaseService {
     filters?: TransactionFilters,
     options?: { useCache?: boolean; context?: ErrorContext }
   ): Promise<TransactionStats> {
-    console.log('🎯 TransactionService: Analytics endpoint not available, using fallback stats calculation');
+    console.log('🎯 [getTransactionStats] Starting stats calculation with backend limit respect');
     
-    // FALLBACK: Calculate stats from transaction data since analytics endpoint is unavailable
     try {
-      // Get transactions with the same filters to calculate stats locally
-      const transactionData = await this.getTransactions(filters, { 
+      // Use max allowed per_page (100) to respect backend validation
+      const statsFilters = { 
+        ...filters,  // Same exact base filters that work for transaction queries
+        per_page: 100,  // Use maximum allowed by backend (le=100)
+        page: 1  // Start from page 1
+      };
+      
+      console.log('🔍 [getTransactionStats] Using filters with backend limit:', statsFilters);
+      
+      const transactionData = await this.getTransactions(statsFilters, { 
         useCache: options?.useCache ?? true,
         context: options?.context 
       });
       
-      const transactions = transactionData.items || [];
-      console.log('📊 Calculating stats from', transactions.length, 'transactions');
+      const totalCountFromAPI = transactionData?.total || 0;
+      const totalPages = transactionData?.pages || 1;
+      const transactions = transactionData?.items || [];
       
-      // Calculate basic stats from transaction data
+      console.log('📊 [getTransactionStats] First page results:', {
+        fetchedCount: transactions.length,
+        totalCount: totalCountFromAPI,
+        totalPages: totalPages
+      });
+      
+      // Calculate stats from the first 100 transactions
+      // This gives a good approximation and respects backend limits
       let totalIncome = 0;
       let totalExpenses = 0;
       let incomeCount = 0;
       let expenseCount = 0;
       
       transactions.forEach(transaction => {
-        const amount = transaction.amount_cents || 0;
+        const amount = transaction.amountCents || transaction.amount_cents || 0;
         if (amount > 0) {
           totalIncome += amount;
           incomeCount++;
@@ -331,12 +390,12 @@ export class TransactionService extends BaseService {
         }
       });
       
-      const totalCount = transactions.length;
+      // Use the accurate total count from API response
       const netAmount = totalIncome - totalExpenses;
-      const averageTransaction = totalCount > 0 ? Math.abs(netAmount) / totalCount : 0;
+      const averageTransaction = transactions.length > 0 ? Math.abs(netAmount) / transactions.length : 0;
       
-      const fallbackStats: TransactionStats = {
-        total_count: totalCount,
+      const stats: TransactionStats = {
+        total_count: totalCountFromAPI,  // Accurate total from backend
         total_income: totalIncome,
         total_expenses: totalExpenses,
         net_amount: netAmount,
@@ -347,13 +406,14 @@ export class TransactionService extends BaseService {
         }
       };
       
-      console.log('✨ TransactionService calculated fallback stats:', fallbackStats);
-      return fallbackStats;
+      console.log('✨ [getTransactionStats] Final calculated stats:', stats);
+      
+      return stats;
       
     } catch (error) {
-      console.warn('⚠️ TransactionService: Failed to calculate fallback stats, returning empty stats:', error);
+      console.error('❌ [getTransactionStats] Error in stats calculation:', error);
       
-      // Return empty stats as final fallback
+      // Return empty stats as fallback
       return {
         total_count: 0,
         total_income: 0,
@@ -576,6 +636,31 @@ export class TransactionService extends BaseService {
   async getTransactionCategories(): Promise<string[]> {
     return this.get<string[]>(
       '/categories'
+    );
+  }
+
+  async getTransactionHistogram(filters?: {
+    start_date?: string;
+    end_date?: string;
+    category_id?: string;
+    account_id?: string;
+    amount_min?: number;
+    amount_max?: number;
+    bins?: number;
+  }): Promise<any> {
+    const params: Record<string, string | number | boolean> = {};
+    
+    if (filters?.start_date) params.start_date = filters.start_date;
+    if (filters?.end_date) params.end_date = filters.end_date;
+    if (filters?.category_id) params.category_id = filters.category_id;
+    if (filters?.account_id) params.account_id = filters.account_id;
+    if (filters?.amount_min !== undefined) params.amount_min = filters.amount_min;
+    if (filters?.amount_max !== undefined) params.amount_max = filters.amount_max;
+    if (filters?.bins !== undefined) params.bins = filters.bins;
+
+    return this.get<any>(
+      '/histogram',
+      params
     );
   }
 

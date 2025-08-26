@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import and_, or_, desc, func
 import uuid
 
-from ..models.notification import Notification, NotificationType, NotificationPriority
+from ..models.notification import Notification, NotificationType
 from ..models.user import User
 from ..config import settings
 from ..websocket.events import WebSocketEvents
@@ -22,7 +22,6 @@ class NotificationService:
         type: NotificationType,
         title: str,
         message: str,
-        priority: NotificationPriority = NotificationPriority.MEDIUM,
         action_url: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None
     ) -> Notification:
@@ -34,7 +33,6 @@ class NotificationService:
                 type=type,
                 title=title,
                 message=message,
-                priority=priority,
                 action_url=action_url,
                 metadata=metadata
             )
@@ -49,7 +47,6 @@ class NotificationService:
                 title=title,
                 message=message,
                 notification_type=type.value,
-                priority=priority.value,
                 action_url=action_url,
                 metadata=metadata
             )
@@ -136,21 +133,11 @@ class NotificationService:
         
         by_type = {stat.type.value: stat.count for stat in type_stats}
         
-        # Get count by priority using SQL aggregation
-        priority_stats = db.query(
-            Notification.priority,
-            func.count(Notification.id).label('count')
-        ).filter(
-            Notification.user_id == user_id
-        ).group_by(Notification.priority).all()
-        
-        by_priority = {stat.priority.value: stat.count for stat in priority_stats}
         
         return {
             "total_count": total_count,
             "unread_count": unread_count,
-            "by_type": by_type,
-            "by_priority": by_priority
+            "by_type": by_type
         }
     
     @staticmethod
@@ -233,15 +220,12 @@ class NotificationService:
         if percentage_used >= 100:
             title = f"Budget Exceeded: {budget_name}"
             message = f"You've exceeded your {budget_name} budget by ${current_dollars - budget_dollars:.2f}"
-            priority = NotificationPriority.HIGH
         elif percentage_used >= 80:
             title = f"Budget Warning: {budget_name}"
             message = f"You've used {percentage_used:.0f}% of your {budget_name} budget"
-            priority = NotificationPriority.MEDIUM
         else:
             title = f"Budget Alert: {budget_name}"
             message = f"You've used {percentage_used:.0f}% of your {budget_name} budget"
-            priority = NotificationPriority.LOW
             
         return await NotificationService.create_notification(
             db=db,
@@ -249,7 +233,6 @@ class NotificationService:
             type=NotificationType.BUDGET_ALERT,
             title=title,
             message=message,
-            priority=priority,
             action_url=f"/budgets?budgetId={budget_id}",
             metadata={
                 "budget_id": str(budget_id),
@@ -279,7 +262,6 @@ class NotificationService:
             type=NotificationType.GOAL_MILESTONE,
             title=title,
             message=message,
-            priority=NotificationPriority.MEDIUM,
             action_url=f"/goals?goalId={goal_id}",
             metadata={
                 "goal_id": str(goal_id),
@@ -310,10 +292,181 @@ class NotificationService:
             type=NotificationType.GOAL_ACHIEVED,
             title=title,
             message=message,
-            priority=NotificationPriority.HIGH,
             action_url=f"/goals?goalId={goal_id}",
             metadata={
                 "goal_id": str(goal_id),
                 "final_amount_cents": final_amount_cents
+            }
+        )
+    
+    @staticmethod
+    async def create_goal_created_notification(
+        db: Session,
+        user_id: uuid.UUID,
+        goal_name: str,
+        target_amount_cents: int,
+        target_date: datetime,
+        goal_id: uuid.UUID
+    ) -> Notification:
+        """Create a goal created notification"""
+        target_dollars = target_amount_cents / 100.0
+        target_date_str = target_date.strftime("%B %d, %Y") if target_date else "No deadline"
+        
+        title = f"New Goal Created: {goal_name}"
+        message = f"You've created a new goal to save ${target_dollars:,.2f} by {target_date_str}"
+        
+        return await NotificationService.create_notification(
+            db=db,
+            user_id=user_id,
+            type=NotificationType.GOAL_CREATED,
+            title=title,
+            message=message,
+            action_url=f"/goals?goalId={goal_id}",
+            metadata={
+                "goal_id": str(goal_id),
+                "target_amount_cents": target_amount_cents,
+                "target_date": target_date.isoformat() if target_date else None
+            }
+        )
+    
+    @staticmethod
+    async def create_goal_updated_notification(
+        db: Session,
+        user_id: uuid.UUID,
+        goal_name: str,
+        changes: Dict[str, Any],
+        goal_id: uuid.UUID
+    ) -> Notification:
+        """Create a goal updated notification"""
+        title = f"Goal Updated: {goal_name}"
+        
+        # Create a summary of changes
+        change_descriptions = []
+        if "name" in changes:
+            change_descriptions.append(f"name changed from '{changes['name']['old']}' to '{changes['name']['new']}'")
+        if "target_amount_cents" in changes:
+            old_amount = changes["target_amount_cents"]["old"] / 100.0
+            new_amount = changes["target_amount_cents"]["new"] / 100.0
+            change_descriptions.append(f"target amount updated from ${old_amount:,.2f} to ${new_amount:,.2f}")
+        if "target_date" in changes:
+            old_date = changes["target_date"]["old"].strftime("%B %d, %Y") if changes["target_date"]["old"] else "No deadline"
+            new_date = changes["target_date"]["new"].strftime("%B %d, %Y") if changes["target_date"]["new"] else "No deadline"
+            change_descriptions.append(f"target date changed from {old_date} to {new_date}")
+        if "description" in changes:
+            change_descriptions.append("description updated")
+        
+        message = f"Your goal has been updated: {'; '.join(change_descriptions)}" if change_descriptions else "Your goal has been updated"
+        
+        return await NotificationService.create_notification(
+            db=db,
+            user_id=user_id,
+            type=NotificationType.GOAL_UPDATED,
+            title=title,
+            message=message,
+            action_url=f"/goals?goalId={goal_id}",
+            metadata={
+                "goal_id": str(goal_id),
+                "changes": changes
+            }
+        )
+    
+    @staticmethod
+    async def create_goal_deleted_notification(
+        db: Session,
+        user_id: uuid.UUID,
+        goal_name: str,
+        current_progress_cents: int,
+        target_amount_cents: int
+    ) -> Notification:
+        """Create a goal deleted notification"""
+        current_dollars = current_progress_cents / 100.0
+        target_dollars = target_amount_cents / 100.0
+        completion_percentage = (current_progress_cents / target_amount_cents * 100) if target_amount_cents > 0 else 0
+        
+        title = f"Goal Deleted: {goal_name}"
+        message = f"You've deleted your '{goal_name}' goal. You had saved ${current_dollars:,.2f} of ${target_dollars:,.2f} ({completion_percentage:.1f}% complete)"
+        
+        return await NotificationService.create_notification(
+            db=db,
+            user_id=user_id,
+            type=NotificationType.GOAL_DELETED,
+            title=title,
+            message=message,
+            action_url="/goals",
+            metadata={
+                "goal_name": goal_name,
+                "current_progress_cents": current_progress_cents,
+                "target_amount_cents": target_amount_cents,
+                "completion_percentage": completion_percentage
+            }
+        )
+    
+    @staticmethod
+    async def create_goal_status_changed_notification(
+        db: Session,
+        user_id: uuid.UUID,
+        goal_name: str,
+        old_status: str,
+        new_status: str,
+        goal_id: uuid.UUID
+    ) -> Notification:
+        """Create a goal status changed notification"""
+        title = f"Goal Status Changed: {goal_name}"
+        
+        status_messages = {
+            "active": "activated and ready for contributions",
+            "paused": "paused - contributions are temporarily stopped",
+            "completed": "marked as completed",
+            "cancelled": "cancelled"
+        }
+        
+        action_description = status_messages.get(new_status, f"changed to {new_status}")
+        message = f"Your goal has been {action_description}"
+        
+        return await NotificationService.create_notification(
+            db=db,
+            user_id=user_id,
+            type=NotificationType.GOAL_STATUS_CHANGED,
+            title=title,
+            message=message,
+            action_url=f"/goals?goalId={goal_id}",
+            metadata={
+                "goal_id": str(goal_id),
+                "old_status": old_status,
+                "new_status": new_status
+            }
+        )
+    
+    @staticmethod
+    async def create_contribution_added_notification(
+        db: Session,
+        user_id: uuid.UUID,
+        goal_name: str,
+        contribution_amount_cents: int,
+        new_total_cents: int,
+        target_amount_cents: int,
+        goal_id: uuid.UUID
+    ) -> Notification:
+        """Create a contribution added notification"""
+        contribution_dollars = contribution_amount_cents / 100.0
+        new_total_dollars = new_total_cents / 100.0
+        completion_percentage = (new_total_cents / target_amount_cents * 100) if target_amount_cents > 0 else 0
+        
+        title = f"Contribution Added: {goal_name}"
+        message = f"You've added ${contribution_dollars:,.2f} to your goal. New total: ${new_total_dollars:,.2f} ({completion_percentage:.1f}% complete)"
+        
+        return await NotificationService.create_notification(
+            db=db,
+            user_id=user_id,
+            type=NotificationType.CONTRIBUTION_ADDED,
+            title=title,
+            message=message,
+            action_url=f"/goals?goalId={goal_id}",
+            metadata={
+                "goal_id": str(goal_id),
+                "contribution_amount_cents": contribution_amount_cents,
+                "new_total_cents": new_total_cents,
+                "target_amount_cents": target_amount_cents,
+                "completion_percentage": completion_percentage
             }
         )

@@ -3,7 +3,7 @@ ML service integration routes for transaction categorization
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, List
 from uuid import UUID
 import logging
 
@@ -15,7 +15,6 @@ from app.services.ml_service import get_ml_client
 from app.schemas.ml import (
     MLCategorizationRequest,
     MLCategorizationResponse,
-    MLFeedbackRequest,
     MLHealthResponse,
     MLServiceResponse,
     MCategoryExampleRequest,
@@ -28,6 +27,12 @@ from app.core.exceptions import (
     ValidationError,
     DataIntegrityError
 )
+from app.config import settings
+
+from celery import Celery
+
+# Celery client for ML worker tasks (Redis broker)
+celery_app = Celery('ml_client', broker=settings.REDIS_URL, backend=settings.REDIS_URL)
 
 logger = logging.getLogger(__name__)
 
@@ -42,84 +47,63 @@ async def categorize_transaction(
     """
     Categorize a single transaction using ML service
     """
-    ml_client = get_ml_client()
-    
+    # First try Celery worker directly (preferred path in this deployment)
     try:
-        response = await ml_client.categorize_transaction(
-            description=request.description,
-            amount_cents=request.amount_cents,
-            merchant=request.merchant,
-            user_id=current_user.id
-        )
-        
-        if response.success:
-            return {
-                "success": True,
-                "data": response.data.model_dump(),
-                "duration_ms": response.request_duration_ms
+        payload = {
+            'id': None,
+            'description': request.description,
+            # Convert cents to float dollars if present
+            'amount': (request.amount_cents / 100.0) if request.amount_cents is not None else None,
+            'merchant': request.merchant,
+            'user_id': str(current_user.id)
+        }
+        result_async = celery_app.send_task('worker.classify_transaction', args=[payload])
+        result = result_async.get(timeout=30)
+        return {
+            'success': True,
+            'data': {
+                'category_id': result.get('predicted_category'),
+                'confidence': result.get('confidence'),
+                'confidence_level': result.get('confidence_level'),
+                'model_version': result.get('model_version'),
+                'all_similarities': result.get('all_similarities', {})
             }
-        else:
-            raise MLServiceError(f"ML service error: {response.error.message}")
-            
-    except Exception as e:
-        logger.error(f"ML categorization failed: {e}", exc_info=True)
-        raise MLServiceError("Unable to categorize transaction")
+        }
+    except Exception as celery_error:
+        logger.warning(f"Celery ML classify fallback failed: {celery_error}")
+        # Fallback to HTTP ML client if available
+        ml_client = get_ml_client()
+        try:
+            response = await ml_client.categorize_transaction(
+                description=request.description,
+                amount_cents=request.amount_cents,
+                merchant=request.merchant,
+                user_id=current_user.id
+            )
+            if response.success:
+                return {
+                    "success": True,
+                    "data": response.data.model_dump(),
+                    "duration_ms": response.request_duration_ms
+                }
+            else:
+                raise MLServiceError(f"ML service error: {response.error.message}")
+        except Exception as http_error:
+            logger.error(f"ML categorization failed: {http_error}", exc_info=True)
+            raise MLServiceError("Unable to categorize transaction")
 
-@router.post("/feedback")
-async def submit_feedback(
-    transaction_id: UUID,
-    correct_category_id: UUID,
-    db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_user)
-):
-    """
-    Submit feedback for ML model improvement when user corrects a category
-    """
-    try:
-        success = await TransactionService.submit_ml_feedback(
-            db=db,
-            transaction_id=transaction_id,
-            correct_category_id=correct_category_id,
-            user_id=current_user.id
-        )
-        
-        if success:
-            return {
-                "success": True,
-                "message": "Feedback submitted successfully"
-            }
-        else:
-            raise ValidationError("Failed to submit feedback. Transaction not found or already processed.")
-            
-    except Exception as e:
-        logger.error(f"ML feedback submission failed: {e}", exc_info=True)
-        raise MLServiceError("Unable to submit feedback")
 
 @router.get("/health", response_model=Dict[str, Any])
 async def ml_service_health():
     """
     Check ML service health status
     """
-    ml_client = get_ml_client()
-    
     try:
-        response = await ml_client.health_check()
-        
-        return {
-            "success": response.success,
-            "data": response.data.model_dump() if response.data else None,
-            "error": response.error.model_dump() if response.error else None,
-            "duration_ms": response.request_duration_ms
-        }
-        
+        result = celery_app.send_task('worker.health_check').get(timeout=15)
+        return {"success": True, "data": result}
     except Exception as e:
-        return {
-            "success": False,
-            "error": {
-                "error": "health_check_failed",
-                "message": f"Health check failed: {str(e)}"
-            }
-        }
+        logger.warning(f"Celery health_check failed: {e}")
+        return {"success": False, "error": {"error": "health_check_failed", "message": str(e)}}
 
 @router.get("/stats", response_model=Dict[str, Any])
 async def get_ml_stats(
@@ -150,18 +134,9 @@ async def get_ml_stats(
             )
         ).scalar()
         
-        # Count feedback submissions
-        feedback_count = db.query(func.count(Transaction.id)).filter(
-            and_(
-                Transaction.user_id == current_user.id,
-                Transaction.metadata_json.op('->>')('ml_feedback_submitted') == 'true'
-            )
-        ).scalar()
-        
         return {
             "ml_predicted_transactions": ml_predicted_count,
             "high_confidence_predictions": high_confidence_count,
-            "feedback_submissions": feedback_count,
             "accuracy_rate": round((high_confidence_count / max(ml_predicted_count, 1)) * 100, 2)
         }
         
@@ -178,25 +153,43 @@ async def batch_categorize_transactions(
     """
     Categorize multiple transactions in batch
     """
-    ml_client = get_ml_client()
-    
     try:
-        response = await ml_client.batch_categorize(
-            transactions=request.transactions,
-            user_id=current_user.id
-        )
+        # Normalize transactions for worker
+        txs: List[Dict[str, Any]] = []
+        for t in request.transactions:
+            txs.append({
+                'id': t.get('id'),
+                'description': t.get('description', ''),
+                'amount': t.get('amount'),  # Worker ignores amount if unused
+                'merchant': t.get('merchant')
+            })
+        # Dynamic timeout based on batch size - allow more time for larger batches
+        batch_size = len(txs)
+        timeout = min(300, max(60, batch_size * 2))  # 2 seconds per transaction, min 60s, max 300s
+        logger.info(f"Processing batch of {batch_size} transactions with {timeout}s timeout")
         
-        if response.success:
-            return {
-                "success": True,
-                "data": response.data.model_dump(),
-                "duration_ms": response.request_duration_ms
+        result = celery_app.send_task('worker.batch_classify_transactions', args=[txs]).get(timeout=timeout)
+        # Map to frontend-friendly batch response
+        mapped = []
+        for item in result:
+            mapped.append({
+                'id': item.get('transaction_id') or item.get('id'),
+                'prediction': {
+                    'categoryId': item.get('predicted_category'),
+                    'confidence': item.get('confidence')
+                }
+            })
+        return {
+            'success': True,
+            'data': {
+                'results': mapped,
+                'processed_count': len(mapped),
+                'failed_count': 0,
+                'errors': []
             }
-        else:
-            raise MLServiceError(f"ML service error: {response.error.message}")
-            
-    except Exception as e:
-        logger.error(f"ML batch categorization failed: {e}", exc_info=True)
+        }
+    except Exception as celery_error:
+        logger.error(f"ML batch categorization failed via Celery: {celery_error}", exc_info=True)
         raise MLServiceError("Unable to perform batch categorization")
 
 @router.post("/add-example", status_code=201)
@@ -208,25 +201,9 @@ async def add_ml_example(
     """
     Add a new example to a category for improved classification
     """
-    ml_client = get_ml_client()
-    
     try:
-        response = await ml_client.add_training_example(
-            category=request.category,
-            example=request.example,
-            user_id=current_user.id
-        )
-        
-        if response.success:
-            return {
-                "success": True,
-                "message": "Example added successfully",
-                "data": response.data,
-                "duration_ms": response.request_duration_ms
-            }
-        else:
-            raise MLServiceError(f"ML service error: {response.error.message}")
-            
+        result = celery_app.send_task('worker.add_category_example', args=[request.category, request.example, str(current_user.id)]).get(timeout=30)
+        return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Failed to add ML example: {e}", exc_info=True)
         raise MLServiceError("Unable to add training example")
@@ -239,20 +216,10 @@ async def export_model(
     """
     Export the current model to ONNX format with quantization
     """
-    ml_client = get_ml_client()
-    
     try:
-        response = await ml_client.export_model()
-        
-        if response.success:
-            return {
-                "success": True,
-                "data": response.data.model_dump(),
-                "duration_ms": response.request_duration_ms
-            }
-        else:
-            raise MLServiceError(f"ML service error: {response.error.message}")
-            
+        # Prefer creating production ONNX models
+        result = celery_app.send_task('worker.create_onnx_models').get(timeout=600)
+        return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Failed to export ML model: {e}", exc_info=True)
         raise MLServiceError("Unable to export model")
@@ -265,20 +232,9 @@ async def get_ml_performance(
     """
     Get current model performance metrics
     """
-    ml_client = get_ml_client()
-    
     try:
-        response = await ml_client.get_model_performance()
-        
-        if response.success:
-            return {
-                "success": True,
-                "data": response.data.model_dump(),
-                "duration_ms": response.request_duration_ms
-            }
-        else:
-            raise MLServiceError(f"ML service error: {response.error.message}")
-            
+        result = celery_app.send_task('worker.get_model_performance').get(timeout=30)
+        return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Failed to get ML performance metrics: {e}", exc_info=True)
         raise MLServiceError("Unable to retrieve performance metrics")

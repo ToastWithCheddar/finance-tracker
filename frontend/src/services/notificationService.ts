@@ -6,7 +6,6 @@ export interface NotificationResponse {
   title: string;
   message: string;
   type: 'budget_alert' | 'goal_milestone' | 'goal_achieved' | 'transaction_alert' | 'system_alert' | 'info';
-  priority: 'low' | 'medium' | 'high' | 'critical';
   is_read: boolean;
   action_url?: string;
   extra_data?: Record<string, any>;
@@ -26,7 +25,6 @@ export interface NotificationStatsResponse {
   total_count: number;
   unread_count: number;
   by_type: Record<string, number>;
-  by_priority: Record<string, number>;
 }
 
 export interface NotificationFilters {

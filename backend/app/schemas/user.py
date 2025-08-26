@@ -22,10 +22,10 @@ class User(BaseResponseSchema):
 
     notifications_enabled: bool = True
     theme: str = "light"
+    auto_categorization_enabled: bool = True
     
     # Additional User Preferences
     default_items_per_page: int = 25
-    auto_categorization_enabled: bool = True
     spending_alert_threshold_cents: int | None = None 
 
     # Pydantic v2: allow constructing from SQLAlchemy objects
@@ -70,10 +70,10 @@ class UserCreate(BaseModel):
 
     notifications_enabled: bool | None = True
     theme: str | None = "light"
+    auto_categorization_enabled: bool | None = True
     
     # Additional User Preferences
     default_items_per_page: int | None = 25
-    auto_categorization_enabled: bool | None = True
     spending_alert_threshold_cents: int | None = None
 
 
@@ -86,10 +86,10 @@ class UserUpdate(BaseModel):
     avatar_url: str | None = None
     notifications_enabled: bool | None = None
     theme: str | None = Field(None, min_length=1, max_length=20)
+    auto_categorization_enabled: bool | None = None
     
     # Additional User Preferences
     default_items_per_page: int | None = Field(None, ge=10, le=100)
-    auto_categorization_enabled: bool | None = None
     spending_alert_threshold_cents: int | None = Field(None, ge=0)
 
 # All authentication schemas have been moved to auth.py for consistency

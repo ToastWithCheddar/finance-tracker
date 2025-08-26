@@ -10,16 +10,16 @@ class NotificationType(enum.Enum):
     BUDGET_ALERT = "budget_alert"
     GOAL_MILESTONE = "goal_milestone" 
     GOAL_ACHIEVED = "goal_achieved"
+    GOAL_CREATED = "goal_created"
+    GOAL_UPDATED = "goal_updated"
+    GOAL_DELETED = "goal_deleted"
+    GOAL_STATUS_CHANGED = "goal_status_changed"
+    CONTRIBUTION_ADDED = "contribution_added"
     TRANSACTION_ALERT = "transaction_alert"
     LOW_BALANCE_WARNING = "low_balance_warning"
     SYSTEM_ALERT = "system_alert"
     INFO = "info"
 
-class NotificationPriority(enum.Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 class Notification(BaseModel):
     __tablename__ = "notifications"
@@ -28,7 +28,6 @@ class Notification(BaseModel):
     type: Mapped[NotificationType] = mapped_column(SAEnum(NotificationType), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
-    priority: Mapped[NotificationPriority] = mapped_column(SAEnum(NotificationPriority), default=NotificationPriority.MEDIUM)
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     action_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     notification_metadata: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
@@ -43,6 +42,5 @@ class Notification(BaseModel):
     __table_args__ = (
         Index('idx_notification_user_read', 'user_id', 'is_read'),
         Index('idx_notification_user_type', 'user_id', 'type'),
-        Index('idx_notification_priority', 'priority'),
         Index('idx_notification_created', 'created_at'),
     )

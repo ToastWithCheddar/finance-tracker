@@ -27,7 +27,8 @@ import { NotificationPanel } from './NotificationPanel';
 // Removed: import type { BudgetAlert } from '../../types/realtime';
 import { DashboardFilters } from './DashboardFilters';
 import { CategoryPieChart } from './CategoryPieChart';
-import type { DashboardFilters as FilterType, CategoryBreakdown } from '../../services/dashboardService';
+import { TransactionHistogram } from './TransactionHistogram';
+import type { DashboardFilters as FilterType, CategoryBreakdown, TransactionHistogramData } from '../../services/dashboardService';
 import { dashboardService } from '../../services/dashboardService';
 import { PlaidConnectionCard } from './PlaidConnectionCard';
 import { useAccounts } from '../../hooks/useAccounts';
@@ -71,25 +72,46 @@ export const RealtimeDashboard: React.FC = () => {
     refetch: refetchBreakdown
   } = useQuery({
     queryKey: ['category-breakdown', filters],
-    queryFn: () => dashboardService.getCategoryBreakdown(filters),
+    queryFn: async () => {
+      console.log('[DEBUG Dashboard] Fetching category breakdown with filters:', filters);
+      const result = await dashboardService.getCategoryBreakdown(filters);
+      console.log('[DEBUG Dashboard] Category breakdown result:', result);
+      console.log('[DEBUG Dashboard] Expense items:', result?.filter((item: any) => item.total_amount < 0));
+      return result;
+    },
     enabled: ENABLE_DASHBOARD_FETCH && !!filters.start_date && !!filters.end_date,
     staleTime: 5 * 60 * 1000,
   });
 
-  // Accurate transaction count for selected period based on transactions endpoint total
-  const { data: txCount } = useQuery({
-    queryKey: ['transactions', 'count', filters],
+  const {
+    data: histogramData,
+    isLoading: isHistogramLoading,
+    isError: isHistogramError,
+    error: histogramError,
+    refetch: refetchHistogram
+  } = useQuery({
+    queryKey: ['transaction-histogram', filters],
     queryFn: async () => {
-      const res = await transactionService.getTransactions({
-        dateFrom: filters.start_date,
-        dateTo: filters.end_date,
-        per_page: 1,
-      } as any);
-      return res.total ?? 0;
+      console.log('[DEBUG Dashboard] Fetching histogram data with filters:', filters);
+      const result = await transactionService.getTransactionHistogram({
+        start_date: filters.start_date,
+        end_date: filters.end_date,
+        category_id: filters.category_id,
+        account_id: filters.account_id,
+        bins: 10
+      });
+      console.log('[DEBUG Dashboard] Histogram result:', result);
+      return result as TransactionHistogramData;
     },
     enabled: ENABLE_DASHBOARD_FETCH && !!filters.start_date && !!filters.end_date,
-    staleTime: 2 * 60 * 1000,
+    staleTime: 5 * 60 * 1000,
   });
+
+  // Transaction count derived from category breakdown data for consistency
+  const transactionCountFromBreakdown = React.useMemo(() => {
+    if (!breakdown || !Array.isArray(breakdown)) return 0;
+    return breakdown.reduce((sum, item) => sum + (item.transaction_count || 0), 0);
+  }, [breakdown]);
   
   // Real-time data (still useful for live updates)
   const realtimeTransactions = useRealtimeTransactions();
@@ -100,7 +122,7 @@ export const RealtimeDashboard: React.FC = () => {
   // Derive lightweight stats locally to avoid equality pitfalls
   const transactionCount = realtimeTransactions.length;
   const newTransactionCount = realtimeTransactions.filter((t) => t.isNew).length;
-  const transactionUpdates = useRealtimeStore((s) => s.transactionUpdates);
+  // const transactionUpdates = useRealtimeStore((s) => s.transactionUpdates);
   const notificationCount = notifications.length;
   const queryClient = useQueryClient();
   
@@ -108,7 +130,7 @@ export const RealtimeDashboard: React.FC = () => {
   const user = useAuthUser();
   
   // Accounts data for connection card
-  const { data: accounts, refetch: refetchAccounts } = useAccounts();
+  const { refetch: refetchAccounts } = useAccounts();
   
   const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
   const [updatingStats, setUpdatingStats] = useState<Record<string, boolean>>({});
@@ -135,9 +157,12 @@ export const RealtimeDashboard: React.FC = () => {
             description: t.description || '',
             merchant: t.merchant,
             transactionDate: (t.transactionDate || t.transaction_date) as string,
-            isRecurring: !!(t.isRecurring ?? t.is_recurring),
+            // recurring/subscriptions removed
             createdAt: (t.createdAt || t.created_at || (t.transactionDate ? new Date(t.transactionDate).toISOString() : undefined)) as string,
             updatedAt: (t.updatedAt || t.updated_at || undefined) as string,
+            // Required camelCase fields for Transaction
+            accountName: t.accountName || t.account_name || '',
+            categoryName: t.categoryName || t.category_name || undefined,
             // Realtime-only extras
             isNew: false,
             is_income: (t.amountCents ?? t.amount_cents ?? 0) > 0,
@@ -154,7 +179,6 @@ export const RealtimeDashboard: React.FC = () => {
             type: n.type,
             title: n.title,
             message: n.message,
-            priority: n.priority,
             action_url: n.action_url,
             created_at: n.created_at,
             read: n.is_read,
@@ -184,18 +208,19 @@ export const RealtimeDashboard: React.FC = () => {
 
   // Update timestamp and stat animation when data changes
   useEffect(() => {
-    if (!isSummaryLoading && !isBreakdownLoading && (summary || breakdown)) {
+    if (!isSummaryLoading && !isBreakdownLoading && !isHistogramLoading && (summary || breakdown || histogramData)) {
       setLastUpdate(new Date());
       setUpdatingStats({ balance: true, spending: true, income: true, budget: true });
       const id = setTimeout(() => setUpdatingStats({}), 1000);
       return () => clearTimeout(id);
     }
-  }, [isSummaryLoading, isBreakdownLoading, summary, breakdown]);
+  }, [isSummaryLoading, isBreakdownLoading, isHistogramLoading, summary, breakdown, histogramData]);
 
   const handleRefresh = useCallback(() => {
     invalidateDashboard();
     queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
     queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'category-breakdown' });
+    queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === 'transaction-histogram' });
     queryClient.invalidateQueries({ queryKey: ['accounts'] });
     setLastUpdate(new Date());
   }, [queryClient]);
@@ -206,9 +231,9 @@ export const RealtimeDashboard: React.FC = () => {
   }, [refetchAccounts, handleRefresh]);
 
   // Consolidated loading and error state flags
-  const isLoading = isSummaryLoading || isBreakdownLoading;
-  const isError = isSummaryError || isBreakdownError;
-  const error = (summaryError as any) || (breakdownError as any);
+  const isLoading = isSummaryLoading || isBreakdownLoading || isHistogramLoading;
+  const isError = isSummaryError || isBreakdownError || isHistogramError;
+  const error = (summaryError as any) || (breakdownError as any) || (histogramError as any);
 
   // Calculate stats from dashboard data with proper fallbacks
   // Derive totals from category breakdown (expenses negative; income positive)
@@ -224,14 +249,49 @@ export const RealtimeDashboard: React.FC = () => {
   const totalExpenses = totals.expensesAbs || 0;
   const netAmount = totalIncome - totalExpenses;
   const summaryTransactionCount = totals.txnCount || 0;
-  const periodTransactionCount = txCount ?? summaryTransactionCount;
+  // Use consistent transaction count from breakdown data
+  const periodTransactionCount = transactionCountFromBreakdown || summaryTransactionCount;
+  
+  // Data consistency validation
+  const dataConsistencyCheck = React.useMemo(() => {
+    const issues: string[] = [];
+    
+    if (Math.abs(transactionCountFromBreakdown - summaryTransactionCount) > 0 && summaryTransactionCount > 0) {
+      issues.push(`Transaction count mismatch: breakdown=${transactionCountFromBreakdown}, totals=${summaryTransactionCount}`);
+    }
+    
+    if (breakdownData.length > 0 && totalIncome === 0 && totalExpenses === 0) {
+      issues.push('Category breakdown exists but totals are zero');
+    }
+    
+    return {
+      hasIssues: issues.length > 0,
+      issues,
+      summary: {
+        fromBreakdown: transactionCountFromBreakdown,
+        fromTotals: summaryTransactionCount,
+        final: periodTransactionCount,
+        totalIncome,
+        totalExpenses,
+        categoriesCount: breakdownData.length,
+        filters
+      }
+    };
+  }, [transactionCountFromBreakdown, summaryTransactionCount, periodTransactionCount, totalIncome, totalExpenses, breakdownData, filters]);
+  
+  console.log('[DEBUG Dashboard] Data consistency check:', dataConsistencyCheck);
+  
+  // Log warnings for potential issues
+  if (dataConsistencyCheck.hasIssues) {
+    console.warn('🚨 Dashboard data consistency issues detected:', dataConsistencyCheck.issues);
+  }
 
   const dashboardStats = [
     {
       id: 'income',
       title: 'Total Income',
-      // totalIncome/totalExpenses/netAmount are in dollars, use dollar formatter
-      value: CurrencyUtils.formatDollars(totalIncome),
+      // totalIncome/totalExpenses/netAmount are in dollars from the API, convert to cents for formatting
+      value: CurrencyUtils.formatCents(CurrencyUtils.dollarsToCents(totalIncome)),
       change: `${periodTransactionCount} transactions`,
       changeType: 'positive' as const,
       iconComponent: TrendingUp,
@@ -240,7 +300,7 @@ export const RealtimeDashboard: React.FC = () => {
     {
       id: 'expenses',
       title: 'Total Expenses',
-      value: CurrencyUtils.formatDollars(totalExpenses),
+      value: CurrencyUtils.formatCents(CurrencyUtils.dollarsToCents(totalExpenses)),
       change: `Period expenses`,
       changeType: 'negative' as const,
       iconComponent: CreditCard,
@@ -249,7 +309,7 @@ export const RealtimeDashboard: React.FC = () => {
     {
       id: 'net',
       title: 'Net Amount',
-      value: CurrencyUtils.formatDollars(netAmount),
+      value: CurrencyUtils.formatCents(CurrencyUtils.dollarsToCents(netAmount)),
       change: netAmount >= 0 ? 'Positive balance' : 'Negative balance',
       changeType: netAmount >= 0 ? ('positive' as const) : ('negative' as const),
       iconComponent: DollarSign,
@@ -291,6 +351,7 @@ export const RealtimeDashboard: React.FC = () => {
             onRetry={() => {
               refetchSummary();
               refetchBreakdown();
+              refetchHistogram();
             }}
           />
         </div>
@@ -348,15 +409,41 @@ export const RealtimeDashboard: React.FC = () => {
         ))}
       </div>
 
+      {/* Development Warning for Data Inconsistencies */}
+      {import.meta.env.DEV && dataConsistencyCheck.hasIssues && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border-l-4 border-yellow-400 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <AlertCircle className="h-5 w-5 text-yellow-400" />
+            </div>
+            <div className="ml-3">
+              <p className="text-sm text-yellow-700 dark:text-yellow-200">
+                <strong>Development Warning:</strong> Data inconsistency detected
+              </p>
+              <ul className="mt-2 text-xs text-yellow-600 dark:text-yellow-300 list-disc list-inside">
+                {dataConsistencyCheck.issues.map((issue, index) => (
+                  <li key={index}>{issue}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Money Flow Sankey Diagram - Removed (not implemented) */}
 
       {/* Spending Heatmap - Removed */}
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <CategoryPieChart 
           data={(breakdown || []) as CategoryBreakdown[]} 
           title="Top Spending by Category" 
+        />
+        <TransactionHistogram 
+          data={histogramData || null}
+          title="Transaction Amount Distribution"
+          isLoading={isHistogramLoading}
         />
       </div>
 
@@ -402,15 +489,17 @@ export const RealtimeDashboard: React.FC = () => {
             transactions={ENABLE_REALTIME ? realtimeTransactions : []} 
             newCount={ENABLE_REALTIME ? newTransactionCount : 0}
             isLive={ENABLE_REALTIME && connection.status === 'connected'}
+            totalCount={ENABLE_REALTIME ? transactionCount : 0}
           />
         </div>
 
-        {/* Notifications Panel - hide if none exist */}
-        {notifications.length > 0 && (
+        {/* Notifications Panel - show if notifications exist or if realtime is disabled */}
+        {(notifications.length > 0 || !ENABLE_REALTIME) && (
           <div>
             <NotificationPanel 
               notifications={ENABLE_REALTIME ? notifications : []}
               unreadCount={ENABLE_REALTIME ? unreadCount : 0}
+              isRealtimeEnabled={ENABLE_REALTIME}
             />
           </div>
         )}
@@ -423,7 +512,12 @@ export const RealtimeDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium text-gray-600">New Transactions</div>
-                <div className="text-2xl font-bold">{newTransactionCount}</div>
+                <div className="text-2xl font-bold">
+                  {ENABLE_REALTIME ? newTransactionCount : '—'}
+                </div>
+                {!ENABLE_REALTIME && (
+                  <div className="text-xs text-gray-500">Realtime disabled</div>
+                )}
               </div>
               <Target className="h-8 w-8 text-blue-500" />
             </div>
@@ -434,14 +528,30 @@ export const RealtimeDashboard: React.FC = () => {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <div className="text-sm font-medium text-gray-600">Real-time Updates</div>
-                <div className="text-2xl font-bold">{transactionUpdates.length}</div>
-                <div className="text-xs text-gray-500">Events this session</div>
+                <div className="text-sm font-medium text-gray-600">Recent Activity</div>
+                <div className="text-2xl font-bold">
+                  {ENABLE_REALTIME ? realtimeTransactions.length : '—'}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {ENABLE_REALTIME ? 'Transactions in feed' : 'Realtime disabled'}
+                </div>
               </div>
-              {connection.status === 'connected' && (
+              {ENABLE_REALTIME ? (
+                connection.status === 'connected' ? (
+                  <div className="flex items-center">
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
+                    <span className="text-sm text-green-600">Live</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center">
+                    <div className="w-2 h-2 bg-gray-500 rounded-full mr-2"></div>
+                    <span className="text-sm text-gray-500">Offline</span>
+                  </div>
+                )
+              ) : (
                 <div className="flex items-center">
-                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2"></div>
-                  <span className="text-sm text-green-600">Live</span>
+                  <div className="w-2 h-2 bg-yellow-500 rounded-full mr-2"></div>
+                  <span className="text-sm text-yellow-600">Disabled</span>
                 </div>
               )}
             </div>
@@ -453,12 +563,19 @@ export const RealtimeDashboard: React.FC = () => {
             <div className="flex items-center justify-between">
               <div>
                 <div className="text-sm font-medium text-gray-600">Notifications</div>
-                <div className="text-2xl font-bold">{unreadCount}</div>
-                <div className="text-xs text-gray-500">{notificationCount} total</div>
+                <div className="text-2xl font-bold">
+                  {ENABLE_REALTIME ? notificationCount : '—'}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {ENABLE_REALTIME 
+                    ? (unreadCount > 0 ? `${unreadCount} unread` : 'All read')
+                    : 'Realtime disabled'
+                  }
+                </div>
               </div>
               <div className="relative">
                 <AlertCircle className="h-8 w-8 text-gray-400" />
-                {unreadCount > 0 && (
+                {ENABLE_REALTIME && unreadCount > 0 && (
                   <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
                     <span className="text-xs text-white font-medium">
                       {unreadCount > 9 ? '9+' : unreadCount}

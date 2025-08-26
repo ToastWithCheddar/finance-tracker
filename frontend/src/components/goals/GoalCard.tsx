@@ -3,12 +3,14 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { Input } from '../ui/Input';
+import { DollarSign, Trophy, Pause, Play, Edit, Trash2, Sparkles } from 'lucide-react';
 import { useAddContribution, useUpdateGoal, useGoalProgress, useMilestoneTracking } from '../../hooks/useGoals';
 import { useAccounts } from '../../hooks/useAccounts';
 import { goalService } from '../../services/goalService';
 import { formatCurrency } from '../../utils/currency';
 import { getRelativeTime } from '../../utils/date';
 import type { Goal, GoalContributionCreate, GoalUpdate, GoalStatus } from '../../types/goals';
+import { GoalStatus as GoalStatusConst } from '../../types/goals';
 
 interface GoalCardProps {
   goal: Goal;
@@ -56,8 +58,8 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
     }
   };
 
-  const handleStatusChange = async (newStatus: string) => {
-    const updateData: GoalUpdate = { status: newStatus as GoalStatus };
+  const handleStatusChange = async (newStatus: GoalStatus) => {
+    const updateData: GoalUpdate = { status: newStatus };
     await updateGoal.mutateAsync({
       goalId: goal.id,
       goalData: updateData,
@@ -88,7 +90,7 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
       <Card className="p-4 hover:shadow-md transition-shadow">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
-            <span className="text-xl">{typeInfo.icon}</span>
+            <typeInfo.icon className="h-5 w-5 text-blue-500" />
             <h3 className="font-semibold text-lg truncate text-[hsl(var(--text))]">{goal.name}</h3>
           </div>
           <span className={`px-2 py-1 rounded-full text-xs border ${getPriorityBadgeColor()}`}>
@@ -113,6 +115,19 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
             <span>{currentProgress.toFixed(1)}% complete</span>
             {daysRemaining && <span>{daysRemaining} days left</span>}
           </div>
+          
+          {/* Quick Contribution Button for Compact Cards */}
+          {goal.status === GoalStatusConst.ACTIVE && !isCompleted && (
+            <div className="flex justify-center mt-3">
+              <Button
+                onClick={() => setShowContributionModal(true)}
+                size="sm"
+                className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1"
+              >
+<DollarSign className="h-3 w-3 mr-1" /> Add $
+              </Button>
+            </div>
+          )}
         </div>
       </Card>
     );
@@ -123,7 +138,9 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
       <Card className="p-6 hover:shadow-lg transition-all duration-200 border-l-4 border-l-blue-500">
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center space-x-3">
-            <div className="text-3xl">{typeInfo.icon}</div>
+            <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/20">
+              <typeInfo.icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+            </div>
             <div>
               <h3 className="text-xl font-bold text-[hsl(var(--text))]">{goal.name}</h3>
               {goal.description && (
@@ -136,8 +153,9 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
             <span className={`px-3 py-1 rounded-full text-sm border ${getPriorityBadgeColor()}`}>
               {priorityInfo.label}
             </span>
-            <span className={`px-3 py-1 rounded-full text-sm bg-${statusInfo.color}-100 text-${statusInfo.color}-800`}>
-              {statusInfo.icon} {statusInfo.label}
+            <span className={`px-3 py-1 rounded-full text-sm bg-${statusInfo.color}-100 text-${statusInfo.color}-800 flex items-center space-x-1`}>
+              <statusInfo.icon className="h-3 w-3" />
+              <span>{statusInfo.label}</span>
             </span>
           </div>
         </div>
@@ -231,70 +249,72 @@ export function GoalCard({ goal, onEdit, onDelete, compact = false }: GoalCardPr
 
         {/* Action Buttons */}
         <div className="flex flex-wrap gap-2">
-          {goal.status === 'active' && !isCompleted && (
+          {goal.status === GoalStatusConst.ACTIVE && !isCompleted && (
             <>
               <Button
                 onClick={() => setShowContributionModal(true)}
                 className="bg-green-600 hover:bg-green-700 text-white"
               >
-                💰 Add Contribution
+<DollarSign className="h-4 w-4 mr-2" /> Add Contribution
               </Button>
               
               {isCompleted && (
                 <Button
-                  onClick={() => handleStatusChange('completed')}
+                  onClick={() => handleStatusChange(GoalStatusConst.COMPLETED)}
                   className="bg-blue-600 hover:bg-blue-700 text-white"
                 >
-                  🎉 Mark Complete
+<Trophy className="h-4 w-4 mr-2" /> Mark Complete
                 </Button>
               )}
             </>
           )}
           
-          {goal.status === 'active' && (
+          {goal.status === GoalStatusConst.ACTIVE && (
             <Button
-              onClick={() => handleStatusChange('paused')}
+              onClick={() => handleStatusChange(GoalStatusConst.PAUSED)}
               variant="outline"
             >
-              ⏸️ Pause
+<Pause className="h-4 w-4 mr-2" /> Pause
             </Button>
           )}
           
-          {goal.status === 'paused' && (
+          {goal.status === GoalStatusConst.PAUSED && (
             <Button
-              onClick={() => handleStatusChange('active')}
+              onClick={() => handleStatusChange(GoalStatusConst.ACTIVE)}
               className="bg-green-600 hover:bg-green-700 text-white"
             >
-              ▶️ Resume
+<Play className="h-4 w-4 mr-2" /> Resume
             </Button>
           )}
           
           {onEdit && (
             <Button onClick={() => onEdit(goal)} variant="outline">
-              ✏️ Edit
+              <Edit className="h-4 w-4 mr-2" /> Edit
             </Button>
           )}
           
-          {onDelete && goal.status !== 'completed' && (
+          {onDelete && goal.status !== GoalStatusConst.COMPLETED && (
             <Button
               onClick={() => onDelete(goal.id)}
               variant="outline"
               className="text-red-600 hover:text-red-700 hover:bg-red-50"
             >
-              🗑️ Delete
+<Trash2 className="h-4 w-4 mr-2" /> Delete
             </Button>
           )}
         </div>
 
         {/* Celebration Message */}
         {isCompleted && (
-          <div className="mt-4 p-4 bg-gradient-to-r from-green-100 to-blue-100 rounded-lg border border-green-200">
+          <div className="mt-4 p-4 bg-success-gradient rounded-lg border border-green-200 dark:border-green-700">
             <div className="text-center">
-              <div className="text-2xl mb-2">🎊</div>
-              <p className="font-semibold text-green-800">
+              <div className="mb-2 flex justify-center">
+                <Sparkles className="h-8 w-8 text-green-600 dark:text-green-300" />
+              </div>
+              <p className="font-semibold text-green-800 dark:text-green-100">
                 Congratulations! You've achieved your goal!
               </p>
-              <p className="text-sm text-green-700 mt-1">
+              <p className="text-sm text-green-700 dark:text-green-200 mt-1">
                 Final amount: {formatCurrency(goal.current_amount_cents)}
               </p>
             </div>

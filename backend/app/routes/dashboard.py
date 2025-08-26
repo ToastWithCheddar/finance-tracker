@@ -57,10 +57,8 @@ async def get_dashboard_data(
                     detail="Invalid end_date format. Use YYYY-MM-DD"
                 )
         
-        # Get financial health service
+        # Get financial health service and calculate user financial health
         health_service = get_financial_health_service()
-        
-        # Calculate user financial health (includes net worth calculation)
         financial_health = health_service.calculate_user_financial_health(db, current_user.id)
         
         # Build transaction query with filters
@@ -328,10 +326,8 @@ async def get_dashboard_summary(
 ):
     """Get dashboard summary including net worth, account totals, and financial health"""
     try:
-        # Get financial health service
+        # Calculate user financial health
         health_service = get_financial_health_service()
-        
-        # Calculate user financial health (includes net worth calculation)
         financial_health = health_service.calculate_user_financial_health(db, current_user.id)
         
         # Get recent transactions count
@@ -356,7 +352,7 @@ async def get_dashboard_summary(
             "financial_health_grade": financial_health.get("grade", "N/A"),
             "account_count": account_count,
             "recent_transactions": recent_transactions,
-            "recommendations": financial_health.get("recommendations", [])
+            "recommendations": financial_health.get("recommendations", []),
         }
         
     except Exception as e:

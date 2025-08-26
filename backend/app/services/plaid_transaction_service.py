@@ -193,7 +193,6 @@ class PlaidTransactionService:
                 merchant=merchant_name,
                 transaction_date=datetime.strptime(plaid_txn.get('date'), '%Y-%m-%d').date(),
                 status='posted' if not plaid_txn.get('pending', False) else 'pending',
-                is_recurring=False,  # Will be detected separately
                 is_transfer=transaction_type == 'transfer',
                 notes=f"Imported from Plaid: {plaid_txn.get('original_description', '')}",
                 plaid_transaction_id=plaid_txn.get('transaction_id'),

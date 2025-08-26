@@ -87,8 +87,7 @@ def get_notification_stats(
         return NotificationStatsResponse(
             total_count=stats["total_count"],
             unread_count=stats["unread_count"],
-            by_type=stats["by_type"],
-            by_priority=stats["by_priority"]
+            by_type=stats["by_type"]
         )
         
     except Exception as e:

@@ -19,7 +19,6 @@ import numpy as np
 import onnxruntime as ort
 from sentence_transformers import SentenceTransformer
 import torch
-from sklearn.metrics.pairwise import cosine_similarity_chunked
 import psutil
 
 # Configure logging
@@ -92,6 +91,18 @@ class OptimizedInferenceEngine:
                 os.sched_setaffinity(0, range(min(4, os.cpu_count())))
             except:
                 pass
+
+    def _models_root(self) -> str:
+        """Resolve models root directory across environments.
+        Preference order: MODELS_DIR env -> /app/models -> /app/ml_models.
+        """
+        env_dir = os.getenv('MODELS_DIR')
+        if env_dir and os.path.isdir(env_dir):
+            return env_dir
+        for path in ("/app/models", "/app/ml_models"):
+            if os.path.isdir(path):
+                return path
+        return "/app/models"
     
     def load_optimized_model(self, force_reload: bool = False):
         """Load optimized sentence transformer model"""
@@ -104,19 +115,20 @@ class OptimizedInferenceEngine:
             # Load with CPU optimization
             device = 'cpu'
             # Check if model exists locally first
-            local_model_path = f"/app/models/{self.model_name}"
+            models_root = self._models_root()
+            local_model_path = os.path.join(models_root, self.model_name)
             if os.path.exists(local_model_path):
                 self.sentence_model = SentenceTransformer(
                     local_model_path, 
                     device=device,
-                    cache_folder='./model_cache'
+                    cache_folder=models_root
                 )
                 print(f"Loaded local model: {local_model_path}")
             else:
                 self.sentence_model = SentenceTransformer(
                     self.model_name, 
                     device=device,
-                    cache_folder='./model_cache'
+                    cache_folder=models_root
                 )
                 print(f"Loaded hub model: {self.model_name}")
             
@@ -143,7 +155,11 @@ class OptimizedInferenceEngine:
         
         # Perform dummy inferences to warm up
         for _ in range(3):
-            self.sentence_model.encode(dummy_texts, convert_to_tensor=False)
+            self.sentence_model.encode(
+                dummy_texts,
+                convert_to_tensor=False,
+                show_progress_bar=False
+            )
     
     def load_onnx_model(self, onnx_path: str, quantized: bool = True):
         """Load ONNX model for optimized CPU inference"""
@@ -279,9 +295,10 @@ class OptimizedInferenceEngine:
             
             # Batch embedding generation (more efficient)
             batch_embeddings = self.sentence_model.encode(
-                batch_texts, 
+                batch_texts,
                 convert_to_tensor=False,
-                show_progress_bar=False
+                show_progress_bar=False,
+                batch_size=min(self.batch_size_optimal, max(1, len(batch_texts)))
             )
             
             # Process each embedding in batch
@@ -445,13 +462,16 @@ class OptimizedInferenceEngine:
     def load_prototypes(self, filepath: str):
         """Load category prototypes"""
         try:
+            if not os.path.exists(filepath):
+                logger.info(f"Prototypes file not found at {filepath}; using in-memory defaults if available")
+                return
             with open(filepath, 'rb') as f:
                 data = pickle.load(f)
                 self.category_prototypes = data['prototypes']
             
             logger.info(f"Loaded {len(self.category_prototypes)} category prototypes")
         except Exception as e:
-            logger.error(f"Failed to load prototypes: {e}")
+            logger.warning(f"Failed to load prototypes from {filepath}: {e}")
     
     def optimize_for_production(self):
         """Apply all production optimizations"""

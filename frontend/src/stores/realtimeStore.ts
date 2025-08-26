@@ -1,5 +1,4 @@
 import { create } from 'zustand';
-import { shallow } from 'zustand/shallow';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { toast } from 'sonner';
 
@@ -21,12 +20,6 @@ import {
   isGoalProgress,
   isNotification,
   isValidWebSocketMessage,
-  isPlaidRecurringSync,
-  isPlaidRecurringUpdate,
-  isRecurringTransactionAction,
-  isCategorizationRuleAction,
-  isRuleApplication,
-  isRuleEffectivenessUpdate,
 } from '../types/websocket';
 
 /*****************************
@@ -38,7 +31,6 @@ export interface RealtimeNotification {
   type: 'info' | 'success' | 'warning' | 'error' | string;
   title: string;
   message: string;
-  priority?: 'low' | 'medium' | 'high' | 'critical' | string;
   action_url?: string;
   created_at: string; // ISO timestamp string
   read: boolean;
@@ -93,13 +85,6 @@ interface RealtimeState {
   budgetAlerts: Array<{ message: string; category?: string; amount?: number }>;
 
 
-  /* Recurring Transactions */
-  recurringUpdates: Array<{ type: string; data: Record<string, unknown>; timestamp?: string }>;
-  
-  /* Categorization Rules */
-  ruleUpdates: Array<{ type: string; rule_id: string; data: Record<string, unknown>; timestamp?: string }>;
-  ruleApplications: Array<{ rule_id: string; rule_name: string; transaction_id: string; confidence_score: number; timestamp?: string }>;
-  ruleEffectivenessUpdates: Array<{ rule_id: string; data: Record<string, unknown>; timestamp?: string }>;
 
 
   /* ====== Actions ====== */
@@ -138,17 +123,9 @@ interface RealtimeState {
   clearBudgetAlerts: () => void;
 
 
-  // Recurring transaction actions
-  addRecurringUpdate: (update: { type: string; data: Record<string, unknown> }) => void;
-  clearRecurringUpdates: () => void;
+  // Recurring transaction actions removed
 
-  // Categorization rule actions
-  addRuleUpdate: (update: { type: string; rule_id: string; data: Record<string, unknown> }) => void;
-  addRuleApplication: (application: { rule_id: string; rule_name: string; transaction_id: string; confidence_score: number }) => void;
-  addRuleEffectivenessUpdate: (update: { rule_id: string; data: Record<string, unknown> }) => void;
-  clearRuleUpdates: () => void;
-  clearRuleApplications: () => void;
-  clearRuleEffectivenessUpdates: () => void;
+  // Categorization rules removed
 
 
   // WebSocket helpers
@@ -179,10 +156,7 @@ export const useRealtimeStore = create<RealtimeState>()(
     notifications: [],
     budgetAlerts: [],
     
-    recurringUpdates: [],
-    ruleUpdates: [],
-    ruleApplications: [],
-    ruleEffectivenessUpdates: [],
+    
     
 
     /***** Connection actions *****/
@@ -431,78 +405,9 @@ export const useRealtimeStore = create<RealtimeState>()(
     },
 
 
-    /***** Recurring transaction actions *****/
-    addRecurringUpdate: (update) => {
-      set((state) => ({
-        recurringUpdates: [
-          ...state.recurringUpdates,
-          {
-            ...update,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      }));
-    },
+    /***** Recurring transaction actions removed *****/
 
-    clearRecurringUpdates: () => {
-      set({ recurringUpdates: [] });
-    },
-
-    /***** Categorization rule actions *****/
-    addRuleUpdate: (update) => {
-      set((state) => ({
-        ruleUpdates: [
-          ...state.ruleUpdates,
-          {
-            ...update,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      }));
-    },
-
-    addRuleApplication: (application) => {
-      set((state) => ({
-        ruleApplications: [
-          ...state.ruleApplications,
-          {
-            ...application,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      }));
-
-      // Show notification for rule application
-      get().addNotification({
-        type: 'info',
-        title: 'Rule Applied',
-        message: `"${application.rule_name}" categorized a transaction with ${Math.round(application.confidence_score * 100)}% confidence`,
-      });
-    },
-
-    addRuleEffectivenessUpdate: (update) => {
-      set((state) => ({
-        ruleEffectivenessUpdates: [
-          ...state.ruleEffectivenessUpdates,
-          {
-            ...update,
-            timestamp: new Date().toISOString(),
-          },
-        ],
-      }));
-    },
-
-    clearRuleUpdates: () => {
-      set({ ruleUpdates: [] });
-    },
-
-    clearRuleApplications: () => {
-      set({ ruleApplications: [] });
-    },
-
-    clearRuleEffectivenessUpdates: () => {
-      set({ ruleEffectivenessUpdates: [] });
-    },
+    /***** Categorization rule actions removed *****/
 
 
     /***** WebSocket helpers *****/
@@ -555,9 +460,10 @@ export const useRealtimeStore = create<RealtimeState>()(
             description: payload.description,
             merchant: payload.merchant,
             transactionDate: payload.transaction_date,
-            isRecurring: false,
             createdAt: payload.created_at || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
+            accountName: payload.account_name || 'Unknown Account',
+            categoryName: payload.category_name,
             isNew: true,
             is_income: payload.is_income,
             category_name: payload.category_name,
@@ -577,7 +483,6 @@ export const useRealtimeStore = create<RealtimeState>()(
             description: transactionData.description,
             merchant: transactionData.merchant,
             transactionDate: transactionData.transactionDate,
-            isRecurring: transactionData.isRecurring,
             createdAt: transactionData.createdAt!,
             updatedAt: transactionData.updatedAt!,
           } as any);
@@ -608,9 +513,10 @@ export const useRealtimeStore = create<RealtimeState>()(
             description: payload.description,
             merchant: payload.merchant,
             transactionDate: payload.transaction_date,
-            isRecurring: false,
             createdAt: payload.created_at || new Date().toISOString(),
             updatedAt: new Date().toISOString(),
+            accountName: payload.account_name || 'Unknown Account',
+            categoryName: payload.category_name,
             isNew: false,
             is_income: payload.is_income,
             category_name: payload.category_name,
@@ -630,7 +536,6 @@ export const useRealtimeStore = create<RealtimeState>()(
             description: realtimeTransaction.description,
             merchant: realtimeTransaction.merchant,
             transactionDate: realtimeTransaction.transactionDate,
-            isRecurring: realtimeTransaction.isRecurring,
             createdAt: realtimeTransaction.createdAt!,
             updatedAt: realtimeTransaction.updatedAt!,
           } as any);
@@ -700,13 +605,8 @@ export const useRealtimeStore = create<RealtimeState>()(
             type: payload.notification_type,
             title: payload.title,
             message: payload.message,
-            priority: payload.priority,
             action_url: payload.action_url,
           });
-          
-        } else if (typedMessage.type === MessageType.AI_INSIGHT_GENERATED) {
-          // AI Insights feature has been removed - ignore these messages
-          console.log('[RealtimeStore] AI Insight message ignored (feature removed)');
           
         } else if (typedMessage.type === MessageType.WEBHOOK_SYNC_COMPLETE) {
           const payload = typedMessage.payload as WebhookSyncPayload;
@@ -763,81 +663,7 @@ export const useRealtimeStore = create<RealtimeState>()(
           // Handle ping - could send pong response
           console.log('[RealtimeStore] Ping received');
           
-        } else if (isPlaidRecurringSync(typedMessage)) {
-          const payload = typedMessage.payload as any;
-          
-          if (payload.new_subscriptions > 0) {
-            toast.info(`Plaid sync complete! ${payload.new_subscriptions} new subscription(s) detected.`);
-          } else if (payload.updated_subscriptions > 0) {
-            toast.info(`Plaid sync complete! ${payload.updated_subscriptions} subscription(s) updated.`);
-          }
-
-          get().addRecurringUpdate({ type: 'sync_complete', data: payload });
-
-          // Invalidate recurring data queries
-          queryClient.invalidateQueries({ queryKey: ['plaid-recurring'] });
-          queryClient.invalidateQueries({ queryKey: ['plaid-recurring-insights'] });
-          
-        } else if (isPlaidRecurringUpdate(typedMessage)) {
-          const payload = typedMessage.payload as any;
-          
-          get().addRecurringUpdate({ type: 'recurring_updated', data: payload });
-          
-          // Invalidate recurring data queries
-          queryClient.invalidateQueries({ queryKey: ['plaid-recurring'] });
-          
-        } else if (isRecurringTransactionAction(typedMessage)) {
-          const payload = typedMessage.payload as any;
-          
-          const actionText = payload.action === 'muted' ? 'muted' : 
-                           payload.action === 'unmuted' ? 'unmuted' :
-                           payload.action === 'linked' ? 'linked to transaction' : 'unlinked';
-          
-          toast.success(`Recurring transaction "${payload.merchant_name}" ${actionText}.`);
-          
-          get().addRecurringUpdate({ type: payload.action, data: payload });
-          
-          // Invalidate recurring data queries
-          queryClient.invalidateQueries({ queryKey: ['plaid-recurring'] });
-          
-        } else if (isCategorizationRuleAction(typedMessage)) {
-          const payload = typedMessage.payload as any;
-          
-          const actionText = payload.action === 'created' ? 'created' :
-                           payload.action === 'updated' ? 'updated' :
-                           payload.action === 'deleted' ? 'deleted' :
-                           payload.action === 'activated' ? 'activated' : 'deactivated';
-          
-          toast.success(`Categorization rule "${payload.rule_name}" ${actionText}.`);
-          
-          get().addRuleUpdate({ type: payload.action, rule_id: payload.rule_id, data: payload });
-          
-          // Invalidate rule queries
-          queryClient.invalidateQueries({ queryKey: ['categorization-rules'] });
-          queryClient.invalidateQueries({ queryKey: ['rule-templates'] });
-          
-        } else if (isRuleApplication(typedMessage)) {
-          const payload = typedMessage.payload as any;
-          
-          get().addRuleApplication({
-            rule_id: payload.rule_id,
-            rule_name: payload.rule_name,
-            transaction_id: payload.transaction_id,
-            confidence_score: payload.confidence_score,
-          });
-          
-          // Invalidate transaction and rule effectiveness queries
-          queryClient.invalidateQueries({ queryKey: ['transactions'] });
-          queryClient.invalidateQueries({ queryKey: ['rule-effectiveness', payload.rule_id] });
-          
-        } else if (isRuleEffectivenessUpdate(typedMessage)) {
-          const payload = typedMessage.payload as any;
-          
-          get().addRuleEffectivenessUpdate({ rule_id: payload.rule_id, data: payload });
-          
-          // Invalidate rule effectiveness queries
-          queryClient.invalidateQueries({ queryKey: ['rule-effectiveness', payload.rule_id] });
-          
+        
         } else {
           console.warn('[RealtimeStore] Unhandled WebSocket message type:', typedMessage.type);
         }
@@ -861,8 +687,8 @@ export const useRealtimeStore = create<RealtimeState>()(
  *  Selector Hooks
  *****************************/
 
-export const useConnectionStatus = () =>
-  useRealtimeStore((state) => state.connectionStatus, shallow);
+export const useConnectionStatus = (): RealtimeState['connectionStatus'] =>
+  useRealtimeStore((state) => state.connectionStatus);
 
 export const useRealtimeTransactions = () =>
   useRealtimeStore((state) => state.recentTransactions);
@@ -882,31 +708,10 @@ export const useRealtimeStats = () =>
       transactionCount: state.recentTransactions.length,
       newTransactionCount: state.recentTransactions.filter((t) => t.isNew).length,
       notificationCount: state.notifications.length,
-    }),
-    shallow,
+    })
   );
 
-export const useRecurringUpdates = () =>
-  useRealtimeStore((state) => state.recurringUpdates);
-
-export const useRuleUpdates = () =>
-  useRealtimeStore((state) => state.ruleUpdates);
-
-export const useRuleApplications = () =>
-  useRealtimeStore((state) => state.ruleApplications);
-
-export const useRuleEffectivenessUpdates = () =>
-  useRealtimeStore((state) => state.ruleEffectivenessUpdates);
-
-export const useRealtimeAutomationStats = () =>
-  useRealtimeStore(
-    (state) => ({
-      ruleUpdateCount: state.ruleUpdates.length,
-      ruleApplicationCount: state.ruleApplications.length,
-      recurringUpdateCount: state.recurringUpdates.length,
-    }),
-    shallow,
-  );
+// Rule-related selectors removed
 
 
 /*****************************

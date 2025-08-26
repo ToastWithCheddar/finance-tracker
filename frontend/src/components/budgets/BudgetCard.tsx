@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PencilIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon, Bell, Settings } from 'lucide-react';
+import { PencilIcon, TrashIcon, AlertTriangleIcon, TrendingUpIcon, TrendingDownIcon, Bell } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
@@ -59,8 +59,8 @@ export function BudgetCard({
       };
     } else {
       return {
-        cardClass: 'bg-budget-gradient border-budget-300 dark:border-budget-600 shadow-lg shadow-budget-100/50 dark:shadow-budget-800/50 ring-1 ring-budget-200 dark:ring-budget-700',
-        headerColor: 'text-budget-900 dark:text-budget-100',
+        cardClass: 'bg-success-gradient border-success-300 dark:border-success-600 shadow-lg shadow-success-100/50 dark:shadow-success-800/50 ring-1 ring-success-200 dark:ring-success-700',
+        headerColor: 'text-success-900 dark:text-success-100',
         progressClass: 'progress-bar-success'
       };
     }
@@ -239,7 +239,7 @@ export function BudgetCard({
 
         {/* Over Budget Warning */}
         {budget.usage?.is_over_budget && (
-          <div className="mt-4 p-4 bg-gradient-to-r from-expense-100 via-expense-50 to-expense-100 dark:from-expense-900/40 dark:via-expense-800/30 dark:to-expense-900/40 border-2 border-expense-300 dark:border-expense-600 rounded-xl shadow-lg shadow-expense-200/50 dark:shadow-expense-800/50 animate-bounce-gentle">
+          <div className="mt-4 p-4 bg-expense-gradient border-2 border-expense-300 dark:border-expense-600 rounded-xl shadow-lg shadow-expense-200/50 dark:shadow-expense-800/50 animate-bounce-gentle">
             <div className="flex items-center justify-between">
               <div className="flex items-center text-expense-800 dark:text-expense-200">
                 <div className="relative mr-3">

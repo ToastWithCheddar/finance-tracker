@@ -85,16 +85,29 @@ class ONNXConverter:
             "parking garage downtown"
         ] * 10  # 200 samples for calibration
     
+    def _models_root(self) -> str:
+        """Resolve models root directory across environments.
+        Preference order: MODELS_DIR env -> /app/models -> /app/ml_models.
+        """
+        env_dir = os.getenv('MODELS_DIR')
+        if env_dir and os.path.isdir(env_dir):
+            return env_dir
+        for path in ("/app/models", "/app/ml_models"):
+            if os.path.isdir(path):
+                return path
+        return "/app/models"
+
     def load_model(self):
         """Load the sentence transformer model"""
         try:
             # Check if model exists locally first
-            local_model_path = f"/app/models/{self.model_name}"
+            models_root = self._models_root()
+            local_model_path = os.path.join(models_root, self.model_name)
             if os.path.exists(local_model_path):
-                self.sentence_transformer = SentenceTransformer(local_model_path)
+                self.sentence_transformer = SentenceTransformer(local_model_path, device='cpu', cache_folder=models_root)
                 print(f"Loaded local model for ONNX conversion: {local_model_path}")
             else:
-                self.sentence_transformer = SentenceTransformer(self.model_name)
+                self.sentence_transformer = SentenceTransformer(self.model_name, device='cpu', cache_folder=models_root)
                 print(f"Loaded hub model for ONNX conversion: {self.model_name}")
             
             # Extract the transformer model and tokenizer
@@ -102,7 +115,10 @@ class ONNXConverter:
             self.tokenizer = self.sentence_transformer[0].tokenizer
             
             # Set to eval mode
-            self.model.eval()
+            try:
+                self.model.eval()
+            except Exception:
+                pass
             
             logger.info(f"Loaded model: {self.model_name}")
             
@@ -190,13 +206,14 @@ class ONNXConverter:
             output_path = onnx_path.replace('.onnx', '_dynamic_quantized.onnx')
         
         try:
+            # onnxruntime.quantization.quantize_dynamic does not support
+            # an optimize_model kwarg across versions; keep args portable.
             quantize_dynamic(
                 model_input=onnx_path,
                 model_output=output_path,
                 weight_type=QuantType.QInt8,
                 per_channel=True,
-                reduce_range=True,
-                optimize_model=True
+                reduce_range=True
             )
             
             logger.info(f"Dynamic quantization completed: {output_path}")
@@ -220,14 +237,14 @@ class ONNXConverter:
             )
             
             # Apply static quantization
+            # Remove optimize_model kwarg for compatibility across versions
             quantize_static(
                 model_input=onnx_path,
                 model_output=output_path,
                 calibration_data_reader=calibration_data_reader,
                 quant_format=QuantFormat.QOperator,
                 per_channel=True,
-                reduce_range=True,
-                optimize_model=True
+                reduce_range=True
             )
             
             logger.info(f"Static quantization completed: {output_path}")
@@ -350,12 +367,12 @@ class ONNXConverter:
             })
             
             # Extract embeddings from ONNX output (mean pooling)
-            last_hidden_state = onnx_outputs[0]
-            attention_mask = inputs['attention_mask']
+            last_hidden_state = onnx_outputs[0]  # shape: (B, T, H)
+            attention_mask = inputs['attention_mask']  # shape: (B, T)
             
-            # Mean pooling
+            # Mean pooling: expand mask to (B, T, H) and apply
             input_mask_expanded = np.broadcast_to(
-                attention_mask.unsqueeze(-1), last_hidden_state.shape
+                np.expand_dims(attention_mask, axis=-1), last_hidden_state.shape
             )
             sum_embeddings = np.sum(last_hidden_state * input_mask_expanded, axis=1)
             sum_mask = np.sum(input_mask_expanded, axis=1)

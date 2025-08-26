@@ -31,7 +31,6 @@ class TransactionBase(BaseModel):
     transaction_date: date = Field(..., description="Transaction date")
     category_id: UUID | None = Field(None, description="Category ID")
     status: TransactionStatus = Field(TransactionStatus.POSTED, description="Transaction status")
-    is_recurring: bool = Field(False, description="Is this a recurring transaction")
     is_transfer: bool = Field(False, description="Is this a transfer between accounts")
     notes: str | None = Field(None, description="Additional notes")
     tags: List[str] | None = Field(None, description="Transaction tags")
@@ -76,7 +75,20 @@ class TransactionBase(BaseModel):
                 
         return self
 
-class TransactionCreate(TransactionBase):
+class TransactionCreate(BaseModel):
+    """Input schema for transaction creation with camelCase aliases for frontend compatibility"""
+    account_id: UUID = Field(..., alias="accountId", description="Account ID")
+    amount_cents: int = Field(..., alias="amountCents", description="Transaction amount in cents (can be negative for expenses)")
+    currency: CurrencyCode = Field("USD", description="Currency code")
+    description: str = Field(..., max_length=500, description="Transaction description")
+    merchant: str | None = Field(None, max_length=200, description="Merchant name")
+    transaction_date: date = Field(..., alias="transactionDate", description="Transaction date")
+    category_id: UUID | None = Field(None, alias="categoryId", description="Category ID")
+    status: TransactionStatus = Field(TransactionStatus.POSTED, description="Transaction status")
+    is_transfer: bool = Field(False, alias="isTransfer", description="Is this a transfer between accounts")
+    notes: str | None = Field(None, description="Additional notes")
+    tags: List[str] | None = Field(None, description="Transaction tags")
+    
     # Optional fields that can be provided instead of the base fields
     amount: float | None = Field(None, description="Transaction amount in dollars (will be converted to cents)")
     transaction_type: TransactionType | None = Field(None, description="Transaction type: 'income' or 'expense'")
@@ -125,7 +137,6 @@ class TransactionUpdate(BaseModel):
     transaction_date: date | None = Field(None, alias="transactionDate")
     category_id: UUID | None = Field(None, alias="categoryId")
     status: TransactionStatus | None = None
-    is_recurring: bool | None = Field(None, alias="isRecurring")
     is_transfer: bool | None = Field(None, alias="isTransfer")
     notes: str | None = None
     tags: List[str] | None = None
@@ -174,10 +185,25 @@ class TransactionFilter(BaseModel):
     min_amount_cents: int | None = Field(None, description="Minimum amount in cents")
     max_amount_cents: int | None = Field(None, description="Maximum amount in cents")
     search_query: str | None = Field(None, description="Search in description or merchant")
-    is_recurring: bool | None = None
     is_transfer: bool | None = None
     tags: List[str] | None = None
     group_by: TransactionGroupBy | None = Field(None, description="Group transactions by field")
+
+    # Add validation to log what filters are being processed
+    @model_validator(mode='after')
+    def log_filter_validation(self):
+        # Log non-empty filters for debugging
+        active_filters = {}
+        for field, value in self.model_dump().items():
+            if value is not None:
+                active_filters[field] = value
+        
+        if active_filters:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info(f"🔍 [TransactionFilter] Active filters: {active_filters}")
+        
+        return self
 
     @field_validator('max_amount_cents')
     @classmethod
@@ -190,7 +216,7 @@ class TransactionFilter(BaseModel):
     @field_validator('end_date')
     @classmethod
     def validate_end_date(cls, v, info):
-        if v and 'start_date' in info.data and info.data['start_date'] and v <= info.data['start_date']:
+        if v and 'start_date' in info.data and info.data['start_date'] and v < info.data['start_date']:
             raise ValueError('End date must be after start date')
         return v
 

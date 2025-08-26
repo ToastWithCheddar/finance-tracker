@@ -8,6 +8,7 @@ from pathlib import Path
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from dotenv import load_dotenv
 from app.models.base import Base
 import app.models
 
@@ -15,8 +16,14 @@ import app.models
 ROOT_DIR = Path(__file__).resolve().parents[1]   # /app
 sys.path.append(str(ROOT_DIR))  
 
-# Load DATABASE_URL from the environment
+# Load DATABASE_URL from the environment (support .env at repo root)
 config = context.config
+# Try loading from project .env if not already set in environment
+project_root = Path(__file__).resolve().parents[2]
+dotenv_path = project_root / ".env"
+if dotenv_path.exists():
+    load_dotenv(dotenv_path)
+
 database_url = os.getenv("DATABASE_URL")
 if not database_url:
     raise RuntimeError("DATABASE_URL environment variable is not set!")

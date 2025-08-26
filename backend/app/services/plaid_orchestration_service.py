@@ -14,7 +14,8 @@ from app.models.account import Account
 from app.services.plaid_client_service import get_plaid_client_service
 from app.services.plaid_account_service import get_plaid_account_service
 from app.services.plaid_transaction_service import get_plaid_transaction_service
-from app.services.plaid_webhook_service import get_plaid_webhook_service
+from app.services.utils.plaid_utils import group_accounts_by_token
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +30,6 @@ class PlaidOrchestrationService:
         self.client_service = get_plaid_client_service()
         self.account_service = get_plaid_account_service()
         self.transaction_service = get_plaid_transaction_service()
-        self.webhook_service = get_plaid_webhook_service()
         self.enabled = self.client_service.enabled
     
     # Token and Link Management (delegated to client service)
@@ -236,24 +236,7 @@ class PlaidOrchestrationService:
             access_token, start_date, end_date, account_ids
         )
     
-    # Recurring Transactions (delegated to webhook service)
-    async def fetch_recurring_transactions(self, access_token: str) -> Dict[str, Any]:
-        """Fetch recurring transactions using Plaid's /transactions/recurring/get endpoint"""
-        if not self.enabled:
-            return self._disabled_response()
-        
-        return await self.client_service.fetch_recurring_transactions(access_token)
-    
-    async def sync_recurring_transactions_for_user(self, db: Session, user_id: UUID) -> Dict[str, Any]:
-        """Sync all recurring transactions for a user's accounts"""
-        # Lightweight type assertion for internal bug detection
-        if not isinstance(user_id, UUID):
-            raise TypeError(f"user_id must be UUID, got {type(user_id)}")
-            
-        if not self.enabled:
-            return self._disabled_response()
-        
-        return await self.webhook_service.sync_recurring_transactions_for_user(db, user_id)
+    # Recurring/subscription features removed
     
     # Connection Status and Health
     async def get_connection_status(self, db: Session, user_id: UUID) -> Dict[str, Any]:

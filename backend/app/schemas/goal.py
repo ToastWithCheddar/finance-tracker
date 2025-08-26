@@ -71,7 +71,6 @@ class GoalUpdate(BaseModel):
 # Contribution schemas
 class GoalContributionBase(BaseModel):
     amount_cents: Annotated[int, Field(gt=0, description="Contribution amount in cents")]
-    note: str | None = None
 
 class GoalContributionCreate(GoalContributionBase):
     pass
@@ -85,9 +84,8 @@ class GoalContribution(GoalContributionBase, BaseResponseSchema):
 class GoalMilestone(BaseResponseSchema):
     goal_id: UUID 
     percentage: int
-    amount_reached: int 
+    amount_reached_cents: int 
     reached_date: datetime
-    celebrated: bool
     celebration_message: str | None = None
 
 # Main Goal schema

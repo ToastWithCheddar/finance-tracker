@@ -20,9 +20,8 @@ import uvicorn
 from app.config import settings
 from app.database import engine, check_database_health, create_database
 from app.models import Base
-from app.routes import auth, users, health, categories, transactions, budget, webhooks, notifications, ml, websockets, categorization_rules, dashboard, goals
+from app.routes import auth, users, health, categories, transactions, budget, webhooks, notifications, ml, websockets, dashboard, goals
 from app.routes import accounts_basic, accounts_plaid, accounts_sync, accounts_reconciliation
-from app.routes import recurring_plaid
 from app.core.exceptions import FinanceTrackerException
 from app.schemas.error import ErrorResponse, ValidationErrorResponse
 
@@ -115,7 +114,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app - Development Configuration
 app = FastAPI(
     title="Finance Tracker API (Development)",
-    description="A comprehensive personal finance management API with AI-powered insights - DEVELOPMENT MODE",
+    description="A comprehensive personal finance management API - DEVELOPMENT MODE",
     version="1.0.0-dev",
     docs_url="/docs",  # Always enabled in development
     redoc_url="/redoc",  # Always enabled in development
@@ -404,16 +403,6 @@ app.include_router(
     }
 )
 
-app.include_router(
-    recurring_plaid.router,
-    prefix="/api/recurring",
-    tags=["Recurring Transactions"],
-    responses={
-        401: {"description": "Unauthorized"},
-        404: {"description": "Not Found"},
-        422: {"description": "Validation Error"},
-    }
-)
 
 app.include_router(
     budget.router,
@@ -528,16 +517,6 @@ app.include_router(
 # Note: Saved filters router removed as it was empty
 
 
-app.include_router(
-    categorization_rules.router,
-    prefix="/api",
-    tags=["Categorization Rules"],
-    responses={
-        401: {"description": "Unauthorized"},
-        404: {"description": "Not Found"},
-        422: {"description": "Validation Error"},
-    }
-)
 
 
 
@@ -561,13 +540,11 @@ async def api_base():
             "users": "/api/users", 
             "categories": "/api/categories",
             "transactions": "/api/transactions",
-            "recurring": "/api/recurring",
             "budgets": "/api/budgets",
             "dashboard": "/api/dashboard",
             "accounts": "/api/accounts",
             "webhooks": "/api/webhooks",
             "notifications": "/api/notifications",
-            "categorization_rules": "/api/categorization-rules",
 
             "ml": "/api/ml",
             "health": "/health",

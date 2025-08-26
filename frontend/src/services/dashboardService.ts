@@ -38,6 +38,28 @@ export interface DashboardSummary {
   recommendations: string[];
 }
 
+// Transaction histogram data interface
+export interface TransactionHistogramBin {
+  range_min: number;
+  range_max: number;
+  count: number;
+  amount_total: number;
+  range_label: string;
+}
+
+export interface TransactionHistogramData {
+  bins: TransactionHistogramBin[];
+  statistics: {
+    total_transactions: number;
+    total_amount: number;
+    mean_amount: number;
+    median_amount: number;
+    min_amount: number;
+    max_amount: number;
+  };
+  filters_applied: DashboardFilters;
+}
+
 export class DashboardService extends BaseService {
   protected baseEndpoint = '/dashboard';
 

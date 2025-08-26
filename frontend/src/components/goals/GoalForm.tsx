@@ -124,7 +124,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     const targetAmount = parseCurrencyInput(targetAmountInput);
     const targetDate = watchedTargetDate; // Use the watched value instead of calling watch again
     
-    console.log('📊 Calculation inputs:', {
+    console.log('Calculation inputs:', {
       targetAmountInput: targetAmountInput,
       targetAmount: targetAmount,
       targetDate: targetDate,
@@ -164,7 +164,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     const remaining = targetAmount - currentAmount;
     const monthlyTargetCents = Math.max(0, Math.round(remaining / monthsRemaining));
     
-    console.log('💰 Calculation results:', {
+    console.log('Calculation results:', {
       currentAmount: currentAmount,
       remaining: remaining,
       monthsRemaining: monthsRemaining,
@@ -242,12 +242,12 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
                   ))
                 ) : (
                   <>
-                    <option value="SAVINGS">💰 Savings</option>
-                    <option value="DEBT_PAYOFF">💳 Debt Payoff</option>
-                    <option value="EMERGENCY_FUND">🚨 Emergency Fund</option>
-                    <option value="INVESTMENT">📈 Investment</option>
-                    <option value="PURCHASE">🛍️ Purchase</option>
-                    <option value="OTHER">🎯 Other</option>
+                    <option value="SAVINGS">Savings</option>
+                    <option value="DEBT_PAYOFF">Debt Payoff</option>
+                    <option value="EMERGENCY_FUND">Emergency Fund</option>
+                    <option value="INVESTMENT">Investment</option>
+                    <option value="PURCHASE">Purchase</option>
+                    <option value="OTHER">Other</option>
                   </>
                 )}
               </select>

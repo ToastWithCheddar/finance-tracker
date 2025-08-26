@@ -1,1 +1,0 @@
-export { categorizationRulesService } from './categorizationRulesService';

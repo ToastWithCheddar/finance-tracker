@@ -34,14 +34,8 @@ class Transaction(BaseModel):
     
     # Status
     status: Mapped[str] = mapped_column(String(20), default="posted", nullable=False)  # pending, posted, cancelled
-    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Identifies subscription/recurring payments
     is_transfer: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Distinguishes purchases and account transfers
     is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Allows users to hide transactions from normal views while preserving them in the database for audit trails
-    
-    # Recurring Information
-    # !!! Pattern: The parent transaction defines the rule, child transactions are generated instances.
-    recurring_rule: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)  # cron-like rules (for subscription etc.)
-    recurring_parent_id: Mapped[Optional[UUID]] = mapped_column(PG_UUID(as_uuid=True), ForeignKey("transactions.id"), nullable=True)
     
     # Location (for efficient querying)
     location: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)  # {lat, lng, address, city, state, country}
@@ -66,7 +60,6 @@ class Transaction(BaseModel):
     account = relationship("Account", back_populates="transactions")
     category = relationship("Category", back_populates="transactions", foreign_keys=[category_id])
     ml_suggested_category = relationship("Category", foreign_keys=[ml_suggested_category_id])
-    recurring_parent = relationship("Transaction", remote_side="Transaction.id", backref="recurring_children")
     goal_contributions = relationship("GoalContribution", back_populates="transaction", cascade="all, delete-orphan")
     
     def __repr__(self):
@@ -81,5 +74,4 @@ class Transaction(BaseModel):
         Index('idx_transaction_amount', 'amount_cents'),
         Index('idx_transaction_status', 'status'),
         Index('idx_transaction_plaid_id', 'plaid_transaction_id'),
-        Index('idx_transaction_recurring', 'is_recurring'),
     )

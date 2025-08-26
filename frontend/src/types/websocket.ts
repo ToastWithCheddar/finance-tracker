@@ -33,10 +33,7 @@ export const MessageType = {
   GOAL_ACHIEVED: 'goal_achieved',
   GOAL_MILESTONE_REACHED: 'goal_milestone_reached',
   
-  // Insights and AI
-  AI_INSIGHT_GENERATED: 'ai_insight_generated',
-  SPENDING_PATTERN_DETECTED: 'spending_pattern_detected',
-  CATEGORY_SUGGESTION: 'category_suggestion',
+  // Insights and AI removed
   
   // System events
   NOTIFICATION: 'notification',
@@ -51,31 +48,10 @@ export const MessageType = {
   TRANSACTION_SYNC_COMPLETE: 'transaction_sync_complete',
   BULK_SYNC_COMPLETE: 'bulk_sync_complete',
   
-  // Plaid recurring transactions
-  PLAID_RECURRING_SYNCED: 'plaid_recurring_synced',
-  PLAID_RECURRING_UPDATED: 'plaid_recurring_updated',
-  RECURRING_TRANSACTION_MUTED: 'recurring_transaction_muted',
-  RECURRING_TRANSACTION_LINKED: 'recurring_transaction_linked',
-  
-  // Categorization rules
-  CATEGORIZATION_RULE_CREATED: 'categorization_rule_created',
-  CATEGORIZATION_RULE_UPDATED: 'categorization_rule_updated',
-  CATEGORIZATION_RULE_DELETED: 'categorization_rule_deleted',
-  CATEGORIZATION_RULE_APPLIED: 'categorization_rule_applied',
-  RULE_EFFECTIVENESS_UPDATED: 'rule_effectiveness_updated',
-  
 } as const;
 
 export type MessageType = typeof MessageType[keyof typeof MessageType];
 
-export const NotificationPriority = {
-  LOW: 'low',
-  MEDIUM: 'medium',
-  HIGH: 'high',
-  CRITICAL: 'critical',
-} as const;
-
-export type NotificationPriority = typeof NotificationPriority[keyof typeof NotificationPriority];
 
 // Base WebSocket Message
 export interface WebSocketMessage {
@@ -152,7 +128,6 @@ export interface BudgetAlertPayload {
   remaining_cents: number;
   percentage_used: number;
   alert_type: string;
-  priority: NotificationPriority;
   message: string;
   period: string;
   threshold_reached: boolean;
@@ -177,7 +152,6 @@ export interface GoalAchievedPayload {
   achieved_amount_cents: number;
   achievement_date: string; // ISO datetime string
   celebration_message: string;
-  priority: NotificationPriority;
 }
 
 export interface AccountSyncPayload {
@@ -198,7 +172,6 @@ export interface AccountSyncErrorPayload {
   error_code?: string;
   retry_suggested: boolean;
   failed_at: string; // ISO datetime string
-  priority: NotificationPriority;
 }
 
 export interface NotificationPayload {
@@ -206,7 +179,6 @@ export interface NotificationPayload {
   title: string;
   message: string;
   notification_type: 'success' | 'error' | 'warning' | 'info';
-  priority: NotificationPriority;
   action_url?: string;
   metadata: Record<string, unknown>;
   created_at: string; // ISO datetime string
@@ -216,23 +188,11 @@ export interface NotificationPayload {
 export interface SystemAlertPayload {
   alert_type: string;
   message: string;
-  priority: NotificationPriority;
   system_wide: boolean;
   created_at: string; // ISO datetime string
 }
 
-export interface AIInsightPayload {
-  insight_id: string;
-  title: string;
-  description: string;
-  insight_type: string;
-  data: Record<string, unknown>;
-  confidence_score?: number;
-  actionable: boolean;
-  action_items: string[];
-  priority: NotificationPriority;
-  generated_at: string; // ISO datetime string
-}
+// Removed: AIInsightPayload
 
 export interface PingPayload {
   server_time: string; // ISO datetime string
@@ -271,68 +231,9 @@ export interface BulkSyncPayload {
   sync_time: string; // ISO datetime string
 }
 
-export interface PlaidRecurringSyncPayload {
-  account_id: string;
-  account_name: string;
-  recurring_transactions_count: number;
-  new_subscriptions: number;
-  updated_subscriptions: number;
-  synced_at: string; // ISO datetime string
-}
+// Rule action payloads removed
 
-export interface PlaidRecurringUpdatePayload {
-  stream_id: string;
-  account_id: string;
-  merchant_name: string;
-  description: string;
-  amount_cents: number;
-  frequency: string;
-  status: 'active' | 'inactive' | 'muted';
-  is_active: boolean;
-  confidence: number;
-  updated_at: string; // ISO datetime string
-}
-
-export interface RecurringTransactionActionPayload {
-  stream_id: string;
-  account_id: string;
-  merchant_name: string;
-  action: 'muted' | 'unmuted' | 'linked' | 'unlinked';
-  transaction_id?: string; // for linking actions
-  performed_at: string; // ISO datetime string
-}
-
-export interface CategorizationRuleActionPayload {
-  rule_id: string;
-  rule_name: string;
-  action: 'created' | 'updated' | 'deleted' | 'activated' | 'deactivated';
-  priority?: number;
-  conditions?: Record<string, any>;
-  actions?: Record<string, any>;
-  performed_at: string; // ISO datetime string
-}
-
-export interface RuleApplicationPayload {
-  rule_id: string;
-  rule_name: string;
-  transaction_id: string;
-  transaction_description: string;
-  old_category_id?: string;
-  new_category_id: string;
-  confidence_score: number;
-  applied_at: string; // ISO datetime string
-}
-
-export interface RuleEffectivenessPayload {
-  rule_id: string;
-  rule_name: string;
-  times_applied: number;
-  success_rate: number;
-  avg_confidence_score: number;
-  total_transactions_affected: number;
-  last_applied_at?: string; // ISO datetime string
-  updated_at: string; // ISO datetime string
-}
+// Rule-related payloads removed
 
 
 // Union type for all possible payloads
@@ -348,18 +249,11 @@ export type PayloadType =
   | AccountSyncErrorPayload
   | NotificationPayload
   | SystemAlertPayload
-  | AIInsightPayload
   | PingPayload
   | BatchUpdatePayload
   | WebhookSyncPayload
   | TransactionSyncPayload
   | BulkSyncPayload
-  | PlaidRecurringSyncPayload
-  | PlaidRecurringUpdatePayload
-  | RecurringTransactionActionPayload
-  | CategorizationRuleActionPayload
-  | RuleApplicationPayload
-  | RuleEffectivenessPayload
 ;
 
 // Typed WebSocket Messages
@@ -414,32 +308,9 @@ export function isNotification(message: WebSocketMessage): message is Notificati
   return message.type === MessageType.NOTIFICATION;
 }
 
-export function isPlaidRecurringSync(message: WebSocketMessage): boolean {
-  return message.type === MessageType.PLAID_RECURRING_SYNCED;
-}
+// Recurring-related type guards removed
 
-export function isPlaidRecurringUpdate(message: WebSocketMessage): boolean {
-  return message.type === MessageType.PLAID_RECURRING_UPDATED;
-}
-
-export function isRecurringTransactionAction(message: WebSocketMessage): boolean {
-  return message.type === MessageType.RECURRING_TRANSACTION_MUTED || 
-         message.type === MessageType.RECURRING_TRANSACTION_LINKED;
-}
-
-export function isCategorizationRuleAction(message: WebSocketMessage): boolean {
-  return message.type === MessageType.CATEGORIZATION_RULE_CREATED ||
-         message.type === MessageType.CATEGORIZATION_RULE_UPDATED ||
-         message.type === MessageType.CATEGORIZATION_RULE_DELETED;
-}
-
-export function isRuleApplication(message: WebSocketMessage): boolean {
-  return message.type === MessageType.CATEGORIZATION_RULE_APPLIED;
-}
-
-export function isRuleEffectivenessUpdate(message: WebSocketMessage): boolean {
-  return message.type === MessageType.RULE_EFFECTIVENESS_UPDATED;
-}
+// Rule-based type guards removed
 
 
 // WebSocket connection status

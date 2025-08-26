@@ -17,12 +17,14 @@ import { getRelativeTime } from '../../utils/date';
 interface RealtimeTransactionFeedProps {
   transactions: RealtimeTransaction[];
   newCount: number;
+  totalCount?: number;
   isLive?: boolean;
 }
 
 export const RealtimeTransactionFeed: React.FC<RealtimeTransactionFeedProps> = ({
   transactions,
   newCount,
+  totalCount,
   isLive = true
 }) => {
   const markTransactionsSeen = useRealtimeStore((s) => s.markTransactionsSeen);
@@ -64,10 +66,14 @@ export const RealtimeTransactionFeed: React.FC<RealtimeTransactionFeedProps> = (
           <div className="text-center py-12">
             <Clock className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Waiting for transactions...
+              {totalCount !== undefined && totalCount > 0 
+                ? 'No recent transactions' 
+                : 'Waiting for transactions...'}
             </h3>
             <p className="text-gray-600">
-              Your real-time transactions will appear here as they happen.
+              {totalCount !== undefined && totalCount > 0
+                ? `You have ${totalCount} total transactions. Recent activity will appear here.`
+                : 'Your real-time transactions will appear here as they happen.'}
             </p>
           </div>
         </CardContent>
@@ -84,6 +90,11 @@ export const RealtimeTransactionFeed: React.FC<RealtimeTransactionFeedProps> = (
             {newCount > 0 && (
               <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
                 {newCount} new
+              </span>
+            )}
+            {totalCount !== undefined && totalCount > 0 && (
+              <span className="ml-2 px-2 py-1 bg-gray-100 text-gray-600 text-xs rounded-full">
+                {totalCount} total
               </span>
             )}
           </div>
@@ -137,11 +148,11 @@ const TransactionItem: React.FC<TransactionItemProps> = ({ transaction, isFirst 
   
   return (
     <div 
-      className={`p-4 hover:bg-gray-50 transition-all duration-300 ${
+      className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-all duration-300 ${
         transaction.isNew 
-          ? 'bg-blue-50 border-l-4 border-l-blue-500 animate-pulse' 
+          ? 'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-500 animate-pulse' 
           : ''
-      } ${isFirst ? 'bg-gradient-to-r from-blue-50 to-transparent' : ''}`}
+      } ${isFirst ? 'bg-gradient-to-r from-blue-50 to-transparent dark:from-blue-900/30 dark:to-transparent' : ''}`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center space-x-3">

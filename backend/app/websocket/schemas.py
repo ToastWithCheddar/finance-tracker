@@ -41,10 +41,7 @@ class MessageType(str, Enum):
     GOAL_ACHIEVED = "goal_achieved"
     GOAL_MILESTONE_REACHED = "goal_milestone_reached"
     
-    # Insights and AI
-    AI_INSIGHT_GENERATED = "ai_insight_generated"
-    SPENDING_PATTERN_DETECTED = "spending_pattern_detected"
-    CATEGORY_SUGGESTION = "category_suggestion"
+    # Insights and AI (removed)
     
     # System events
     NOTIFICATION = "notification"
@@ -54,11 +51,6 @@ class MessageType(str, Enum):
     PONG = "pong"
     BATCH_UPDATE = "batch_update"
 
-class NotificationPriority(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 # Base WebSocket Message
 class WebSocketMessage(BaseModel):
@@ -118,7 +110,6 @@ class BudgetAlertPayload(BaseModel):
     remaining_cents: int = Field(..., description="Remaining amount in cents")
     percentage_used: float = Field(..., description="Percentage of budget used")
     alert_type: str = Field(..., description="Alert type")
-    priority: NotificationPriority = Field(..., description="Alert priority")
     message: str = Field(..., description="Alert message")
     period: str = Field(..., description="Budget period")
     threshold_reached: bool = Field(..., description="Whether threshold was reached")
@@ -141,7 +132,6 @@ class GoalAchievedPayload(BaseModel):
     achieved_amount_cents: int = Field(..., description="Achieved amount in cents")
     achievement_date: datetime = Field(..., description="Achievement timestamp")
     celebration_message: str = Field(..., description="Celebration message")
-    priority: NotificationPriority = Field(..., description="Message priority")
 
 class AccountSyncPayload(BaseModel):
     account_id: str = Field(..., description="Account ID")
@@ -160,7 +150,6 @@ class AccountSyncErrorPayload(BaseModel):
     error_code: Optional[str] = Field(None, description="Error code")
     retry_suggested: bool = Field(True, description="Whether retry is suggested")
     failed_at: datetime = Field(..., description="Failure timestamp")
-    priority: NotificationPriority = Field(NotificationPriority.MEDIUM, description="Error priority")
 
 class TransactionSyncCompletePayload(BaseModel):
     account_id: str = Field(..., description="Account ID")
@@ -190,7 +179,6 @@ class NotificationPayload(BaseModel):
     title: str = Field(..., description="Notification title")
     message: str = Field(..., description="Notification message")
     notification_type: Literal["success", "error", "warning", "info"] = Field("info", description="Notification type")
-    priority: NotificationPriority = Field(NotificationPriority.MEDIUM, description="Notification priority")
     action_url: Optional[str] = Field(None, description="Action URL")
     metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     created_at: datetime = Field(..., description="Creation timestamp")
@@ -199,21 +187,10 @@ class NotificationPayload(BaseModel):
 class SystemAlertPayload(BaseModel):
     alert_type: str = Field(..., description="Alert type")
     message: str = Field(..., description="Alert message")
-    priority: NotificationPriority = Field(NotificationPriority.HIGH, description="Alert priority")
     system_wide: bool = Field(True, description="Whether alert is system-wide")
     created_at: datetime = Field(..., description="Creation timestamp")
 
-class AIInsightPayload(BaseModel):
-    insight_id: str = Field(..., description="Insight ID")
-    title: str = Field(..., description="Insight title")
-    description: str = Field(..., description="Insight description")
-    insight_type: str = Field(..., description="Insight type")
-    data: Dict[str, Any] = Field(default_factory=dict, description="Insight data")
-    confidence_score: Optional[float] = Field(None, description="Confidence score")
-    actionable: bool = Field(False, description="Whether insight is actionable")
-    action_items: List[str] = Field(default_factory=list, description="Action items")
-    priority: NotificationPriority = Field(NotificationPriority.MEDIUM, description="Insight priority")
-    generated_at: datetime = Field(..., description="Generation timestamp")
+# Removed: AIInsightPayload
 
 class PingPayload(BaseModel):
     server_time: datetime = Field(..., description="Server timestamp")
@@ -240,7 +217,6 @@ PayloadType = Union[
     WebhookSyncCompletePayload,
     NotificationPayload,
     SystemAlertPayload,
-    AIInsightPayload,
     PingPayload,
     BatchUpdatePayload,
 ]

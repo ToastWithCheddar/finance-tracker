@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { NotificationService, NotificationFilters, NotificationResponse } from '../services/notificationService';
+import { NotificationService } from '../services/notificationService';
+import type { NotificationFilters, NotificationResponse } from '../services/notificationService';
 import { toast } from 'react-hot-toast';
+import { useRealtimeStore } from '../stores/realtimeStore';
 
 // Query keys for React Query
 export const NOTIFICATION_KEYS = {
@@ -117,6 +119,7 @@ export function useMarkAsUnread() {
  */
 export function useDismissNotification() {
   const queryClient = useQueryClient();
+  const dismissNotification = useRealtimeStore((state) => state.dismissNotification);
 
   return useMutation({
     mutationFn: (id: string) => NotificationService.dismissNotification(id),
@@ -128,6 +131,9 @@ export function useDismissNotification() {
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.lists() });
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.stats() });
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.unread() });
+
+      // Also sync with realtime store to ensure local state is consistent
+      dismissNotification(dismissedId);
 
       toast.success('Notification dismissed');
     },
@@ -143,12 +149,16 @@ export function useDismissNotification() {
  */
 export function useMarkAllAsRead() {
   const queryClient = useQueryClient();
+  const markAllNotificationsRead = useRealtimeStore((state) => state.markAllNotificationsRead);
 
   return useMutation({
     mutationFn: () => NotificationService.markAllAsRead(),
     onSuccess: (result) => {
       // Invalidate all notification queries
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.all });
+      
+      // Also sync with realtime store to ensure local state is consistent
+      markAllNotificationsRead();
       
       toast.success(`Marked ${result.updated_count} notifications as read`);
     },
@@ -216,15 +226,6 @@ export function useNotificationHelpers() {
     return date.toLocaleDateString();
   };
 
-  const getPriorityColor = (priority: NotificationResponse['priority']) => {
-    switch (priority) {
-      case 'critical': return 'red';
-      case 'high': return 'orange';
-      case 'medium': return 'yellow';
-      case 'low': return 'blue';
-      default: return 'gray';
-    }
-  };
 
   const getTypeIcon = (type: NotificationResponse['type']) => {
     switch (type) {
@@ -240,7 +241,6 @@ export function useNotificationHelpers() {
 
   return {
     formatTime,
-    getPriorityColor,
     getTypeIcon,
   };
 }

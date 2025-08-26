@@ -22,7 +22,7 @@ class BudgetAlertService extends BaseService {
     budgetId: string, 
     settings: CreateBudgetAlertSettingsRequest
   ): Promise<BudgetAlertSettings> {
-    return apiClient.post<BudgetAlertSettings>(`${this.baseEndpoint}/${budgetId}/alert-settings`, settings as Record<string, unknown>);
+    return apiClient.post<BudgetAlertSettings>(`${this.baseEndpoint}/${budgetId}/alert-settings`, settings);
   }
 
   // Update alert settings for a budget
@@ -30,7 +30,7 @@ class BudgetAlertService extends BaseService {
     budgetId: string, 
     settings: UpdateBudgetAlertSettingsRequest
   ): Promise<BudgetAlertSettings> {
-    return apiClient.put<BudgetAlertSettings>(`${this.baseEndpoint}/${budgetId}/alert-settings`, settings as Record<string, unknown>);
+    return apiClient.put<BudgetAlertSettings>(`${this.baseEndpoint}/${budgetId}/alert-settings`, settings);
   }
 
   // Delete alert settings for a budget
@@ -52,7 +52,7 @@ class BudgetAlertService extends BaseService {
 
   // Send test alert
   async sendTestBudgetAlert(budgetId: string, testData: BudgetAlertTest): Promise<{ message: string }> {
-    return apiClient.post<{ message: string }>(`${this.baseEndpoint}/${budgetId}/alert-settings/test`, testData as Record<string, unknown>);
+    return apiClient.post<{ message: string }>(`${this.baseEndpoint}/${budgetId}/alert-settings/test`, testData);
   }
 
   // Wrapped versions for consistency
@@ -149,6 +149,23 @@ class BudgetAlertService extends BaseService {
       case 'weekly': return 'Weekly Summary';
       default: return frequency;
     }
+  }
+
+  // Static helper for UI components
+  static getPredefinedThresholds(): Array<{ value: number; label: string; color: string }> {
+    const values = [0.5, 0.75, 0.8, 0.9, 0.95];
+    const colorFor = (v: number) => {
+      if (v >= 0.95) return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300';
+      if (v >= 0.9) return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300';
+      if (v >= 0.8) return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300';
+      if (v >= 0.75) return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300';
+      return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-200';
+    };
+    return values.map(v => ({
+      value: v,
+      label: `${(v * 100).toFixed(0)}%`,
+      color: colorFor(v),
+    }));
   }
 }
 

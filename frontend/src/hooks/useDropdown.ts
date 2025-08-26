@@ -23,7 +23,7 @@ interface UseDropdownReturn {
   /** Function to toggle the dropdown state */
   toggle: () => void;
   /** Ref to attach to the trigger element for focus management */
-  triggerRef: React.RefObject<HTMLElement>;
+  triggerRef: React.RefObject<HTMLElement | null>;
 }
 
 /**
@@ -40,7 +40,7 @@ export function useDropdown(options: UseDropdownOptions): UseDropdownReturn {
   } = options;
 
   const [isOpen, setIsOpen] = useState(false);
-  const triggerRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLElement | null>(null);
   const previousActiveElement = useRef<HTMLElement | null>(null);
 
   const open = () => {

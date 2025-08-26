@@ -10,7 +10,6 @@ import {
   AlertCircle,
   Target,
   PiggyBank,
-  Sparkles,
   ExternalLink,
   Search,
   Filter,
@@ -20,20 +19,24 @@ import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { Button } from '../ui/Button';
 import type { RealtimeNotification } from '../../stores/realtimeStore';
 import { useRealtimeStore } from '../../stores/realtimeStore';
+import { useMarkAllAsRead, useDismissNotification } from '../../hooks/useNotifications';
 import { getRelativeTime } from '../../utils/date';
 
 interface NotificationPanelProps {
   notifications: RealtimeNotification[];
   unreadCount: number;
+  isRealtimeEnabled?: boolean;
 }
 
 export const NotificationPanel: React.FC<NotificationPanelProps> = ({
   notifications,
-  unreadCount
+  unreadCount,
+  isRealtimeEnabled = true
 }) => {
   const markNotificationRead = useRealtimeStore((s) => s.markNotificationRead);
-  const markAllNotificationsRead = useRealtimeStore((s) => s.markAllNotificationsRead);
-  const dismissNotification = useRealtimeStore((s) => s.dismissNotification);
+  const realtimeDismissNotification = useRealtimeStore((s) => s.dismissNotification);
+  const markAllAsReadMutation = useMarkAllAsRead();
+  const dismissNotificationMutation = useDismissNotification();
   
   const [filter, setFilter] = useState<'all' | 'unread'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,11 +49,14 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
     { value: 'budget_alert', label: 'Budget Alert' },
     { value: 'goal_milestone', label: 'Goal Milestone' },
     { value: 'goal_achieved', label: 'Goal Achieved' },
+    { value: 'goal_created', label: 'Goal Created' },
+    { value: 'goal_updated', label: 'Goal Updated' },
+    { value: 'goal_deleted', label: 'Goal Deleted' },
+    { value: 'goal_status_changed', label: 'Goal Status Changed' },
+    { value: 'contribution_added', label: 'Contribution Added' },
     { value: 'success', label: 'Success' },
     { value: 'error', label: 'Error' },
     { value: 'warning', label: 'Warning' },
-    { value: 'ai_insight_generated', label: 'AI Insight' },
-    { value: 'spending_pattern_detected', label: 'Spending Pattern' },
     { value: 'goal_progress_update', label: 'Goal Progress' },
   ];
 
@@ -113,6 +119,11 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
     return groupNotificationsByDate(filteredNotifications);
   }, [filteredNotifications]);
 
+  const handleMarkAllRead = () => {
+    // The hook now handles both API call and realtime store sync automatically
+    markAllAsReadMutation.mutate();
+  };
+
   const handleNotificationClick = (notification: RealtimeNotification) => {
     if (!notification.read) {
       markNotificationRead(notification.id);
@@ -126,16 +137,12 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
 
   const handleDismiss = (e: React.MouseEvent, notificationId: string) => {
     e.stopPropagation();
-    dismissNotification(notificationId);
+    // Call API to dismiss in backend, which will also update local realtime store via the hook
+    dismissNotificationMutation.mutate(notificationId);
   };
 
-  const getNotificationIcon = (type: string, priority: string) => {
-    const iconClass = `h-5 w-5 ${
-      priority === 'critical' ? 'text-red-500' :
-      priority === 'high' ? 'text-orange-500' :
-      priority === 'medium' ? 'text-blue-500' :
-      'text-gray-500'
-    }`;
+  const getNotificationIcon = (type: string) => {
+    const iconClass = `h-5 w-5 text-blue-500`;
 
     switch (type) {
       case 'success':
@@ -149,29 +156,25 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
         return <AlertTriangle className={iconClass} />;
       case 'budget_threshold_reached':
         return <PiggyBank className={iconClass} />;
-      case 'ai_insight_generated':
-      case 'spending_pattern_detected':
-        return <Sparkles className={iconClass} />;
+      // AI Insight and pattern detection removed
       case 'goal_progress_update':
+      case 'goal_milestone':
         return <Target className={iconClass} />;
+      case 'goal_created':
+        return <Target className="h-5 w-5 text-green-500" />;
+      case 'goal_updated':
+        return <Target className="h-5 w-5 text-blue-500" />;
+      case 'goal_deleted':
+        return <Target className="h-5 w-5 text-red-500" />;
+      case 'goal_status_changed':
+        return <Target className="h-5 w-5 text-orange-500" />;
+      case 'contribution_added':
+        return <PiggyBank className="h-5 w-5 text-green-600" />;
       default:
         return <Info className={iconClass} />;
     }
   };
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'critical':
-        return 'border-l-red-500 bg-red-50';
-      case 'high':
-        return 'border-l-orange-500 bg-orange-50';
-      case 'medium':
-        return 'border-l-blue-500 bg-blue-50';
-      case 'low':
-      default:
-        return 'border-l-gray-500 bg-gray-50';
-    }
-  };
 
   if (notifications.length === 0) {
     return (
@@ -180,16 +183,24 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
           <CardTitle className="flex items-center">
             <Bell className="h-5 w-5 mr-2" />
             Notifications
+            {!isRealtimeEnabled && (
+              <span className="ml-2 px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
+                Disabled
+              </span>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8">
             <BellOff className="h-12 w-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">
-              All caught up!
+              {isRealtimeEnabled ? 'All caught up!' : 'Realtime Disabled'}
             </h3>
             <p className="text-gray-600">
-              You have no new notifications.
+              {isRealtimeEnabled 
+                ? 'You have no new notifications.'
+                : 'Enable realtime features to see live notifications.'
+              }
             </p>
           </div>
         </CardContent>
@@ -206,12 +217,12 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
             <span>Notifications</span>
             {unreadCount > 0 && (
               <span className="ml-2 px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
-                {unreadCount}
+                {unreadCount} unread
               </span>
             )}
             {filteredNotifications.length !== notifications.length && (
               <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
-                {filteredNotifications.length} filtered
+                {filteredNotifications.length} shown
               </span>
             )}
           </div>
@@ -257,9 +268,10 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
               <Button 
                 variant="ghost" 
                 size="sm" 
-                onClick={markAllNotificationsRead}
+                onClick={handleMarkAllRead}
+                disabled={markAllAsReadMutation.isPending}
               >
-                Mark All Read
+                {markAllAsReadMutation.isPending ? 'Marking...' : 'Mark All Read'}
               </Button>
             )}
           </div>
@@ -365,8 +377,7 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
                       notification={notification}
                       onClick={() => handleNotificationClick(notification)}
                       onDismiss={(e) => handleDismiss(e, notification.id)}
-                      getIcon={() => getNotificationIcon(notification.type || '', notification.priority || '')}
-                      getPriorityColor={() => getPriorityColor(notification.priority || '')}
+                      getIcon={() => getNotificationIcon(notification.type || '')}
                     />
                   ))}
                 </div>
@@ -384,25 +395,23 @@ interface NotificationItemProps {
   onClick: () => void;
   onDismiss: (e: React.MouseEvent) => void;
   getIcon: () => React.ReactNode;
-  getPriorityColor: () => string;
 }
 
 const NotificationItem: React.FC<NotificationItemProps> = ({
   notification,
   onClick,
   onDismiss,
-  getIcon,
-  getPriorityColor
+  getIcon
 }) => {
   return (
     <div
       onClick={onClick}
-      className={`p-4 cursor-pointer transition-all duration-200 border-l-4 ${
-        notification.read ? 'hover:bg-gray-50' : 'hover:bg-blue-50'
-      } ${getPriorityColor()} ${
+      className={`p-4 cursor-pointer transition-all duration-200 border-l-4 border-l-blue-500 ${
+        notification.read ? 'hover:bg-gray-50 bg-gray-50' : 'hover:bg-blue-50 bg-blue-50'
+      } ${
         notification.isNew ? 'animate-pulse' : ''
       } ${
-        !notification.read ? 'bg-white' : 'bg-gray-50 opacity-75'
+        !notification.read ? 'opacity-100' : 'opacity-75'
       }`}
     >
       <div className="flex items-start justify-between">
@@ -443,16 +452,6 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
                   {getRelativeTime(notification.created_at)}
                 </span>
                 
-                {/* Priority Badge */}
-                {(notification.priority === 'high' || notification.priority === 'critical') && (
-                  <span className={`px-2 py-0.5 rounded-full text-xs ${
-                    notification.priority === 'critical' 
-                      ? 'bg-red-100 text-red-800' 
-                      : 'bg-orange-100 text-orange-800'
-                  }`}>
-                    {notification.priority}
-                  </span>
-                )}
                 
                 {/* New Badge */}
                 {notification.isNew && (
