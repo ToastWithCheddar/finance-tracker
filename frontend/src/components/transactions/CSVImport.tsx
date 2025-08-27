@@ -7,6 +7,7 @@ interface CSVImportProps {
   isOpen: boolean;
   onClose: () => void;
   onImport: (file: File) => Promise<void>;
+  isLoading?: boolean;
 }
 
 interface ImportPreview {
@@ -16,15 +17,19 @@ interface ImportPreview {
   invalidRows: number;
 }
 
-export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
+export function CSVImport({ isOpen, onClose, onImport, isLoading = false }: CSVImportProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
   const [error, setError] = useState<string>('');
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const requiredHeaders = ['amount', 'category', 'transaction_date', 'transaction_type'];
+  // Define expected and optional headers with better validation
+  const requiredHeaders = ['amount', 'transaction_date', 'transaction_type'];
+  const optionalHeaders = ['category', 'description'];
+  const allValidHeaders = [...requiredHeaders, ...optionalHeaders];
 
   const handleFileSelect = (selectedFile: File) => {
     if (!selectedFile.name.endsWith('.csv')) {
@@ -52,39 +57,85 @@ export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
         const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
         const rows = lines.slice(1).map(line => line.split(',').map(cell => cell.trim()));
 
-        // Validate headers
+        // Validate headers - check for required headers and warn about unknown ones
         const missingHeaders = requiredHeaders.filter(header => !headers.includes(header));
         if (missingHeaders.length > 0) {
-          setError(`Missing required columns: ${missingHeaders.join(', ')}`);
+          setError(`Missing required columns: ${missingHeaders.join(', ')}. Required: ${requiredHeaders.join(', ')}`);
           return;
+        }
+
+        // Check for unknown headers and warn (but don't error)
+        const unknownHeaders = headers.filter(header => !allValidHeaders.includes(header));
+        if (unknownHeaders.length > 0) {
+          console.warn(`Unknown columns will be ignored: ${unknownHeaders.join(', ')}`);
         }
 
         // Validate rows
         let validRows = 0;
         let invalidRows = 0;
 
-        rows.forEach(row => {
+        rows.forEach((row, rowIndex) => {
           const amountIndex = headers.indexOf('amount');
           const typeIndex = headers.indexOf('transaction_type');
           const categoryIndex = headers.indexOf('category');
           const dateIndex = headers.indexOf('transaction_date');
+          const descriptionIndex = headers.indexOf('description');
 
+          // More robust validation
           const amount = parseFloat(row[amountIndex]);
-          const type = row[typeIndex]?.toLowerCase();
-          const category = row[categoryIndex];
-          const date = row[dateIndex];
+          const type = row[typeIndex]?.toLowerCase().trim();
+          const category = row[categoryIndex]?.trim();
+          const date = row[dateIndex]?.trim();
+          const description = row[descriptionIndex]?.trim();
 
-          if (
-            !isNaN(amount) && 
-            amount > 0 && 
-            ['income', 'expense'].includes(type) &&
-            category &&
-            date &&
-            !isNaN(Date.parse(date))
-          ) {
+          // Validation with detailed error tracking
+          let isValid = true;
+          const rowErrors: string[] = [];
+
+          // Amount validation
+          if (isNaN(amount) || amount <= 0) {
+            isValid = false;
+            rowErrors.push('invalid amount');
+          }
+
+          // Type validation - more flexible
+          if (!type || !['income', 'expense', 'credit', 'debit'].includes(type)) {
+            isValid = false;
+            rowErrors.push(`invalid transaction_type: '${type}' (expected: income/expense)`);
+          }
+
+          // Date validation - support multiple formats
+          let parsedDate = null;
+          if (!date) {
+            isValid = false;
+            rowErrors.push('missing date');
+          } else {
+            // Try multiple date formats
+            const dateFormats = [
+              /^\d{4}-\d{2}-\d{2}$/, // YYYY-MM-DD
+              /^\d{2}\/\d{2}\/\d{4}$/, // MM/DD/YYYY
+              /^\d{2}-\d{2}-\d{4}$/, // MM-DD-YYYY
+            ];
+            
+            const isValidDateFormat = dateFormats.some(format => format.test(date));
+            parsedDate = new Date(date);
+            
+            if (!isValidDateFormat || isNaN(parsedDate.getTime())) {
+              isValid = false;
+              rowErrors.push(`invalid date format: '${date}' (expected: YYYY-MM-DD, MM/DD/YYYY, or MM-DD-YYYY)`);
+            }
+          }
+
+          // Category is now optional but warn if missing
+          if (!category && categoryIndex !== -1) {
+            console.warn(`Row ${rowIndex + 2}: Missing category, will be auto-categorized`);
+          }
+
+          if (isValid) {
             validRows++;
           } else {
             invalidRows++;
+            console.warn(`Row ${rowIndex + 2} invalid:`, rowErrors.join(', '));
           }
         });
 
@@ -105,13 +156,34 @@ export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
     if (!file) return;
 
     setIsProcessing(true);
+    setImportProgress(0);
+    setError('');
+    
     try {
+      // Simulate progress updates during import
+      const progressInterval = setInterval(() => {
+        setImportProgress(prev => {
+          if (prev >= 90) return prev;
+          return prev + Math.random() * 20;
+        });
+      }, 200);
+
       await onImport(file);
+      
+      // Clear progress interval and set to 100%
+      clearInterval(progressInterval);
+      setImportProgress(100);
+      
+      // Small delay to show completion
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       onClose();
       setFile(null);
       setPreview(null);
+      setImportProgress(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed');
+      setImportProgress(0);
     } finally {
       setIsProcessing(false);
     }
@@ -140,11 +212,12 @@ export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
 
   const downloadTemplate = () => {
     const csvContent = [
-      'amount,category,description,transaction_date,transaction_type',
-      '25.50,Food & Dining,Lunch at restaurant,2024-01-15,expense',
-      '3000.00,Salary,Monthly salary,2024-01-01,income',
-      '45.00,Transportation,Gas,2024-01-14,expense',
-      '12.99,Entertainment,Netflix charge,2024-01-13,expense'
+      'amount,transaction_date,transaction_type,category,description',
+      '25.50,2024-01-15,expense,Food & Dining,Lunch at restaurant',
+      '3000.00,2024-01-01,income,Salary,Monthly salary',
+      '45.00,2024-01-14,expense,Transportation,Gas',
+      '12.99,2024-01-13,expense,Entertainment,Netflix charge',
+      '50.00,01/20/2024,expense,,Groceries without category'
     ].join('\n');
 
     const blob = new Blob([csvContent], { type: 'text/csv' });
@@ -165,11 +238,12 @@ export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
           <h4 className="font-medium text-blue-900 mb-2">CSV Format Requirements</h4>
           <ul className="text-sm text-blue-800 space-y-1">
-            <li>• Required columns: <code>amount</code>, <code>category</code>, <code>transaction_date</code>, <code>transaction_type</code></li>
-            <li>• Optional columns: <code>description</code></li>
-            <li>• Transaction type must be either "income" or "expense"</li>
-            <li>• Date format: YYYY-MM-DD (e.g., 2024-01-15)</li>
-            <li>• Amount must be a positive number</li>
+            <li>• <strong>Required columns:</strong> <code>amount</code>, <code>transaction_date</code>, <code>transaction_type</code></li>
+            <li>• <strong>Optional columns:</strong> <code>category</code>, <code>description</code></li>
+            <li>• <strong>Transaction type:</strong> "income", "expense", "credit", or "debit"</li>
+            <li>• <strong>Date formats:</strong> YYYY-MM-DD, MM/DD/YYYY, or MM-DD-YYYY</li>
+            <li>• <strong>Amount:</strong> Must be a positive number (expenses will be automatically converted)</li>
+            <li>• <strong>Category:</strong> If missing, transactions will be auto-categorized using AI</li>
           </ul>
           <Button
             variant="outline"
@@ -302,6 +376,32 @@ export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
           </div>
         )}
 
+        {/* Progress Indicator */}
+        {isProcessing && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-gray-700">
+                Importing transactions...
+              </span>
+              <span className="text-sm text-gray-500">
+                {Math.round(importProgress)}%
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${importProgress}%` }}
+              />
+            </div>
+            <div className="text-xs text-gray-500 text-center">
+              {importProgress < 30 && "Processing CSV file..."}
+              {importProgress >= 30 && importProgress < 70 && "Validating transaction data..."}
+              {importProgress >= 70 && importProgress < 95 && "Saving transactions to database..."}
+              {importProgress >= 95 && "Finalizing import..."}
+            </div>
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex justify-between pt-4">
           <Button
@@ -315,9 +415,16 @@ export function CSVImport({ isOpen, onClose, onImport }: CSVImportProps) {
           <Button
             onClick={handleImport}
             disabled={!file || !preview || preview.validRows === 0 || isProcessing}
-            className="bg-green-600 hover:bg-green-700"
+            className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {isProcessing ? 'Importing...' : `Import ${preview?.validRows || 0} Transactions`}
+            {isProcessing ? (
+              <div className="flex items-center">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                Importing...
+              </div>
+            ) : (
+              `Import ${preview?.validRows || 0} Transactions`
+            )}
           </Button>
         </div>
       </div>

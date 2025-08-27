@@ -114,6 +114,110 @@ def get_transaction_histogram(
         bins=bins
     )
 
+@router.get("/export")
+async def export_transactions(
+    format: str = Query("csv", pattern="^(csv|json)$", description="Export format"),
+    start_date: Optional[datetime] = Query(None, description="Start date filter"),
+    end_date: Optional[datetime] = Query(None, description="End date filter"),
+    category_id: Optional[str] = Query(None, description="Category ID filter"),
+    transaction_type: Optional[str] = Query(None, description="Transaction type filter (income/expense)"),
+    db: Session = Depends(get_db_with_user_context),
+    current_user: User = Depends(get_current_user)
+):
+    """Export transactions in CSV or JSON format using streaming for efficient memory usage"""
+    from fastapi.responses import StreamingResponse
+    import json
+    import csv
+    import io
+    
+    filters = TransactionFilter(
+        start_date=start_date,
+        end_date=end_date,
+        category_id=category_id,
+        transaction_type=transaction_type
+    )
+    
+    def format_transaction_for_export(transaction):
+        """Helper function to format a transaction for export"""
+        amount_dollars = transaction.amount_cents / 100
+        transaction_type = 'expense' if transaction.amount_cents < 0 else 'income'
+        return {
+            'id': str(transaction.id),
+            'amount': abs(amount_dollars),
+            'category': getattr(transaction.category, 'name', '') if transaction.category else '',
+            'description': transaction.description or '',
+            'transaction_date': transaction.transaction_date.strftime('%Y-%m-%d'),
+            'transaction_type': transaction_type,
+            'created_at': transaction.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'updated_at': transaction.updated_at.strftime('%Y-%m-%d %H:%M:%S')
+        }
+    
+    if format == "csv":
+        def generate_csv():
+            """Generator function for CSV streaming"""
+            # Create in-memory buffer for CSV header
+            output = io.StringIO()
+            fieldnames = ['id', 'amount', 'category', 'description', 'transaction_date', 'transaction_type', 'created_at', 'updated_at']
+            writer = csv.DictWriter(output, fieldnames=fieldnames)
+            
+            # Write header
+            writer.writeheader()
+            yield output.getvalue()
+            
+            # Stream transactions in chunks
+            for transaction_chunk in TransactionService.stream_transactions_for_export(db, current_user.id, filters):
+                # Clear buffer for next chunk
+                output.seek(0)
+                output.truncate(0)
+                
+                # Write chunk to buffer
+                for transaction in transaction_chunk:
+                    formatted_transaction = format_transaction_for_export(transaction)
+                    # Remove updated_at for CSV to match original format
+                    formatted_transaction.pop('updated_at')
+                    writer.writerow(formatted_transaction)
+                
+                # Yield chunk content
+                yield output.getvalue()
+        
+        return StreamingResponse(
+            generate_csv(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=transactions.csv"}
+        )
+    
+    else:  # json format
+        def generate_json():
+            """Generator function for JSON streaming"""
+            yield "["  # Start JSON array
+            first_item = True
+            
+            # Stream transactions in chunks
+            for transaction_chunk in TransactionService.stream_transactions_for_export(db, current_user.id, filters):
+                for transaction in transaction_chunk:
+                    formatted_transaction = format_transaction_for_export(transaction)
+                    # Update date formatting for JSON
+                    formatted_transaction['transaction_date'] = transaction.transaction_date.isoformat()
+                    formatted_transaction['created_at'] = transaction.created_at.isoformat()
+                    formatted_transaction['updated_at'] = transaction.updated_at.isoformat()
+                    
+                    # Add comma separator between items (except for first item)
+                    if not first_item:
+                        yield ","
+                    else:
+                        first_item = False
+                    
+                    # Yield formatted transaction
+                    yield json.dumps(formatted_transaction, indent=2)
+            
+            yield "]"  # Close JSON array
+        
+        return StreamingResponse(
+            generate_json(),
+            media_type="application/json",
+            headers={"Content-Disposition": "attachment; filename=transactions.json"}
+        )
+
 @router.get("/{transaction_id}", response_model=TransactionResponse)
 def get_transaction(
     transaction = Depends(get_owned_transaction)
@@ -262,6 +366,39 @@ async def import_transactions(
     if not file.filename.endswith('.csv'):
         raise ValidationError("Only CSV files are supported")
 
+    # Get user's accounts and prioritize Plaid credit card for CSV imports
+    from app.services.account_service import AccountService
+    from app.schemas.account import AccountCreate
+    account_service = AccountService()
+    user_accounts = account_service.get_by_user(db, current_user.id)
+    
+    if not user_accounts:
+        # Create a default account if user has none
+        default_account = account_service.create_for_user(
+            db,
+            obj_in=AccountCreate(
+                name="CSV Import Account",
+                account_type="checking",
+                balance_cents=0,
+                user_id=current_user.id
+            ),
+            user_id=current_user.id
+        )
+        default_account_id = default_account.id
+        logger.info(f"Created default CSV import account {default_account_id} for user {current_user.id}")
+    else:
+        # Prioritize Plaid-connected credit card accounts for CSV imports
+        plaid_credit_cards = [acc for acc in user_accounts 
+                             if acc.account_type == "credit_card" and acc.plaid_account_id is not None]
+        
+        if plaid_credit_cards:
+            default_account_id = plaid_credit_cards[0].id
+            logger.info(f"Using Plaid credit card account {default_account_id} for CSV import for user {current_user.id}")
+        else:
+            # Fallback to first available account
+            default_account_id = user_accounts[0].id
+            logger.info(f"Using fallback account {default_account_id} for CSV import for user {current_user.id}")
+
     content = await file.read()
     csv_content = StringIO(content.decode())
     csv_reader = csv.DictReader(csv_content)
@@ -284,7 +421,7 @@ async def import_transactions(
             
             # Create transaction object
             transaction = TransactionCreate(
-                account_id=UUID('00000000-0000-0000-0000-000000000000'),  # Default account, will be updated by service
+                account_id=default_account_id,
                 amount_cents=amount_cents,
                 description=row.get('description', ''),
                 transaction_date=transaction_date,
@@ -428,109 +565,6 @@ def get_transaction_categories(
         Transaction.user_id == current_user.id
     ).distinct().all()
     return [category[0] for category in categories if category[0]]
-
-
-@router.get("/export")
-async def export_transactions(
-    format: str = Query("csv", pattern="^(csv|json)$", description="Export format"),
-    start_date: Optional[datetime] = Query(None, description="Start date filter"),
-    end_date: Optional[datetime] = Query(None, description="End date filter"),
-    category: Optional[str] = Query(None, description="Category filter"),
-    db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_user)
-):
-    """Export transactions in CSV or JSON format using streaming for efficient memory usage"""
-    from fastapi.responses import StreamingResponse
-    import json
-    import csv
-    import io
-    
-    filters = TransactionFilter(
-        start_date=start_date,
-        end_date=end_date,
-        category=category
-    )
-    
-    def format_transaction_for_export(transaction):
-        """Helper function to format a transaction for export"""
-        amount_dollars = transaction.amount_cents / 100
-        transaction_type = 'expense' if transaction.amount_cents < 0 else 'income'
-        return {
-            'id': str(transaction.id),
-            'amount': abs(amount_dollars),
-            'category': getattr(transaction.category, 'name', '') if transaction.category else '',
-            'description': transaction.description or '',
-            'transaction_date': transaction.transaction_date.strftime('%Y-%m-%d'),
-            'transaction_type': transaction_type,
-            'created_at': transaction.created_at.strftime('%Y-%m-%d %H:%M:%S'),
-            'updated_at': transaction.updated_at.strftime('%Y-%m-%d %H:%M:%S')
-        }
-    
-    if format == "csv":
-        def generate_csv():
-            """Generator function for CSV streaming"""
-            # Create in-memory buffer for CSV header
-            output = io.StringIO()
-            fieldnames = ['id', 'amount', 'category', 'description', 'transaction_date', 'transaction_type', 'created_at', 'updated_at']
-            writer = csv.DictWriter(output, fieldnames=fieldnames)
-            
-            # Write header
-            writer.writeheader()
-            yield output.getvalue()
-            
-            # Stream transactions in chunks
-            for transaction_chunk in TransactionService.stream_transactions_for_export(db, current_user.id, filters):
-                # Clear buffer for next chunk
-                output.seek(0)
-                output.truncate(0)
-                
-                # Write chunk to buffer
-                for transaction in transaction_chunk:
-                    formatted_transaction = format_transaction_for_export(transaction)
-                    # Remove updated_at for CSV to match original format
-                    formatted_transaction.pop('updated_at')
-                    writer.writerow(formatted_transaction)
-                
-                # Yield chunk content
-                yield output.getvalue()
-        
-        return StreamingResponse(
-            generate_csv(),
-            media_type="text/csv",
-            headers={"Content-Disposition": "attachment; filename=transactions.csv"}
-        )
-    
-    else:  # json format
-        def generate_json():
-            """Generator function for JSON streaming"""
-            yield "["  # Start JSON array
-            first_item = True
-            
-            # Stream transactions in chunks
-            for transaction_chunk in TransactionService.stream_transactions_for_export(db, current_user.id, filters):
-                for transaction in transaction_chunk:
-                    formatted_transaction = format_transaction_for_export(transaction)
-                    # Update date formatting for JSON
-                    formatted_transaction['transaction_date'] = transaction.transaction_date.isoformat()
-                    formatted_transaction['created_at'] = transaction.created_at.isoformat()
-                    formatted_transaction['updated_at'] = transaction.updated_at.isoformat()
-                    
-                    # Add comma separator between items (except for first item)
-                    if not first_item:
-                        yield ","
-                    else:
-                        first_item = False
-                    
-                    # Yield formatted transaction
-                    yield json.dumps(formatted_transaction, indent=2)
-            
-            yield "]"  # Close JSON array
-        
-        return StreamingResponse(
-            generate_json(),
-            media_type="application/json",
-            headers={"Content-Disposition": "attachment; filename=transactions.json"}
-        )
 
 def _serialize_transaction(transaction: Transaction) -> dict:
     """Serialize a Transaction model into a WS-friendly payload.

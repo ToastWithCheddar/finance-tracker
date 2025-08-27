@@ -124,7 +124,17 @@ export function TransactionItem({
             
             <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center ${
               isIncome ? 'bg-green-100 dark:bg-green-900/20' : 'bg-gray-100 dark:bg-gray-800'
-            }`} />
+            }`}>
+              {transaction.categoryEmoji || transaction.category_emoji ? (
+                <span className="text-xl">
+                  {transaction.categoryEmoji || transaction.category_emoji}
+                </span>
+              ) : (
+                <span className="text-gray-400 dark:text-gray-500">
+                  {isIncome ? '💰' : '💳'}
+                </span>
+              )}
+            </div>
             
             <div className="min-w-0 flex-1">
               <div className="flex flex-col">

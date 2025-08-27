@@ -8,6 +8,7 @@ import { TransactionFilters } from '../components/transactions/TransactionFilter
 import { TransactionForm } from '../components/transactions/TransactionForm';
 import { CSVImport } from '../components/transactions/CSVImport';
 import { useTransactions, useTransactionStats, useTransactionActions } from '../hooks/useTransactions';
+import { useCategories } from '../hooks/useCategories';
 import type { 
   CreateTransactionRequest as TransactionCreate, 
   UpdateTransactionRequest as TransactionUpdate, 
@@ -125,6 +126,9 @@ export function Transactions() {
   const { data: transactionData, isLoading, error } = useTransactions(queryFilters);
   const { data: stats } = useTransactionStats(filters);
   
+  // Fetch categories for filters
+  const { data: categories = [], isLoading: categoriesLoading } = useCategories();
+  
   // Mutations
   const { 
     create, 
@@ -171,15 +175,6 @@ export function Transactions() {
       };
     }
   }, [isExportDropdownOpen]);
-
-  // Get unique categories for filter dropdown from current transactions
-  const categories = Array.from(
-    new Set(
-      transactions
-        .map(t => t?.categoryId)
-        .filter((c): c is string => !!c)
-    )
-  ).sort();
 
   // Handle filter changes (triggers new API call)
   const handleFiltersChange = (newFilters: TransactionFilter) => {
@@ -358,7 +353,7 @@ export function Transactions() {
   };
 
   // Loading state for any operation
-  const isBusy = isLoading || isCreating || isUpdating || isDeleting || isBulkDeleting || isImporting || isExporting;
+  const isBusy = isLoading || isCreating || isUpdating || isDeleting || isBulkDeleting || isImporting || isExporting || categoriesLoading;
 
   // Error handling
   if (error) {
@@ -402,10 +397,19 @@ export function Transactions() {
                     onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
                     className="flex items-center"
                   >
-                    {isExporting ? 'Exporting...' : 'Export'}
-                    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
+                    {isExporting ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                        Exporting...
+                      </div>
+                    ) : (
+                      <>
+                        Export
+                        <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </>
+                    )}
                   </Button>
                   
                   {isExportDropdownOpen && (
@@ -606,7 +610,7 @@ export function Transactions() {
               isOpen={isImportOpen}
               onClose={() => setIsImportOpen(false)}
               onImport={handleCSVImport}
-              // isLoading={isImporting}
+              isLoading={isImporting}
             />
           </>
         )}

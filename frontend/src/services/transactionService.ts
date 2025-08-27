@@ -544,6 +544,16 @@ export class TransactionService extends BaseService {
     try {
       console.log('📥 Starting download:', filename, 'Size:', blob.size, 'Type:', blob.type);
       
+      // Validate blob
+      if (!blob || blob.size === 0) {
+        throw new Error('Export file is empty or invalid');
+      }
+
+      // Check browser support
+      if (!window.URL || !window.URL.createObjectURL) {
+        throw new Error('Browser does not support file downloads');
+      }
+      
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -551,17 +561,32 @@ export class TransactionService extends BaseService {
       a.style.display = 'none';
       
       document.body.appendChild(a);
+      
+      // Add error handling for click event
+      a.addEventListener('error', () => {
+        throw new Error('Failed to initiate download');
+      });
+      
       a.click();
       
-      // Clean up
+      // Clean up with proper error handling
       setTimeout(() => {
-        document.body.removeChild(a);
-        window.URL.revokeObjectURL(url);
-        console.log('✅ Download completed and cleaned up');
+        try {
+          if (document.body.contains(a)) {
+            document.body.removeChild(a);
+          }
+          window.URL.revokeObjectURL(url);
+          console.log('✅ Download completed and cleaned up');
+        } catch (cleanupError) {
+          console.warn('Minor cleanup error:', cleanupError);
+        }
       }, 100);
+      
     } catch (error) {
       console.error('❌ Download failed:', error);
-      throw new Error('Failed to download file');
+      // Provide user-friendly error message
+      const message = error instanceof Error ? error.message : 'Unknown error occurred';
+      throw new Error(`Failed to download ${filename}: ${message}`);
     }
   }
 

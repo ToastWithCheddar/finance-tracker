@@ -138,3 +138,4 @@ async def get_goal_type_options():
             {"value": "CRITICAL", "label": "Critical", "color": "red"}
         ]
     }
+

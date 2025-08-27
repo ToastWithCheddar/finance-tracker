@@ -246,7 +246,36 @@ export function useImportCSV() {
       
       console.log('✅ CSV import completed - invalidated all related queries');
       
+      // Show success toast
+      if (typeof window !== 'undefined') {
+        import('react-hot-toast').then(({ toast }) => {
+          toast.success(`Successfully imported ${result.imported_count} transactions!`);
+        });
+      }
+      
       return result;
+    },
+    onError: (error) => {
+      console.error('❌ CSV import failed:', error);
+      
+      // Provide user-friendly error messages
+      let userMessage = 'Import failed. Please check your CSV file and try again.';
+      if (error instanceof Error) {
+        if (error.message.includes('format')) {
+          userMessage = 'Invalid CSV format. Please check the required columns and data types.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          userMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message.includes('validation')) {
+          userMessage = 'CSV validation failed. Please check your data format.';
+        }
+      }
+      
+      // Show error toast
+      if (typeof window !== 'undefined') {
+        import('react-hot-toast').then(({ toast }) => {
+          toast.error(userMessage);
+        });
+      }
     },
   });
 }
@@ -255,12 +284,23 @@ export function useImportCSV() {
 export function useExportTransactions() {
   return useMutation({
     mutationFn: (filters: ExportFilters) => transactionService.exportTransactions(filters),
-    onSuccess: (blob, filters) => {
+    onSuccess: async (blob, filters) => {
       try {
         // Download the file
         const filename = `transactions.${filters.format}`;
         transactionService.downloadExportFile(blob, filename);
         console.log('✅ Export successful:', filename);
+        
+        // Show success feedback to user
+        if (typeof window !== 'undefined' && 'navigator' in window && 'vibrate' in navigator) {
+          navigator.vibrate?.(200); // Haptic feedback on mobile
+        }
+        
+        // Show success toast
+        if (typeof window !== 'undefined') {
+          const { toast } = await import('react-hot-toast');
+          toast.success(`Export completed! File downloaded as ${filename}`);
+        }
       } catch (error) {
         console.error('❌ Export download failed:', error);
         throw error; // Re-throw to trigger onError
@@ -268,7 +308,26 @@ export function useExportTransactions() {
     },
     onError: (error) => {
       console.error('❌ Export failed:', error);
-      // You could add a toast notification here
+      
+      // Provide user-friendly error messages
+      let userMessage = 'Export failed. Please try again.';
+      if (error instanceof Error) {
+        if (error.message.includes('empty')) {
+          userMessage = 'No data to export with current filters.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          userMessage = 'Network error. Please check your connection and try again.';
+        } else if (error.message.includes('download')) {
+          userMessage = 'Download failed. Your browser may have blocked the download.';
+        }
+      }
+      
+      // Show error toast
+      if (typeof window !== 'undefined') {
+        import('react-hot-toast').then(({ toast }) => {
+          toast.error(userMessage);
+        });
+      }
+      console.error('User message:', userMessage);
     },
   });
 }

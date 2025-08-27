@@ -293,3 +293,4 @@ def get_budget_calendar(
     except Exception as e:
         logger.error(f"Error getting budget calendar: {e}", exc_info=True)
         raise BusinessLogicError("An error occurred while retrieving budget calendar")
+

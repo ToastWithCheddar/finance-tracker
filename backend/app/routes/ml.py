@@ -169,6 +169,25 @@ async def batch_categorize_transactions(
         logger.info(f"Processing batch of {batch_size} transactions with {timeout}s timeout")
         
         result = celery_app.send_task('worker.batch_classify_transactions', args=[txs]).get(timeout=timeout)
+        
+        # Apply ML categorization results to database
+        try:
+            update_stats = TransactionService.apply_batch_ml_categorization(
+                db=db,
+                ml_results=result,
+                user_id=current_user.id
+            )
+            logger.info(f"Applied ML categorization: {update_stats}")
+        except Exception as apply_error:
+            logger.error(f"Failed to apply ML categorization to database: {apply_error}", exc_info=True)
+            # Continue to return results even if database update fails
+            update_stats = {
+                "updated_count": 0,
+                "skipped_count": 0,
+                "error_count": len(result),
+                "errors": [str(apply_error)]
+            }
+        
         # Map to frontend-friendly batch response
         mapped = []
         for item in result:
@@ -179,13 +198,15 @@ async def batch_categorize_transactions(
                     'confidence': item.get('confidence')
                 }
             })
+        
         return {
             'success': True,
             'data': {
                 'results': mapped,
                 'processed_count': len(mapped),
-                'failed_count': 0,
-                'errors': []
+                'failed_count': update_stats.get('error_count', 0),
+                'errors': update_stats.get('errors', []),
+                'update_stats': update_stats
             }
         }
     except Exception as celery_error:

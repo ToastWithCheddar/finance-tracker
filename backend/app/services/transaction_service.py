@@ -149,7 +149,10 @@ class TransactionService:
 
     @staticmethod
     def get_transaction(db: Session, transaction_id: UUID, user_id: UUID) -> Transaction:
-        transaction = db.query(Transaction).filter(
+        transaction = db.query(Transaction).options(
+            joinedload(Transaction.account),
+            joinedload(Transaction.category)
+        ).filter(
             Transaction.id == transaction_id,
             Transaction.user_id == user_id
         ).first()
@@ -157,7 +160,7 @@ class TransactionService:
         if not transaction:
             raise TransactionNotFoundError(str(transaction_id))
         
-        return transaction
+        return TransactionService.enrich_transaction_with_related_data(transaction)
 
     @staticmethod
     async def update_transaction(
@@ -263,7 +266,7 @@ class TransactionService:
         query = db.query(Transaction).options(
             joinedload(Transaction.account),
             joinedload(Transaction.category)
-        ).join(Transaction.account).filter(Transaction.user_id == user_id)
+        ).join(Transaction.account).outerjoin(Transaction.category).filter(Transaction.user_id == user_id)
 
         applied_filters = []
 
@@ -289,12 +292,14 @@ class TransactionService:
             applied_filters.append(f"status = {filters.status}")
             
         if filters.min_amount_cents is not None:
-            query = query.filter(Transaction.amount_cents >= filters.min_amount_cents)
-            applied_filters.append(f"amount_cents >= {filters.min_amount_cents}")
+            # Use absolute value for amount comparison (handles both income and expenses)
+            query = query.filter(func.abs(Transaction.amount_cents) >= filters.min_amount_cents)
+            applied_filters.append(f"abs(amount_cents) >= {filters.min_amount_cents}")
             
         if filters.max_amount_cents is not None:
-            query = query.filter(Transaction.amount_cents <= filters.max_amount_cents)
-            applied_filters.append(f"amount_cents <= {filters.max_amount_cents}")
+            # Use absolute value for amount comparison (handles both income and expenses)
+            query = query.filter(func.abs(Transaction.amount_cents) <= filters.max_amount_cents)
+            applied_filters.append(f"abs(amount_cents) <= {filters.max_amount_cents}")
             
         if filters.account_id:
             query = query.filter(Transaction.account_id == filters.account_id)
@@ -304,6 +309,14 @@ class TransactionService:
         if filters.is_transfer is not None:
             query = query.filter(Transaction.is_transfer == filters.is_transfer)
             applied_filters.append(f"is_transfer = {filters.is_transfer}")
+            
+        if filters.transaction_type:
+            if filters.transaction_type.lower() == 'income':
+                query = query.filter(Transaction.amount_cents > 0)
+                applied_filters.append("transaction_type = income (amount_cents > 0)")
+            elif filters.transaction_type.lower() == 'expense':
+                query = query.filter(Transaction.amount_cents < 0)
+                applied_filters.append("transaction_type = expense (amount_cents < 0)")
             
         if filters.search_query:
             search = f"%{filters.search_query}%"
@@ -336,7 +349,10 @@ class TransactionService:
         results = query.all()
         logger.info(f"🔍 [TransactionService] Returned {len(results)} transactions after pagination (offset: {pagination.offset}, limit: {pagination.limit})")
 
-        return results, total_count
+        # Enrich transactions with category and account information
+        enriched_results = TransactionService.enrich_transactions_with_related_data(results)
+        
+        return enriched_results, total_count
 
     @staticmethod
     def get_transactions_with_grouping(
@@ -352,7 +368,7 @@ class TransactionService:
         query = db.query(Transaction).options(
             joinedload(Transaction.account),
             joinedload(Transaction.category)
-        ).join(Transaction.account).filter(Transaction.user_id == user_id)
+        ).join(Transaction.account).outerjoin(Transaction.category).filter(Transaction.user_id == user_id)
 
         # Apply all the same filters as the regular method
         if filters.start_date:
@@ -367,9 +383,11 @@ class TransactionService:
         if filters.status:
             query = query.filter(Transaction.status == filters.status)
         if filters.min_amount_cents is not None:
-            query = query.filter(Transaction.amount_cents >= filters.min_amount_cents)
+            # Use absolute value for amount comparison (handles both income and expenses)
+            query = query.filter(func.abs(Transaction.amount_cents) >= filters.min_amount_cents)
         if filters.max_amount_cents is not None:
-            query = query.filter(Transaction.amount_cents <= filters.max_amount_cents)
+            # Use absolute value for amount comparison (handles both income and expenses)
+            query = query.filter(func.abs(Transaction.amount_cents) <= filters.max_amount_cents)
         if filters.account_id:
             query = query.filter(Transaction.account_id == filters.account_id)
         if filters.is_transfer is not None:
@@ -491,14 +509,19 @@ class TransactionService:
             query = query.filter(Transaction.transaction_date >= filters.start_date)
         if filters.end_date:
             query = query.filter(Transaction.transaction_date <= filters.end_date)
-        if filters.category:
-            query = query.join(Transaction.category).filter(Category.name.ilike(f"%{filters.category}%"))
+        if filters.category_id:
+            query = query.filter(Transaction.category_id == filters.category_id)
+        if filters.transaction_type:
+            if filters.transaction_type.lower() == 'income':
+                query = query.filter(Transaction.amount_cents > 0)
+            elif filters.transaction_type.lower() == 'expense':
+                query = query.filter(Transaction.amount_cents < 0)
         if filters.search_query:
             search_term = f"%{filters.search_query}%"
             query = query.filter(
                 or_(
                     Transaction.description.ilike(search_term),
-                    Transaction.merchant_name.ilike(search_term)
+                    Transaction.merchant.ilike(search_term)
                 )
             )
         
@@ -648,6 +671,155 @@ class TransactionService:
                 "amount_max": amount_max
             }
         }
+
+    @staticmethod
+    def apply_batch_ml_categorization(
+        db: Session,
+        ml_results: List[Dict[str, Any]],
+        user_id: UUID
+    ) -> Dict[str, Any]:
+        """
+        Apply batch ML categorization results to transactions.
+        Only updates transactions that don't already have a category assigned.
+        
+        Args:
+            db: Database session
+            ml_results: List of ML categorization results with transaction_id, predicted_category, confidence
+            user_id: User ID for security validation
+            
+        Returns:
+            Dict with update statistics
+        """
+        updated_count = 0
+        skipped_count = 0
+        error_count = 0
+        errors = []
+        
+        # Process each ML result with individual transaction handling
+        for result in ml_results:
+            try:
+                transaction_id = result.get('id') or result.get('transaction_id')
+                predicted_category = result.get('prediction', {}).get('categoryId') or result.get('predicted_category')
+                confidence = result.get('prediction', {}).get('confidence') or result.get('confidence')
+                
+                if not transaction_id or not predicted_category:
+                    skipped_count += 1
+                    continue
+                
+                # Create a savepoint to handle individual transaction failures
+                savepoint = db.begin_nested()
+                
+                try:
+                    # Find the transaction and verify ownership
+                    transaction = db.query(Transaction).filter(
+                        and_(
+                            Transaction.id == transaction_id,
+                            Transaction.user_id == user_id
+                        )
+                    ).first()
+                    
+                    if not transaction:
+                        logger.warning(f"Transaction {transaction_id} not found or not owned by user {user_id}")
+                        savepoint.rollback()
+                        skipped_count += 1
+                        continue
+                    
+                    # Only update if no category is already assigned
+                    if transaction.category_id is not None:
+                        logger.debug(f"Skipping transaction {transaction_id}: already categorized")
+                        savepoint.rollback()
+                        skipped_count += 1
+                        continue
+                    
+                    # Validate that the predicted category exists (user categories or system categories)
+                    # ML worker returns category names, we need to find the UUID
+                    category = db.query(Category).filter(
+                        and_(
+                            Category.name == predicted_category,
+                            or_(
+                                Category.user_id == user_id,      # User-specific categories
+                                Category.user_id.is_(None)        # System categories
+                            )
+                        )
+                    ).order_by(Category.user_id.desc().nullslast()).first()  # Prefer user categories over system
+                    
+                    if not category:
+                        logger.warning(f"Predicted category '{predicted_category}' not found or not owned by user {user_id}")
+                        savepoint.rollback()
+                        error_count += 1
+                        errors.append(f"Invalid category '{predicted_category}' for transaction {transaction_id}")
+                        continue
+                    
+                    # Update the transaction with ML predictions using category UUID
+                    transaction.ml_suggested_category_id = category.id
+                    transaction.confidence_score = confidence
+                    
+                    # Always auto-assign the highest confidence category
+                    transaction.category_id = category.id
+                    
+                    # Commit this individual update
+                    savepoint.commit()
+                    updated_count += 1
+                    logger.info(f"Auto-assigned category '{predicted_category}' (UUID: {category.id}) to transaction {transaction_id} (confidence: {confidence:.3f})")
+                    
+                except Exception as savepoint_error:
+                    savepoint.rollback()
+                    logger.error(f"Database error for transaction {transaction_id}: {savepoint_error}")
+                    error_count += 1
+                    errors.append(f"Database error for transaction {transaction_id}: {str(savepoint_error)}")
+                    continue
+                    
+            except Exception as e:
+                logger.error(f"Failed to process transaction {result.get('id', 'unknown')}: {e}")
+                error_count += 1
+                errors.append(f"Processing error: {str(e)}")
+                continue
+        
+        try:
+            # Final commit for all successful updates
+            db.commit()
+            logger.info(f"Batch ML categorization complete: {updated_count} updated, {skipped_count} skipped, {error_count} errors")
+            
+            return {
+                "updated_count": updated_count,
+                "skipped_count": skipped_count,
+                "error_count": error_count,
+                "errors": errors
+            }
+            
+        except Exception as final_error:
+            db.rollback()
+            logger.error(f"Final commit failed in batch ML categorization: {final_error}", exc_info=True)
+            raise BusinessLogicError(f"Failed to commit ML categorization changes: {str(final_error)}")
+
+    @staticmethod
+    def enrich_transaction_with_related_data(transaction: Transaction):
+        """
+        Enrich transaction object with category and account information for API responses.
+        This populates the category_name, category_emoji, and account_name fields.
+        """
+        # Populate category information
+        if hasattr(transaction, 'category') and transaction.category:
+            transaction.category_name = transaction.category.name
+            transaction.category_emoji = transaction.category.emoji
+        else:
+            transaction.category_name = None  
+            transaction.category_emoji = None
+            
+        # Populate account information  
+        if hasattr(transaction, 'account') and transaction.account:
+            transaction.account_name = transaction.account.name
+        else:
+            transaction.account_name = None
+            
+        return transaction
+
+    @staticmethod  
+    def enrich_transactions_with_related_data(transactions: List[Transaction]) -> List[Transaction]:
+        """
+        Enrich multiple transaction objects with category and account information.
+        """
+        return [TransactionService.enrich_transaction_with_related_data(t) for t in transactions]
 
 
 # Provider function with lazy caching

@@ -4,12 +4,13 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { getYesterday, getThisWeekRange } from '../../utils/date';
 import type { TransactionFilters } from '../../types/transaction';
+import type { Category } from '../../types/category';
 
 interface TransactionFiltersProps {
   filters: TransactionFilters;
   onFiltersChange: (filters: TransactionFilters) => void;
   onClearFilters: () => void;
-  categories?: string[];
+  categories?: Category[];
 }
 
 
@@ -71,11 +72,8 @@ export function TransactionFilters({
         return filters.dateFrom === lastMonth.toISOString().split('T')[0] && 
                filters.dateTo === endOfLastMonth.toISOString().split('T')[0];
       }
-      case 'last7Days': {
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(today.getDate() - 7);
-        return filters.dateFrom === sevenDaysAgo.toISOString().split('T')[0] && 
-               filters.dateTo === todayStr;
+      case 'today': {
+        return filters.dateFrom === todayStr && filters.dateTo === todayStr;
       }
       case 'last30Days': {
         const thirtyDaysAgo = new Date(today);
@@ -211,18 +209,19 @@ export function TransactionFilters({
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                 >
                   <option value="">All Categories</option>
+                  <option value="__uncategorized__">📄 Uncategorized</option>
                   {categories.map((category) => (
-                    <option key={category} value={category}>
-                      {category}
+                    <option key={category.id} value={category.id}>
+                      {category.emoji ? `${category.emoji} ` : ''}{category.name}
                     </option>
                   ))}
                 </select>
               </div>
 
-              {/* Amount Range */}
+              {/* Amount Range - Using absolute values */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Min Amount
+                  Min Amount (absolute)
                 </label>
                 <Input
                   type="number"
@@ -234,12 +233,13 @@ export function TransactionFilters({
                     const dollars = parseFloat(e.target.value);
                     handleFilterChange('amountMinCents', dollars ? Math.round(dollars * 100) : undefined);
                   }}
+                  title="Filter by absolute amount (ignores whether transaction is income or expense)"
                 />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Max Amount
+                  Max Amount (absolute)
                 </label>
                 <Input
                   type="number"
@@ -251,6 +251,7 @@ export function TransactionFilters({
                     const dollars = parseFloat(e.target.value);
                     handleFilterChange('amountMaxCents', dollars ? Math.round(dollars * 100) : undefined);
                   }}
+                  title="Filter by absolute amount (ignores whether transaction is income or expense)"
                 />
               </div>
             </div>
@@ -258,6 +259,22 @@ export function TransactionFilters({
             {/* Quick Filter Buttons */}
             <div className="flex flex-wrap gap-2 pt-4 border-t border-gray-100">
               <span className="text-sm font-medium text-gray-700 mr-2">Quick filters:</span>
+              
+              <Button
+                variant={isQuickFilterActive('today') ? 'primary' : 'outline'}
+                size="sm"
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  handleMultipleFilterChanges({
+                    dateFrom: today,
+                    dateTo: today,
+                    // Clear transaction type when setting date range
+                    transaction_type: undefined
+                  });
+                }}
+              >
+                Today
+              </Button>
               
               <Button
                 variant={isQuickFilterActive('yesterday') ? 'primary' : 'outline'}
@@ -326,23 +343,6 @@ export function TransactionFilters({
                 Last Month
               </Button>
               
-              <Button
-                variant={isQuickFilterActive('last7Days') ? 'primary' : 'outline'}
-                size="sm"
-                onClick={() => {
-                  const today = new Date();
-                  const sevenDaysAgo = new Date(today);
-                  sevenDaysAgo.setDate(today.getDate() - 7);
-                  handleMultipleFilterChanges({
-                    dateFrom: sevenDaysAgo.toISOString().split('T')[0],
-                    dateTo: today.toISOString().split('T')[0],
-                    // Clear transaction type when setting date range
-                    transaction_type: undefined
-                  });
-                }}
-              >
-                Last 7 Days
-              </Button>
               
               <Button
                 variant={isQuickFilterActive('last30Days') ? 'primary' : 'outline'}
@@ -428,7 +428,9 @@ export function TransactionFilters({
               
               {filters.categoryId && (
                 <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                  Category: {categories.find(cat => cat === filters.categoryId) || filters.categoryId}
+                  Category: {filters.categoryId === '__uncategorized__' 
+                    ? '📄 Uncategorized' 
+                    : categories.find(cat => cat.id === filters.categoryId)?.name || filters.categoryId}
                   <button
                     onClick={() => handleFilterChange('categoryId', '')}
                     className="ml-1 text-blue-600 hover:text-blue-800"

@@ -13,6 +13,8 @@ export interface Transaction {
   category_id?: string; // Backend field name
   categoryName?: string;
   category_name?: string; // Backend field name
+  categoryEmoji?: string;
+  category_emoji?: string; // Backend field name
   amountCents: number;
   amount_cents?: number; // Backend field name
   currency: string;

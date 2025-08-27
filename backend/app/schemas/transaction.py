@@ -153,8 +153,9 @@ class TransactionInDB(TransactionBase, BaseResponseSchema):
     plaid_transaction_id: Optional[str] = None
 
 class TransactionResponse(TransactionInDB):
-    # Include category name for convenience
+    # Include category name and emoji for convenience
     category_name: str | None = None
+    category_emoji: str | None = None
     account_name: str | None = None
     
     # Helper computed fields for frontend
@@ -182,6 +183,7 @@ class TransactionFilter(BaseModel):
     account_id: UUID | None = None
     category_id: UUID | None = None
     status: TransactionStatus | None = None
+    transaction_type: str | None = Field(None, description="Transaction type filter (income/expense)")
     min_amount_cents: int | None = Field(None, description="Minimum amount in cents")
     max_amount_cents: int | None = Field(None, description="Maximum amount in cents")
     search_query: str | None = Field(None, description="Search in description or merchant")
