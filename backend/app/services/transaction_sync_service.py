@@ -50,18 +50,8 @@ class TransactionSyncService:
 
     
     async def _acquire_sync_lock(self, account_id: str) -> bool:
-        """
-        Acquire a distributed lock for account synchronization using Redis.
-        
-        Args:
-            account_id: The account ID to lock
-            
-        Returns:
-            bool: True if lock was acquired, False otherwise
-            
-        Raises:
-            Exception: If Redis connection fails
-        """
+        """Acquire a distributed lock for account synchronization using Redis"""
+
         try:
             conn = await redis_client.get_connection()
             lock_key = f"sync-lock:{account_id}"
@@ -90,15 +80,8 @@ class TransactionSyncService:
             raise Exception(f"Failed to acquire distributed lock: {str(e)}")
     
     async def _release_sync_lock(self, account_id: str) -> bool:
-        """
-        Release the distributed lock for account synchronization.
-        
-        Args:
-            account_id: The account ID to unlock
-            
-        Returns:
-            bool: True if lock was released, False if lock didn't exist
-        """
+        """Release the distributed lock for account synchronization"""
+
         try:
             conn = await redis_client.get_connection()
             lock_key = f"sync-lock:{account_id}"
@@ -178,15 +161,8 @@ class TransactionSyncService:
                 [account.plaid_account_id]
             )
             
-            # Debug: Log what Plaid returned
             plaid_transactions = transactions_data.get('transactions', [])
-            logger.info(f"📦 DEBUG: Plaid API returned {len(plaid_transactions)} transactions")
-            if len(plaid_transactions) > 0:
-                logger.info(f"   - First transaction: {plaid_transactions[0].get('transaction_id', 'N/A')} - {plaid_transactions[0].get('amount', 'N/A')}")
-                logger.info(f"   - Last transaction: {plaid_transactions[-1].get('transaction_id', 'N/A')} - {plaid_transactions[-1].get('amount', 'N/A')}")
-            else:
-                logger.warning(f"⚠️  DEBUG: No transactions returned from Plaid API!")
-            
+   
             # Process transactions
             result = await self._process_account_transactions(
                 account, plaid_transactions, db
@@ -345,12 +321,9 @@ class TransactionSyncService:
     ) -> SyncResult:
         """Process Plaid transactions for an account"""
         
-        logger.info(f"🔄 DEBUG: Processing {len(plaid_transactions)} transactions for account {account.name}")
-        
-        # DEBUG: Log detailed transaction info if any exist
         if plaid_transactions:
             for i, tx in enumerate(plaid_transactions[:3]):  # Log first 3 transactions
-                logger.info(f"   📋 Transaction {i+1}: ID={tx.get('transaction_id', 'N/A')}, Amount=${tx.get('amount', 'N/A')}, Date={tx.get('date', 'N/A')}, Name='{tx.get('name', 'N/A')}'")
+                logger.info(f"Transaction {i+1}: ID={tx.get('transaction_id', 'N/A')}, Amount=${tx.get('amount', 'N/A')}, Date={tx.get('date', 'N/A')}, Name='{tx.get('name', 'N/A')}'")
         
         result = SyncResult(
             account_id=str(account.id),
@@ -372,18 +345,8 @@ class TransactionSyncService:
             .all()
         )
         
-        logger.info(f"🔍 DEBUG: Found {len(existing_plaid_ids)} existing Plaid transaction IDs in database")
-        if len(existing_plaid_ids) > 0:
-            logger.info(f"   - Sample existing IDs: {list(existing_plaid_ids)[:3]}")
-        else:
-            logger.info(f"   - No existing Plaid transactions found - this should be a fresh sync")
-        
-        # Process transactions in batches
-        logger.info(f"📝 DEBUG: Processing {len(plaid_transactions)} transactions in batches of {self.batch_size}")
-        
         for i in range(0, len(plaid_transactions), self.batch_size):
             batch = plaid_transactions[i:i + self.batch_size]
-            logger.info(f"   - Processing batch {i//self.batch_size + 1} with {len(batch)} transactions")
             
             for j, plaid_txn in enumerate(batch):
                 try:
@@ -394,12 +357,10 @@ class TransactionSyncService:
                     logger.info(f"     Transaction {j+1}: {plaid_id} - ${amount} - {description}")
                     
                     if plaid_id in existing_plaid_ids:
-                        logger.info(f"       ⏭️  SKIPPED - Already exists in database")
                         result.duplicates_skipped += 1
                         continue
                     
                     # Create new transaction or merge with existing
-                    logger.info(f"       💾 PROCESSING - Creating new transaction or merging with existing")
                     transaction = await self._create_transaction_from_plaid(
                         plaid_txn, account, db
                     )
@@ -412,23 +373,19 @@ class TransactionSyncService:
                                    transaction.metadata_json.get('sync_match') == 'merged_from_plaid_import')
                         
                         if is_merge:
-                            logger.info(f"       ✅ MERGE SUCCESS - Manual transaction merged with Plaid data: {transaction.id}")
                             result.updated_transactions += 1
                         else:
-                            logger.info(f"       ✅ CREATE SUCCESS - New transaction created with ID: {transaction.id}")
                             result.new_transactions += 1
                         
                         existing_plaid_ids.add(plaid_id)
                     else:
-                        logger.warning(f"       ⚠️  FAILED - Transaction processing returned None")
+                        logger.warning(f"Transaction processing returned None")
                 
                 except Exception as e:
                     error_msg = f"Failed to process transaction {plaid_txn.get('transaction_id', 'unknown')}: {str(e)}"
                     result.errors.append(error_msg)
-                    logger.error(f"       ❌ ERROR - {error_msg}")
         
         # Commit batch
-        logger.info(f"💾 DEBUG: Committing transactions to database...")
         try:
             db.commit()
             logger.info(f"✅ DEBUG: Database commit successful")
@@ -436,13 +393,6 @@ class TransactionSyncService:
             logger.error(f"❌ DEBUG: Database commit failed: {str(e)}")
             db.rollback()
             raise Exception(f"Failed to commit transactions: {str(e)}")
-        
-        # Final summary
-        logger.info(f"🏁 DEBUG: Transaction sync complete for {account.name}:")
-        logger.info(f"   - New transactions: {result.new_transactions}")
-        logger.info(f"   - Updated transactions: {result.updated_transactions}")
-        logger.info(f"   - Duplicates skipped: {result.duplicates_skipped}")
-        logger.info(f"   - Errors: {len(result.errors)}")
         
         return result
     
@@ -578,7 +528,6 @@ class TransactionSyncService:
             existing_transaction = self._find_potential_duplicate(db, account, plaid_txn)
             
             if existing_transaction:
-                logger.info(f"       🔄 MERGING: Updating existing manual transaction {existing_transaction.id} with Plaid data")
                 
                 # Update existing transaction with Plaid data
                 existing_transaction.plaid_transaction_id = plaid_txn.get('transaction_id')
@@ -586,7 +535,6 @@ class TransactionSyncService:
                 # Update status if it was pending
                 if existing_transaction.status == 'pending':
                     existing_transaction.status = 'posted'
-                    logger.info(f"       📝 STATUS: Updated status from 'pending' to 'posted'")
                 
                 # Add merge metadata
                 metadata = existing_transaction.metadata_json or {}
@@ -601,23 +549,17 @@ class TransactionSyncService:
                 # Optionally update other fields if they were missing in manual entry
                 if not existing_transaction.merchant and plaid_txn.get('merchant_name'):
                     existing_transaction.merchant = plaid_txn.get('merchant_name')
-                    logger.info(f"       🏪 MERCHANT: Added merchant info from Plaid")
                 
                 if not existing_transaction.plaid_category and plaid_txn.get('category'):
                     existing_transaction.plaid_category = plaid_txn.get('category', [])
-                    logger.info(f"       🏷️  CATEGORY: Added Plaid category info")
                 
                 # Update authorized date if available
                 if plaid_txn.get('authorized_date') and not existing_transaction.authorized_date:
                     existing_transaction.authorized_date = self._parse_date(plaid_txn.get('authorized_date'))
-                    logger.info(f"       📅 DATE: Added authorized date from Plaid")
                 
                 db.add(existing_transaction)
-                logger.info(f"       ✅ MERGE SUCCESS: Manual transaction merged with Plaid data")
                 return existing_transaction
             
-            # NO DUPLICATE FOUND: Create new transaction as usual
-            logger.info(f"       💾 NEW TRANSACTION: No duplicate found, creating new transaction")
             # Parse amount - Plaid's sign convention varies by account type
             raw_amount = float(plaid_txn.get('amount', 0))
             
@@ -626,9 +568,7 @@ class TransactionSyncService:
             
             # Enhanced debug logging
             transaction_type = "INCOME" if amount_cents > 0 else "EXPENSE"
-            logger.info(f"       💰 AMOUNT DEBUG: Account type: {account.account_type}")
-            logger.info(f"       💰 AMOUNT DEBUG: Raw Plaid amount: {raw_amount} → Converted: {amount_cents/100} (cents: {amount_cents}) → Type: {transaction_type}")
-            
+           
             # Parse dates
             transaction_date = self._parse_date(plaid_txn.get('date'))
             authorized_date = self._parse_date(plaid_txn.get('authorized_date'))
@@ -859,10 +799,7 @@ class TransactionSyncService:
         }
     
     async def sync_transactions_for_item(self, db: Session, item_id: str, days: int = 30) -> Dict[str, Any]:
-        """
-        Syncs transactions for all accounts connected to a specific Plaid Item.
-        This method is specifically designed for webhook-triggered syncs.
-        """
+        """Syncs transactions for all accounts connected to a specific Plaid Item"""
         from app.models.account import Account
         
         try:

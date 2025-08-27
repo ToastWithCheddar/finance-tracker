@@ -137,7 +137,7 @@ class DatabaseMonitoringService:
                 }
                 health['recommendations'].append('Consider connection pooling optimization')
             
-            # Check for dead tuples (need for VACUUM)
+            # Check for dead tuples 
             dead_tuple_threshold = 1000
             for table in stats.get('top_tables', []):
                 dead_tuples = table.get('dead_tuples', 0)

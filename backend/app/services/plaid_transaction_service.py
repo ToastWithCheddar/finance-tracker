@@ -19,17 +19,10 @@ logger = logging.getLogger(__name__)
 
 
 class PlaidTransactionService:
-    """
-    Lightweight service for Plaid transaction data fetching and processing.
-    For full transaction synchronization with locking, use TransactionSyncService.
-    """
-    
+
     def __init__(self):
         self.transaction_service = get_transaction_service()
     
-    # Removed sync_transactions_for_user - this functionality has been moved to TransactionSyncService
-    # to avoid duplication and provide better orchestration with locking, metrics, and notifications.
-
     async def initial_transaction_sync(self, accounts: List[Account], access_token: str, db: Session):
         """Perform initial transaction sync for new accounts"""
         try:
@@ -75,7 +68,7 @@ class PlaidTransactionService:
             transactions = result.get('transactions', [])
             
             # DEBUG: Log what Plaid returned
-            logger.info(f"🔍 PLAID DEBUG: API Response:")
+            logger.info(f"PLAID DEBUG: API Response:")
             logger.info(f"   - Total transactions available: {result.get('total_transactions', 'Unknown')}")
             logger.info(f"   - Transactions in this batch: {len(transactions)}")
             
@@ -87,7 +80,7 @@ class PlaidTransactionService:
                 logger.info(f"   - No transactions returned by Plaid API")
             
             # DEBUG: Log final result summary
-            logger.info(f"🔍 PLAID DEBUG: Final fetch_transactions result:")
+            logger.info(f"PLAID DEBUG: Final fetch_transactions result:")
             logger.info(f"   - Total transactions fetched: {len(transactions)}")
             if transactions:
                 logger.info(f"   - Date range of fetched transactions: {min(tx.get('date', '') for tx in transactions)} to {max(tx.get('date', '') for tx in transactions)}")

@@ -1,0 +1,36 @@
+amount,transaction_date,transaction_type,description
+75.2,2025-08-27,expense,"Purchased groceries for the week, including fresh produce, dairy, and pantry staples, at the local supermarket."
+120,2025-08-26,expense,"Enjoyed a dinner with friends at a new Italian restaurant downtown, including appetizers, main courses, and drinks."
+500,2025-08-25,income,"Received payment for the sale of old electronics online, specifically a used laptop and a few smartphones."
+35,2025-08-24,expense,Grabbed coffee and a pastry at a new cafe and also picked up some snacks for the afternoon.
+90,2025-08-23,expense,"Paid the fee for an online course on digital marketing, covering advanced SEO techniques and content strategy."
+200,2025-08-22,income,Received a monetary gift from family for a recent special occasion.
+45,2025-08-21,expense,Fuel refill for the car at the usual gas station.
+60,2025-08-20,expense,Subscribed to a new streaming service for one year to access exclusive movies and TV shows.
+150,2025-08-19,expense,Monthly payment for the gym membership.
+25,2025-08-18,expense,Bought a new book by a favorite author at the bookstore.
+100,2025-08-17,expense,Ordered takeout dinner from the local Chinese restaurant.
+80,2025-08-16,income,Received payment for a small freelance graphic design project.
+15,2025-08-15,expense,Purchased a new mobile phone case from an online store.
+30,2025-08-14,expense,Paid for a haircut at the salon.
+250,2025-08-13,expense,"Monthly utility bill payment (electricity, water, gas)."
+10,2025-08-12,expense,Bought a lottery ticket.
+55,2025-08-11,expense,Purchased new running shoes for exercise.
+180,2025-08-10,expense,Tickets for an upcoming concert.
+70,2025-08-09,income,Received a refund for a returned online purchase.
+20,2025-08-08,expense,Donated to a local charity.
+130,2025-08-07,expense,New set of tires for the bicycle.
+40,2025-08-06,expense,Paid for a monthly bus pass.
+350,2025-08-05,expense,Monthly rent payment for the apartment.
+5,2025-08-04,expense,Purchased a newspaper.
+95,2025-08-03,expense,Bought new clothes for an upcoming event.
+65,2025-08-02,expense,Ordered flowers for a friend's birthday.
+12,2025-08-01,expense,Purchased a mobile app subscription.
+220,2025-07-31,income,Sold some old household items at a garage sale.
+88,2025-07-30,expense,Paid for a professional car wash and detailing.
+115,2025-07-29,expense,Attended a workshop on personal finance management.
+28,2025-07-28,expense,Purchased a new cooking utensil set for the kitchen.
+160,2025-07-27,expense,Booked a weekend getaway at a local resort.
+7.5,2025-07-26,expense,Bought a fancy coffee and a muffin from a specialty coffee shop.
+50,2025-07-25,expense,Paid for a session with a personal trainer.
+300,2025-07-24,income,Received payment for a commissioned art piece.

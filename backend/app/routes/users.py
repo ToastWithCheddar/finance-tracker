@@ -91,8 +91,6 @@ async def get_user_by_id(
         raise ResourceNotFoundError("User", str(user_id))
     return user
 
-
-
 # Enhanced User Profile
 @router.get("/me/profile", response_model=UserProfile)
 async def get_detailed_profile(
@@ -121,8 +119,6 @@ async def get_user_sessions(
         session_list = []
         for session in sessions:
             session_data = UserSessionPublic.from_orm(session)
-            # You'd need to determine current session based on the JWT token
-            # For now, we'll mark the most recent as current (this is simplified)
             session_data.is_current = session == sessions[0] if sessions else False
             session_list.append(session_data)
         

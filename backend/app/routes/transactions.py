@@ -23,7 +23,8 @@ from app.schemas.transaction import (
     TransactionResponse,
     TransactionFilter,
     TransactionPagination,
-    TransactionListResponse
+    TransactionListResponse,
+    TransactionBulkDeleteRequest
 )
 from app.auth.dependencies import get_current_user, get_db_with_user_context
 from app.models.user import User
@@ -323,19 +324,19 @@ def get_transactions(
     db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
-    logger.info(f"🔍 [TransactionRoute] GET /transactions called for user {current_user.id}")
-    logger.info(f"🔍 [TransactionRoute] Raw filters: {filters.model_dump()}")
-    logger.info(f"🔍 [TransactionRoute] Pagination: offset={pagination.offset}, limit={pagination.limit}")
+    logger.info(f"[TransactionRoute] GET /transactions called for user {current_user.id}")
+    logger.info(f"[TransactionRoute] Raw filters: {filters.model_dump()}")
+    logger.info(f"[TransactionRoute] Pagination: offset={pagination.offset}, limit={pagination.limit}")
     
     # Check if grouping is requested
     if filters.group_by and filters.group_by != "none":
-        logger.info(f"🔍 [TransactionRoute] Using grouped method with group_by={filters.group_by}")
+        logger.info(f"[TransactionRoute] Using grouped method with group_by={filters.group_by}")
         # Use the new grouped method - returns TransactionGroupedResponse
         return TransactionService.get_transactions_with_grouping(
             db, current_user.id, filters, pagination
         )
     else:
-        logger.info("🔍 [TransactionRoute] Using flat method")
+        logger.info("[TransactionRoute] Using flat method")
         # Use the original flat method
         transactions, total_count = TransactionService.get_transactions_with_filters(
             db, current_user.id, filters, pagination
@@ -352,7 +353,7 @@ def get_transactions(
             has_more=has_more
         )
         
-        logger.info(f"🔍 [TransactionRoute] Returning response with {len(transactions)} transactions, total={total_count}, has_more={has_more}")
+        logger.info(f"[TransactionRoute] Returning response with {len(transactions)} transactions, total={total_count}, has_more={has_more}")
         return response
 
 @router.post("/import")
@@ -463,19 +464,20 @@ async def import_transactions(
 
 @router.post("/bulk-delete")
 async def bulk_delete_transactions(
-    transaction_ids: List[UUID],
+    request: TransactionBulkDeleteRequest,
     notify: bool = Query(default=True, description="Send real-time notification"),
     db: Session = Depends(get_db_with_user_context),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    manager = Depends(get_websocket_manager_dep)
 ):
     """Delete multiple transactions at once"""
-    if not transaction_ids:
+    if not request.transaction_ids:
         raise ValidationError("No transaction IDs provided")
     
     try:
         # Use efficient bulk delete service method
         deleted_ids = TransactionService.bulk_delete_transactions(
-            db, current_user.id, transaction_ids
+            db, current_user.id, request.transaction_ids
         )
         deleted_count = len(deleted_ids)
     except SQLAlchemyError as e:

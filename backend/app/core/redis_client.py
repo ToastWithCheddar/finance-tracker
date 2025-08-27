@@ -108,7 +108,7 @@ class RedisClient:
                             if error_callback:
                                 await error_callback(e)
                     
-                    # Small sleep to prevent tight loop
+                    # Small sleep to prevent busy-wait, makes the CPU idle for other processes
                     await asyncio.sleep(0.01)
                     
             except asyncio.CancelledError:
@@ -199,8 +199,6 @@ class RedisClient:
             logger.error(f"Error checking if key '{key}' exists: {str(e)}")
             return False
 
-    
-    
     async def get_connection_stats(self) -> Dict[str, Any]:
         """Get Redis connection and usage statistics"""
         try:
@@ -236,7 +234,6 @@ class RedisClient:
 
 # Global Redis client instance
 redis_client = RedisClient()
-
 
 # Dependency for FastAPI
 async def get_redis_client() -> RedisClient:

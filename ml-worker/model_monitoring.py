@@ -280,13 +280,9 @@ class ModelMonitor:
             
             with self.lock:
                 # Update Prometheus gauges
-                self.prom_memory_usage.labels(
-                    model_version=self.current_model_version
-                ).set(memory_info.used)
+                self.prom_memory_usage.labels(model_version=self.current_model_version).set(memory_info.used)
                 
-                self.prom_cpu_usage.labels(
-                    model_version=self.current_model_version
-                ).set(cpu_percent)
+                self.prom_cpu_usage.labels(model_version=self.current_model_version).set(cpu_percent)
                 
                 # Store system metrics
                 metrics = [
@@ -314,9 +310,7 @@ class ModelMonitor:
         """Update cache performance metrics"""
         
         with self.lock:
-            self.prom_cache_hit_rate.labels(
-                model_version=self.current_model_version
-            ).set(hit_rate)
+            self.prom_cache_hit_rate.labels(model_version=self.current_model_version).set(hit_rate)
             
             metric = ModelMetric(
                 name="cache_hit_rate",

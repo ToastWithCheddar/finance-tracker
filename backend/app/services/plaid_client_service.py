@@ -221,8 +221,6 @@ class PlaidClientService:
                 'error': str(e)
             }
     
-    # Removed: fetch_recurring_transactions (feature deprecated)
-    
     async def get_connection_status(self, access_token: str) -> Dict[str, Any]:
         """Get connection status for a Plaid item"""
         try:

@@ -116,9 +116,9 @@ app = FastAPI(
     title="Finance Tracker API (Development)",
     description="A comprehensive personal finance management API - DEVELOPMENT MODE",
     version="1.0.0-dev",
-    docs_url="/docs",  # Always enabled in development
-    redoc_url="/redoc",  # Always enabled in development
-    openapi_url="/openapi.json",  # Always enabled in development
+    docs_url="/docs",  
+    redoc_url="/redoc",  
+    openapi_url="/openapi.json",  
     lifespan=lifespan,
     contact={
         "name": "Finance Tracker Development",
@@ -145,13 +145,6 @@ app.add_middleware(
     expose_headers=["X-Process-Time", "X-Request-ID"],
 )
 app.add_middleware(SlowAPIMiddleware)
-
-# Disable Trusted Host Middleware for development flexibility
-# if settings.ENVIRONMENT == "production":
-#     app.add_middleware(
-#         TrustedHostMiddleware,
-#         allowed_hosts=["*.financetracker.com", "financetracker.com", "localhost"]
-#     )
 
 # Request timing middleware
 @app.middleware("http")
@@ -187,10 +180,6 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    
-    # Disable HSTS in development
-    # if settings.ENVIRONMENT == "production":
-    #     response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     
     return response
 
@@ -337,6 +326,7 @@ def _is_sensitive_details(details: dict) -> bool:
     
     return False
 
+
 # Root endpoint
 @app.get("/", tags=["Root"])
 async def root():
@@ -481,8 +471,6 @@ app.include_router(
     }
 )
 
-
-
 app.include_router(
     webhooks.router,
     prefix="/api",
@@ -513,19 +501,11 @@ app.include_router(
     }
 )
 
-
-# Note: Saved filters router removed as it was empty
-
-
-
-
-
 # Realtime WebSocket routes (no prefix)
 app.include_router(
     websockets.router,
     tags=["Realtime"],
 )
-
 
 # API versioning (future use)
 @app.get("/api", tags=["API Info"])

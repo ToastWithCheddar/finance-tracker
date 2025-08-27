@@ -40,7 +40,6 @@ logger = logging.getLogger(__name__)
 class TransactionService:
     @staticmethod
     async def create_transaction(db: Session, transaction: TransactionCreate, user_id: UUID, user: Optional[User] = None) -> Transaction:
-        # Enrich merchant if not provided but description exists
         if not transaction.merchant and transaction.description:
             try:
                 merchant_result = get_merchant_service().recognize_merchant(transaction.description)
@@ -49,7 +48,6 @@ class TransactionService:
                     logger.info(f"Auto-enriched merchant: '{transaction.description}' -> '{transaction.merchant}' (confidence: {merchant_result.confidence_score})")
             except Exception as e:
                 logger.warning(f"Merchant enrichment failed: {str(e)}")
-                # Continue without merchant enrichment
         
         # If category is not provided, try to predict it using ML service (if user enabled)
         if not transaction.category_id and transaction.description:
@@ -134,7 +132,6 @@ class TransactionService:
             else:
                 logger.debug("ML auto-categorization disabled for user or user not found")
 
-        # Get transaction data for database - exclude 'amount' field as Transaction model uses 'amount_cents'
         transaction_data = transaction.model_dump(exclude={'amount', 'transaction_type'})
         
         db_transaction = Transaction(
@@ -260,7 +257,7 @@ class TransactionService:
         filters: TransactionFilter,
         pagination: TransactionPagination
     ) -> Tuple[List[Transaction], int]:
-        logger.info(f"🔍 [TransactionService] Getting transactions for user {user_id} with filters: {filters.model_dump()}")
+        logger.info(f"[TransactionService] Getting transactions for user {user_id} with filters: {filters.model_dump()}")
         
         # Use eager loading to prevent N+1 queries
         query = db.query(Transaction).options(
@@ -335,19 +332,14 @@ class TransactionService:
                 query = query.filter(Transaction.tags.contains([tag]))
                 applied_filters.append(f"tags contains '{tag}'")
 
-        logger.info(f"🔍 [TransactionService] Applied filters: {applied_filters}")
-
         # Get total count for pagination
         total_count = query.count()
-        logger.info(f"🔍 [TransactionService] Total count before pagination: {total_count}")
-
         # Apply pagination
         query = query.order_by(Transaction.transaction_date.desc())
         query = query.offset(pagination.offset)
         query = query.limit(pagination.limit)
 
         results = query.all()
-        logger.info(f"🔍 [TransactionService] Returned {len(results)} transactions after pagination (offset: {pagination.offset}, limit: {pagination.limit})")
 
         # Enrich transactions with category and account information
         enriched_results = TransactionService.enrich_transactions_with_related_data(results)
@@ -492,10 +484,7 @@ class TransactionService:
         filters: TransactionFilter, 
         chunk_size: int = 1000
     ):
-        """
-        Stream transactions in chunks for efficient export processing.
-        Yields batches of transactions to avoid loading all data into memory.
-        """
+        """Stream transactions in chunks for efficient export processing"""
         from sqlalchemy.orm import joinedload
         
         # Build base query with filters
@@ -732,7 +721,6 @@ class TransactionService:
                         continue
                     
                     # Validate that the predicted category exists (user categories or system categories)
-                    # ML worker returns category names, we need to find the UUID
                     category = db.query(Category).filter(
                         and_(
                             Category.name == predicted_category,
@@ -794,10 +782,7 @@ class TransactionService:
 
     @staticmethod
     def enrich_transaction_with_related_data(transaction: Transaction):
-        """
-        Enrich transaction object with category and account information for API responses.
-        This populates the category_name, category_emoji, and account_name fields.
-        """
+        """Enrich transaction object with category and account information for API responses"""
         # Populate category information
         if hasattr(transaction, 'category') and transaction.category:
             transaction.category_name = transaction.category.name
@@ -816,9 +801,7 @@ class TransactionService:
 
     @staticmethod  
     def enrich_transactions_with_related_data(transactions: List[Transaction]) -> List[Transaction]:
-        """
-        Enrich multiple transaction objects with category and account information.
-        """
+        """Enrich multiple transaction objects with category and account information"""
         return [TransactionService.enrich_transaction_with_related_data(t) for t in transactions]
 
 

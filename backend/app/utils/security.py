@@ -19,12 +19,6 @@ def get_password_hash(password: str) -> str:
     """Hash a password"""
     return pwd_context.hash(password)
 
-# REMOVED: create_access_token() - Using Supabase-only authentication
-# Custom JWT tokens no longer needed
-
-# REMOVED: verify_token() - Using Supabase-only authentication
-# Custom JWT verification no longer needed
-
 def generate_random_string(length: int = 32) -> str:
     """Generate a random string for tokens"""
     alphabet = string.ascii_letters + string.digits
@@ -37,9 +31,3 @@ def generate_reset_token() -> str:
 def generate_verification_token() -> str:
     """Generate an email verification token"""
     return generate_random_string(48)
-
-# REMOVED: create_email_magic_token() - Using Supabase native email confirmation
-# Magic tokens no longer needed
-
-# REMOVED: verify_email_magic_token() - Using Supabase native email confirmation
-# Magic token verification no longer needed

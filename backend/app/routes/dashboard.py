@@ -266,12 +266,9 @@ async def get_net_worth_trend(
         if not accounts:
             return []
         
-        # For now, calculate net worth as a simple point-in-time calculation
-        # In a more sophisticated implementation, you'd track historical balances
         net_worth_data = []
-        
-        # Calculate current net worth
         current_net_worth = 0
+
         for account in accounts:
             balance = account.balance_cents / 100  # Convert to dollars
             
@@ -284,8 +281,6 @@ async def get_net_worth_trend(
                 if balance < 0:
                     current_net_worth += balance  # balance is already negative
         
-        # For demonstration, create a trend over the period
-        # In a real implementation, you'd have historical balance snapshots
         current_date = start_date
         days_diff = (end_date - start_date).days
         
@@ -293,8 +288,6 @@ async def get_net_worth_trend(
         interval = max(1, days_diff // 30)  # Show about 30 data points max
         
         while current_date <= end_date:
-            # For demo purposes, show current net worth with some minor variation
-            # In production, this would be actual historical data
             net_worth_data.append({
                 "date": current_date.isoformat(),
                 "net_worth": current_net_worth

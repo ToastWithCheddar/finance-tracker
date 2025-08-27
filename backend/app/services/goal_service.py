@@ -106,8 +106,6 @@ class GoalService(BaseService[Goal, GoalCreate, GoalUpdate]):
     def get_goal(self, db: Session, user_id: UUID, goal_id: UUID) -> Optional[Goal]:
         """Get a specific goal with all related data"""
         return db.query(Goal).options(
-            # joinedload is a SQLAlchemy function for eager-loading relationships in a single database query 
-            # (using SQL JOINs instead of running additional queries per relation).
             joinedload(Goal.contributions),
             joinedload(Goal.milestones)
         ).filter(

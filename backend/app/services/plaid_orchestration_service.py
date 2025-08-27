@@ -191,7 +191,7 @@ class PlaidOrchestrationService:
                 }
             }
     
-    # Account Management (delegated to account service)
+    # Account Management 
     async def sync_account_balances(
         self, 
         db: Session, 
@@ -235,8 +235,6 @@ class PlaidOrchestrationService:
         return await self.transaction_service.fetch_transactions(
             access_token, start_date, end_date, account_ids
         )
-    
-    # Recurring/subscription features removed
     
     # Connection Status and Health
     async def get_connection_status(self, db: Session, user_id: UUID) -> Dict[str, Any]:
@@ -326,9 +324,7 @@ class PlaidOrchestrationService:
         """Get sync status for accounts"""
         if not self.enabled:
             return self._disabled_response()
-        
-        # This would typically check active sync operations
-        # For now, return a simple status
+ 
         return {
             'success': True,
             'active_syncs': [],

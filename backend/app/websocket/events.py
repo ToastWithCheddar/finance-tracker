@@ -240,8 +240,6 @@ class WebSocketEvents:
         }
         await manager.send_to_user(user_id, message)
 
-    # ========== AI & INSIGHTS EVENTS (removed) ==========
-
     # ========== NOTIFICATION EVENTS ==========
     
     @staticmethod

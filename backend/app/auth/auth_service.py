@@ -22,12 +22,12 @@ class AuthService:
         if not self.supabase.is_configured():
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service is not configured."
+                detail="Authentication service is not configured"
             )
         self.user_service = UserService()
 
     def _create_user_dict(self, db_user: User, include_extra_fields: bool = False) -> Dict[str, Any]:
-        """Creates a standardized user dictionary for API responses."""
+        """Creates a standardized user identity dictionary for API responses"""
         user_dict = {
             "id": str(db_user.id),
             "email": db_user.email,
@@ -46,8 +46,8 @@ class AuthService:
             user_dict.update({
                 "first_name": db_user.first_name,
                 "last_name": db_user.last_name,
-                "avatar_url": db_user.avatar_url,  # snake_case version
-                "is_active": db_user.is_active,    # snake_case version
+                "avatar_url": db_user.avatar_url,  
+                "is_active": db_user.is_active,    
                 "is_verified": db_user.is_verified,
                 "notifications_enabled": db_user.notifications_enabled,
                 "theme": db_user.theme,
@@ -56,7 +56,7 @@ class AuthService:
         return user_dict
 
     async def _create_local_user(self, user_data: UserRegister, supabase_user_id: uuid.UUID) -> User:
-        """Creates a user in the local database."""
+        """Creates a user in the local database"""
         user_create = UserCreate(
             email=user_data.email,
             display_name=user_data.display_name,
@@ -67,11 +67,12 @@ class AuthService:
         return self.user_service.create(db=self.db, obj_in=user_create)
 
     async def register_user(self, user_data: UserRegister) -> Dict[str, Any]:
-        """Registers a new user with Supabase and the local database."""
+        """Registers a new user with Supabase and the local database"""
         if self.user_service.get_by_email(db=self.db, email=user_data.email):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered")
 
         try:
+            # First create the supabase user and if authenticated properly, then local user
             auth_response = self.supabase.client.auth.sign_up({
                 "email": user_data.email,
                 "password": user_data.password,
@@ -84,18 +85,17 @@ class AuthService:
                 }
             })
             if not auth_response.user:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to create user.")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to create user")
 
             db_user = await self._create_local_user(user_data, uuid.UUID(auth_response.user.id))
             
-            # Supabase automatically sends email confirmation
-            # No custom magic link needed
+            # Supabase automatically sends email confirmation (no magic link configured)
             
             user_dict = self._create_user_dict(db_user)
             user_dict["emailSent"] = True  # Indicate that email confirmation was sent
             return {
                 "user": user_dict,
-                "message": "Registration successful! Please check your email to confirm your account.",
+                "message": "Registration successful! Please check your email to confirm your account",
                 "requiresEmailConfirmation": True,
                 # No tokens returned - user must confirm email via Supabase first
             }
@@ -107,24 +107,24 @@ class AuthService:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Registration failed")
     
     async def login_user(self, login_data: UserLogin) -> Dict[str, Any]:
-        """Authenticates a user with Supabase."""
+        """Authenticates a user with Supabase"""
         try:
             auth_response = self.supabase.client.auth.sign_in_with_password({
                 "email": login_data.email,
                 "password": login_data.password
             })
             if not auth_response.user or not auth_response.session:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
             
             db_user = self.user_service.get_by_email(db=self.db, email=login_data.email)
             if not db_user:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
             
             # Check if the user account is active
             if not db_user.is_active:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, 
-                    detail="Account has been deactivated."
+                    detail="Account has been deactivated"
                 )
 
             user_dict = self._create_user_dict(db_user)
@@ -139,30 +139,30 @@ class AuthService:
             }
         except AuthError as e:
             logger.error(f"Supabase login error: {e}")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     
     async def refresh_token(self, refresh_token: str) -> Dict[str, Any]:
-        """Refreshes a user's access token using Supabase only."""
+        """Refreshes a user's access token using Supabase only"""
         try:
             # Use Supabase refresh session directly
             auth_response = self.supabase.client.auth.refresh_session(refresh_token)
             if not auth_response.session:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token.")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
             # Get user data for Supabase refresh
             user_data = self.supabase.client.auth.get_user(auth_response.session.access_token)
             if not user_data or not user_data.user:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session after refresh.")
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session after refresh")
             
             db_user = self.user_service.get_by_email(db=self.db, email=user_data.user.email)
             if not db_user:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
             
             # Check if the user account is active
             if not db_user.is_active:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN, 
-                    detail="Account has been deactivated."
+                    detail="Account has been deactivated"
                 )
 
             user_dict = self._create_user_dict(db_user, include_extra_fields=True)
@@ -178,13 +178,13 @@ class AuthService:
             }
         except AuthError as e:
             logger.error(f"Token refresh error: {e}")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Failed to refresh token.")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Failed to refresh token")
         except Exception as e:
             logger.error(f"Unexpected token refresh error: {e}")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Token refresh failed")
     
     async def logout_user(self, access_token: str) -> None:
-        """Logs out a user from Supabase."""
+        """Logs out a user from Supabase"""
         try:
             # Sign out from Supabase to invalidate the session server-side
             self.supabase.client.auth.set_session(access_token, "")
@@ -195,7 +195,7 @@ class AuthService:
             # Do not re-raise; client should still clear local tokens
     
     async def send_password_reset(self, email: str) -> None:
-        """Sends a password reset email."""
+        """Sends a password reset email"""
         try:
             self.supabase.client.auth.reset_password_email(email, {
                 "redirect_to": f"{settings.FRONTEND_URL}/reset-password"
@@ -205,7 +205,7 @@ class AuthService:
             # Do not re-raise, to avoid leaking user existence
     
     async def verify_email(self, token: str, email: str) -> bool:
-        """Verifies an email with a token."""
+        """Verifies an email with a token"""
         try:
             response = self.supabase.client.auth.verify_otp({
                 "email": email,
@@ -218,7 +218,7 @@ class AuthService:
             return False
     
     async def resend_verification(self, email: str) -> None:
-        """Resends email verification."""
+        """Resends email verification"""
         try:
             self.supabase.client.auth.resend({
                 "type": "signup",
@@ -232,7 +232,7 @@ class AuthService:
             # Do not re-raise, to avoid leaking user existence
 
     async def change_password(self, email: str, password_data: PasswordUpdate) -> None:
-        """Changes the user's password via Supabase."""
+        """Changes the user's password via Supabase"""
         try:
             # First, verify the current password by attempting to sign in
             try:
@@ -275,9 +275,3 @@ class AuthService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to change password"
             )
-
-    # REMOVED: create_magic_link_token() - No longer needed for Supabase-only auth
-
-    # REMOVED: verify_magic_link_and_login() - Using Supabase native email confirmation
-
-    # REMOVED: _send_magic_link_email() - Using Supabase native email confirmation

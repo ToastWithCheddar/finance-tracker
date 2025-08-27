@@ -26,22 +26,12 @@ logger = logging.getLogger(__name__)
 security = HTTPBearer()
 
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
-    """Dependency to get the authentication service."""
+    """Dependency to get the authentication service"""
     return AuthService(db)
 
 def _provision_user_from_supabase(auth_service: AuthService, user_data) -> User:
-    """Provisions a local user record from Supabase user data.
-    
-    Args:
-        auth_service: The authentication service instance
-        user_data: Supabase user data response
-        
-    Returns:
-        Local User instance
-        
-    Raises:
-        HTTPException: If user provisioning fails
-    """
+    """Provisions a local user record from Supabase user data"""
+
     uid = uuid.UUID(user_data.user.id)
 
     # Check if a local user exists with the same e-mail (created earlier without UID)
@@ -82,15 +72,7 @@ def _provision_user_from_supabase(auth_service: AuthService, user_data) -> User:
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
 
 def _validate_dev_token(token: str, auth_service: AuthService) -> Optional[User]:
-    """Validates development mock tokens and returns/creates dev user.
-    
-    Args:
-        token: The token to validate
-        auth_service: The authentication service instance
-        
-    Returns:
-        Development user if token is valid dev token, None otherwise
-    """
+    """Validates development mock tokens and returns/creates dev user"""
     from app.config import settings
     if hasattr(settings, 'ENVIRONMENT') and settings.ENVIRONMENT == 'development':
         if token.startswith('dev-mock-token-'):
@@ -119,33 +101,14 @@ def _validate_dev_token(token: str, auth_service: AuthService) -> Optional[User]
     return None
 
 def _validate_supabase_token(token: str, auth_service: AuthService):
-    """Validates token with Supabase and returns user data.
-    
-    Args:
-        token: JWT token to validate
-        auth_service: The authentication service instance
-        
-    Returns:
-        Supabase user data response
-        
-    Raises:
-        HTTPException: If token is invalid
-    """
+    """Validates token with Supabase and returns user data"""
     user_data = auth_service.supabase.client.auth.get_user(token)
     if not user_data or not user_data.user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
     return user_data
 
 def _get_or_provision_local_user(user_data, auth_service: AuthService) -> User:
-    """Gets existing local user or provisions new one from Supabase data.
-    
-    Args:
-        user_data: Supabase user data response
-        auth_service: The authentication service instance
-        
-    Returns:
-        Local User instance
-    """
+    """Gets existing local user or provisions new one from Supabase data"""
     # Try to fetch matching local user row
     user = auth_service.user_service.get_by_supabase_id(
         db=auth_service.db,
@@ -162,7 +125,7 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     auth_service: AuthService = Depends(get_auth_service)
 ) -> User:
-    """Gets the current authenticated user from a token."""
+    """Gets the current authenticated user from a token"""
     token = credentials.credentials
     
     # Development mode: accept mock tokens
@@ -235,11 +198,11 @@ async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
 ) -> Optional[User]:
-    """Return User if the token is valid, else None (never raises)."""
+    """Return User if the token is valid, else None"""
     if not credentials:
         return None
 
-    # Build a fresh AuthService instance (mirrors get_auth_service) to reuse existing logic
+    # Build a fresh AuthService instance to reuse existing logic
     auth_service = AuthService(db)
 
     try:
@@ -249,14 +212,14 @@ async def get_optional_user(
 
 @contextmanager
 def user_context_db(db: Session, user: User):
-    """Context manager to set user ID in the database session for Row-Level Security."""
+    """Context manager to set user ID in the database session for RLS"""
+    # User will not be able to access the other users information (rows)
     try:
-        # Set the user ID for the current transaction (reusing audit pattern)
+        # Set the user ID for the current transaction 
         db.execute(text("SET LOCAL app.current_user_id = :user_id"), {"user_id": str(user.id)})
         yield db
     finally:
         # The setting is automatically cleared at the end of the transaction
-        # No explicit reset is needed with SET LOCAL
         pass
 
 def get_db_with_user_context(
@@ -267,9 +230,7 @@ def get_db_with_user_context(
     with user_context_db(db, current_user) as session:
         return session
 
-def verify_supabase_webhook(
-    authorization: Optional[str] = Header(None)
-) -> bool:
+def verify_supabase_webhook(authorization: Optional[str] = Header(None)) -> bool:
     """Verifies the Authorization header from a Supabase webhook."""
     if not settings.SUPABASE_WEBHOOK_SECRET:
         logger.error("SUPABASE_WEBHOOK_SECRET is not set. Cannot verify webhook.")
@@ -306,8 +267,6 @@ async def get_current_user_from_token(
         if not user_data or not user_data.user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
 
-# No denylist check needed - Supabase handles token validation
-
         # Get or create local user record
         user = auth_service.user_service.get_by_supabase_id(
             db=auth_service.db,
@@ -339,13 +298,10 @@ async def get_current_user_from_token(
             detail="Authentication service error."
         )
 
-async def verify_plaid_webhook(
-    plaid_verification: str = Header(..., alias="Plaid-Verification")
-):
+async def verify_plaid_webhook(plaid_verification: str = Header(..., alias="Plaid-Verification")):
     """Verifies the JWT sent by Plaid in the webhook verification header."""
     try:
         # 1. Fetch Plaid's public keys (JWKS)
-        # In production, these should be cached for a few hours.
         async with httpx.AsyncClient() as client:
             jwks_response = await client.post(
                 f"{settings.PLAID_BASE_URL}/webhook_verification_key/get", 

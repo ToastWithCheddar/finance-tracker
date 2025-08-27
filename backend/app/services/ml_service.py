@@ -35,8 +35,7 @@ class MLServiceError(Exception):
         super().__init__(self.message)
 
 class MLServiceClient:
-    """Type-safe client for ML categorization service"""
-    
+
     def __init__(self, config: Optional[MLServiceConfig] = None):
         self.config = config or MLServiceConfig(
             base_url=settings.ML_SERVICE_URL,
@@ -57,22 +56,7 @@ class MLServiceClient:
         headers: Optional[Dict[str, str]] = None
     ) -> httpx.Response:
         """
-        Make HTTP request with exponential backoff retry logic
-        
-        Args:
-            method: HTTP method (GET, POST, etc.)
-            url: Request URL
-            timeout: Request timeout in seconds
-            max_retries: Maximum number of retries (defaults to config.max_retries)
-            json_data: JSON payload for request
-            headers: Request headers
-            
-        Returns:
-            httpx.Response object
-            
-        Raises:
-            httpx.RequestError: After all retries are exhausted
-        """
+        Make HTTP request with exponential backoff retry logic"""
         retries = max_retries or self.config.max_retries
         last_exception = None
         
@@ -126,15 +110,7 @@ class MLServiceClient:
             raise httpx.RequestError("All retry attempts failed")
     
     def _calculate_backoff_delay(self, attempt: int) -> float:
-        """
-        Calculate exponential backoff delay with jitter
-        
-        Args:
-            attempt: Current attempt number (0-based)
-            
-        Returns:
-            Delay in seconds
-        """
+        """Calculate exponential backoff delay with jitter"""
         # Exponential backoff: 1s, 2s, 4s, 8s, etc.
         base_delay = min(2 ** attempt, 30)  # Cap at 30 seconds
         
@@ -150,18 +126,8 @@ class MLServiceClient:
         merchant: Optional[str] = None,
         user_id: Optional[str] = None
     ) -> MLServiceResponse:
-        """
-        Categorize a single transaction using ML service
-        
-        Args:
-            description: Transaction description
-            amount_cents: Transaction amount in cents
-            merchant: Optional merchant name
-            user_id: Optional user ID for personalized categorization
-            
-        Returns:
-            MLServiceResponse with categorization data or error
-        """
+
+        """Categorize a single transaction using ML service"""
         try:
             request_data = MLCategorizationRequest(
                 description=description,
@@ -257,16 +223,9 @@ class MLServiceClient:
         transactions: List[Dict[str, Any]], 
         user_id: Optional[str] = None
     ) -> MLServiceResponse:
-        """
-        Categorize multiple transactions in batch
-        
-        Args:
-            transactions: List of transaction data
-            user_id: Optional user ID for personalized categorization
-            
-        Returns:
-            MLServiceResponse with batch categorization results
-        """
+
+        """Categorize multiple transactions in batch"""
+
         try:
             # Validate batch size
             if len(transactions) > self.config.batch_size:
@@ -439,17 +398,7 @@ class MLServiceClient:
             )
     
     async def add_training_example(self, category: str, example: str, user_id: str) -> MLServiceResponse:
-        """
-        Add a new training example to a category for improved classification
-        
-        Args:
-            category: Category name
-            example: Example text for the category
-            user_id: User ID providing the example
-            
-        Returns:
-            MLServiceResponse with operation result
-        """
+        """Add a new training example to a category for improved classification"""
         try:
             request_data = MCategoryExampleRequest(
                 category=category,
@@ -533,12 +482,7 @@ class MLServiceClient:
             )
     
     async def export_model(self) -> MLServiceResponse:
-        """
-        Export the current model to ONNX format with quantization
-        
-        Returns:
-            MLServiceResponse with export result
-        """
+        """Export the current model to ONNX format with quantization"""
         try:
             start_time = datetime.now(timezone.utc)
             
@@ -617,12 +561,7 @@ class MLServiceClient:
             )
     
     async def get_model_performance(self) -> MLServiceResponse:
-        """
-        Get current model performance metrics
-        
-        Returns:
-            MLServiceResponse with performance metrics
-        """
+        """Get current model performance metrics"""
         try:
             start_time = datetime.now(timezone.utc)
             

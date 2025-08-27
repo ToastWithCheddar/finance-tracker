@@ -217,7 +217,6 @@ class BudgetService:
         Returns:
             List of tuples containing (Budget object, BudgetUsage object)
         """
-        # Read-only path; avoid nested explicit transactions
         # First get the basic budgets with eager loading
         budgets = BudgetService.get_budgets(db, user_id, filters, skip, limit)
 
@@ -228,7 +227,6 @@ class BudgetService:
         budget_ids = [budget.id for budget in budgets]
 
         # Get optimized spending data for just these budgets
-        # Note: only_active is handled by the initial get_budgets call, so we don't filter here
         budget_data = BudgetService._get_budget_spending_data(
             db=db, 
             user_id=user_id, 
@@ -245,7 +243,6 @@ class BudgetService:
         for budget in budgets:
             usage_data = usage_lookup.get(budget.id)
             if usage_data:
-                # Create BudgetUsage object from the optimized data
                 usage = BudgetUsage(
                     budget_id=str(usage_data['budget_id']),
                     spent_cents=usage_data['spent_cents'],

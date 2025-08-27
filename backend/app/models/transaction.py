@@ -35,7 +35,7 @@ class Transaction(BaseModel):
     # Status
     status: Mapped[str] = mapped_column(String(20), default="posted", nullable=False)  # pending, posted, cancelled
     is_transfer: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Distinguishes purchases and account transfers
-    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Allows users to hide transactions from normal views while preserving them in the database for audit trails
+    is_hidden: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) 
     
     # Location (for efficient querying)
     location: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)  # {lat, lng, address, city, state, country}

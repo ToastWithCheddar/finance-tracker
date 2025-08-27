@@ -47,7 +47,6 @@ async def categorize_transaction(
     """
     Categorize a single transaction using ML service
     """
-    # First try Celery worker directly (preferred path in this deployment)
     try:
         payload = {
             'id': None,

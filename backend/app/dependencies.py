@@ -29,7 +29,6 @@ from app.websocket.manager import redis_websocket_manager
 
 # Core service dependencies using provider functions
 
-
 def get_category_service() -> CategoryService:
     """Dependency injection for CategoryService."""
     return CategoryService()
@@ -54,9 +53,6 @@ def get_user_service(db: Session = Depends(get_db)) -> UserService:
 def get_notification_service() -> NotificationService:
     """Dependency injection for NotificationService."""
     return NotificationService()
-
-
-
 
 def get_financial_health_service() -> FinancialHealthService:
     """Dependency injection for FinancialHealthService."""

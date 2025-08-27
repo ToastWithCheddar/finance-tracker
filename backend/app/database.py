@@ -51,7 +51,7 @@ def get_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
-# Context manager for database sessions
+# Context manager for database sessions (for "with" statement)
 @contextmanager
 def get_db_session() -> Generator[Session, None, None]:
     """Context manager for database sessions"""
@@ -71,7 +71,6 @@ def check_database_health() -> bool:
     """Check if database is healthy"""
     try:
         with get_db_session() as db:
-            # In SQLAlchemy 2.x all ad‑hoc SQL strings must be wrapped in text()
             db.execute(text("SELECT 1"))
         return True
     except Exception as e:
@@ -95,7 +94,7 @@ def create_database():
         # Don't raise - let the application continue and fail later if DB doesn't exist
 
 # SQLAlchemy events
-# Check what exactly is that? 
+# Just for the quick tests 
 @event.listens_for(engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     """Set SQLite pragma for foreign key constraints"""

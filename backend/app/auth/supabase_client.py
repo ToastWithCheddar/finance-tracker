@@ -35,18 +35,7 @@ class SupabaseClient:
         return self._configured
     
     async def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
-        """Verify JWT token with Supabase
-        
-        Args:
-            token: JWT access token to verify
-            
-        Returns:
-            User data dict if token is valid, None otherwise
-            
-        Raises:
-            AuthError: When token is invalid or authentication fails
-            ValueError: When Supabase client is not configured
-        """
+        """Verify JWT token with Supabase"""
         if not self.is_configured():
             raise ValueError("Supabase client not configured")
             

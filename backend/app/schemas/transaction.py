@@ -263,6 +263,10 @@ class TransactionBulkUpdate(BaseModel):
     transaction_ids: List[UUID] = Field(..., min_items=1, max_items=1000)
     updates: TransactionUpdate
 
+class TransactionBulkDeleteRequest(BaseModel):
+    """Schema for bulk transaction deletion"""
+    transaction_ids: List[UUID] = Field(..., min_items=1, max_items=1000, description="List of transaction IDs to delete")
+
 class TransactionGroup(BaseModel):
     """Schema for grouped transaction response"""
     key: str = Field(..., description="Group key (category name, merchant name, or date)")

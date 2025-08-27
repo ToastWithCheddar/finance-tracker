@@ -141,7 +141,7 @@ def dismiss_notification(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Dismiss (delete) a notification"""
+    """Dismiss a notification"""
     try:
         success = NotificationService.dismiss_notification(
             db=db,

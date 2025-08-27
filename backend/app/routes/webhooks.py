@@ -170,7 +170,3 @@ async def handle_item_error(db: Session, item_id: str, error: dict):
     
     db.commit()
     logger.info(f"Updated {len(accounts)} accounts with error status for item {item_id}")
-
-async def handle_recurring_transactions_update(db: Session, item_id: str, account_ids: list):
-    # Deprecated: recurring transactions feature removed
-    return None

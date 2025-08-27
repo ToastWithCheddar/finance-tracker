@@ -28,7 +28,6 @@ class User(BaseResponseSchema):
     default_items_per_page: int = 25
     spending_alert_threshold_cents: int | None = None 
 
-    # Pydantic v2: allow constructing from SQLAlchemy objects
     model_config = ConfigDict(from_attributes=True)
 
 ### Check below later -----
@@ -46,7 +45,6 @@ class UserProfile(BaseModel):
     avatar_url: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
-### 
 
 # Workflow
 # 1) Validate the incoming JSON with UserRegister from auth.py (checks email+password strength)
@@ -91,5 +89,3 @@ class UserUpdate(BaseModel):
     # Additional User Preferences
     default_items_per_page: int | None = Field(None, ge=10, le=100)
     spending_alert_threshold_cents: int | None = Field(None, ge=0)
-
-# All authentication schemas have been moved to auth.py for consistency

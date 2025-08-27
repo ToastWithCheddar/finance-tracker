@@ -66,8 +66,6 @@ class DataValidationService:
             errors = [f"{error['loc'][0]}: {error['msg']}" for error in e.errors()]
             return False, errors
     
-    # Removed: recurring rule validation
-    
     def sanitize_jsonb_field(self, data: Any) -> Dict[str, Any]:
         """Sanitize and prepare JSONB data for storage"""
         if not data:
@@ -143,10 +141,6 @@ class DataValidationService:
         }
         
         try:
-            # Check JSONB field validity
-            # This would be expanded to check all JSONB fields in the database
-            # For now, we'll just return the structure
-            
             # Add recommendations based on findings
             if report['foreign_key_violations']:
                 report['recommendations'].append('Fix foreign key violations before they cause cascade issues')
