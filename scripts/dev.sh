@@ -18,17 +18,6 @@ if ! docker info > /dev/null 2>&1; then
     exit 1
 fi
 
-# Check for UI-only mode
-if [ "$1" = "ui-only" ] || [ "$1" = "ui" ]; then
-    echo "🎭 Starting UI-only mode (frontend with mock data)..."
-    docker-compose -f docker-compose.ui-only.yml up --build -d
-    echo "✅ UI-only mode started!"
-    echo "📱 Frontend: http://localhost:3000 (with mock data)"
-    echo "🎭 Mock backend: http://localhost:8000 (optional)"
-    echo "💡 To start with mock backend: docker-compose -f docker-compose.ui-only.yml --profile with-backend up -d"
-    exit 0
-fi
-
 # Start development environment
 echo "🐳 Starting Docker containers in development mode..."
 docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
@@ -53,25 +42,18 @@ echo "Seeding default data..."
 docker-compose exec backend python -m app.scripts.seed_data
 
 echo "Development environment ready!"
-echo "
-echo " Available services:"
-echo " Frontend: http://localhost:3000 (with hot reload)"
-echo " Backend API: http://localhost:8000 (with auto-reload)"
-echo " API Documentation: http://localhost:8000/docs"
-echo " Database: localhost:5432 (finance_tracker_dev)"
-echo " Redis: localhost:6379"
-echo " ML Worker: localhost:8001"
-echo "
-echo " Development commands:"
-echo " Stop all: docker-compose down"
-echo " View logs: docker-compose logs -f [service]"
-echo " Shell access: docker-compose exec [service] bash"
-echo " Restart service: docker-compose restart [service]"
-echo " Fresh start: docker-compose down -v && ./scripts/dev.sh"
-echo " UI-only mode: ./scripts/dev.sh ui-only"
-echo "
-echo " Development Modes:"
-echo " Full: All services (database, redis, ML worker)"
-echo " UI-only: Frontend with mock data (no database)"
-echo "
-echo " Remember: This is a DEVELOPMENT setup only!"
+echo 
+echo "Available services:"
+echo "Frontend: http://localhost:3000 (with hot reload)"
+echo "Backend API: http://localhost:8000 (with auto-reload)"
+echo "API Documentation: http://localhost:8000/docs"
+echo "Database: localhost:5432 (finance_tracker_dev)"
+echo "Redis: localhost:6379"
+echo "ML Worker: localhost:8001"
+echo 
+echo "Development commands:"
+echo "Stop all: docker-compose down"
+echo "View logs: docker-compose logs -f [service]"
+echo "Shell access: docker-compose exec [service] bash"
+echo "Restart service: docker-compose restart [service]"
+echo "Fresh start: docker-compose down -v && ./scripts/dev.sh"

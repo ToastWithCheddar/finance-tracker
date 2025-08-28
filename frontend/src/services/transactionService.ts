@@ -95,7 +95,6 @@ export class TransactionService extends BaseService {
   ): Promise<TransactionListResponse> {
     const params: Record<string, string | number | boolean> = {};
     
-    console.log('🔍 [TransactionService] Input filters:', filters);
     
     // Pagination params: support both page/per_page and offset/limit
     const page = filters?.page ?? 1;
@@ -155,7 +154,6 @@ export class TransactionService extends BaseService {
     }
 
     // Comprehensive logging for debugging
-    console.log('🔍 [TransactionService] Mapped parameters for API:', params);
     console.debug?.('TransactionService fetching:', this.baseEndpoint, params);
     
     const response = await this.get<any>(
@@ -168,7 +166,6 @@ export class TransactionService extends BaseService {
       }
     );
     
-    console.log('🔍 [TransactionService] Raw API response:', response);
     console.debug?.('TransactionService raw response:', response);
 
     // Normalize list envelope first, then normalize each transaction item
@@ -181,13 +178,6 @@ export class TransactionService extends BaseService {
       pages: list.pages || 1,
     };
     
-    console.log('🔍 [TransactionService] Final normalized response:', {
-      itemCount: normalizedResponse.items.length,
-      total: normalizedResponse.total,
-      page: normalizedResponse.page,
-      per_page: normalizedResponse.per_page,
-      pages: normalizedResponse.pages
-    });
     console.debug?.('TransactionService normalized response:', normalizedResponse);
     return normalizedResponse;
   }
@@ -345,7 +335,6 @@ export class TransactionService extends BaseService {
     filters?: TransactionFilters,
     options?: { useCache?: boolean; context?: ErrorContext }
   ): Promise<TransactionStats> {
-    console.log('🎯 [getTransactionStats] Starting stats calculation with backend limit respect');
     
     try {
       // Use max allowed per_page (100) to respect backend validation
@@ -355,7 +344,6 @@ export class TransactionService extends BaseService {
         page: 1  // Start from page 1
       };
       
-      console.log('🔍 [getTransactionStats] Using filters with backend limit:', statsFilters);
       
       const transactionData = await this.getTransactions(statsFilters, { 
         useCache: options?.useCache ?? true,
@@ -366,11 +354,6 @@ export class TransactionService extends BaseService {
       const totalPages = transactionData?.pages || 1;
       const transactions = transactionData?.items || [];
       
-      console.log('📊 [getTransactionStats] First page results:', {
-        fetchedCount: transactions.length,
-        totalCount: totalCountFromAPI,
-        totalPages: totalPages
-      });
       
       // Calculate stats from the first 100 transactions
       // This gives a good approximation and respects backend limits
@@ -411,7 +394,6 @@ export class TransactionService extends BaseService {
       return stats;
       
     } catch (error) {
-      console.error('❌ [getTransactionStats] Error in stats calculation:', error);
       
       // Return empty stats as fallback
       return {
@@ -463,14 +445,11 @@ export class TransactionService extends BaseService {
     if (filters.category_id) params.category_id = filters.category_id;
     if (filters.transaction_type) params.transaction_type = filters.transaction_type;
 
-    console.log('🎯 Exporting transactions with params:', params);
 
     try {
       const blob = await apiClient.getBlob('/transactions/export', params);
-      console.log('✅ Export blob received:', blob.size, 'bytes');
       return blob;
     } catch (error) {
-      console.error('❌ Export failed:', error);
       throw this.handleServiceError(error as any, options?.context);
     }
   }
@@ -576,14 +555,12 @@ export class TransactionService extends BaseService {
             document.body.removeChild(a);
           }
           window.URL.revokeObjectURL(url);
-          console.log('✅ Download completed and cleaned up');
         } catch (cleanupError) {
           console.warn('Minor cleanup error:', cleanupError);
         }
       }, 100);
       
     } catch (error) {
-      console.error('❌ Download failed:', error);
       // Provide user-friendly error message
       const message = error instanceof Error ? error.message : 'Unknown error occurred';
       throw new Error(`Failed to download ${filename}: ${message}`);

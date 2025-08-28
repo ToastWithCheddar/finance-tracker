@@ -101,7 +101,6 @@ export class AccountService extends BaseService {
     average_transaction?: number;
     transaction_count_by_type?: { income: number; expense: number };
   }> {
-    console.log('🎯 AccountService: Analytics dashboard endpoint not available, using fallback calculation');
     
     try {
       // FALLBACK: Calculate basic summary from account balance data since analytics endpoint is unavailable
@@ -118,7 +117,6 @@ export class AccountService extends BaseService {
         }
       });
       
-      console.log('📊 Calculated account summary from', accountCount, 'accounts, total balance:', totalBalance);
       
       // Return basic summary (since we don't have transaction data here, we'll provide minimal info)
       // Note: This is a simplified fallback - in a real scenario we might fetch recent transactions too
@@ -135,7 +133,6 @@ export class AccountService extends BaseService {
       };
       
     } catch (error) {
-      console.warn('⚠️ AccountService: Failed to calculate fallback summary, returning empty summary:', error);
       
       // Return empty summary as final fallback
       return {

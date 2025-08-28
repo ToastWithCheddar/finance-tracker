@@ -26,7 +26,6 @@ export function useTransactions(filters?: Partial<TransactionFilters>, enabled: 
   return useQuery({
     queryKey: TRANSACTION_KEYS.list(filters),
     queryFn: () => {
-      console.log('🔍 Fetching transactions with filters:', filters);
       return transactionService.getTransactions(filters);
     },
     enabled: enabled,
@@ -34,11 +33,8 @@ export function useTransactions(filters?: Partial<TransactionFilters>, enabled: 
     gcTime: 10 * 60 * 1000, // 10 minutes
     meta: {
       onSuccess: (data: any) => {
-        console.log('✅ Transactions fetched successfully:', data);
-        console.log(`📊 Found ${data?.transactions?.length || data?.length || 0} transactions`);
       },
       onError: (error: any) => {
-        console.error('❌ Failed to fetch transactions:', error);
       },
     },
   });
@@ -54,7 +50,6 @@ export function useTransactionsGrouped(
       if (!filters) {
         throw new Error('Filters are required for grouped transactions');
       }
-      console.log('🔍 Fetching grouped transactions with filters:', filters);
       return transactionService.getTransactionsGrouped(filters);
     },
     enabled: !!filters && !!filters.group_by,
@@ -62,11 +57,8 @@ export function useTransactionsGrouped(
     gcTime: 10 * 60 * 1000, // 10 minutes
     meta: {
       onSuccess: (data: any) => {
-        console.log('✅ Grouped transactions fetched successfully:', data);
-        console.log(`📊 Found ${data?.groups?.length || 0} groups`);
       },
       onError: (error: any) => {
-        console.error('❌ Failed to fetch grouped transactions:', error);
       },
     },
   });
@@ -91,10 +83,8 @@ export function useTransactionStats(filters?: TransactionFilter) {
     retry: 1, // Only retry once since we now use fallback calculation
     meta: {
       onSuccess: (data: any) => {
-        console.log('✅ Transaction stats calculated successfully:', data);
       },
       onError: (error: any) => {
-        console.error('❌ Failed to get transaction stats:', error);
       },
     },
   });
@@ -125,8 +115,6 @@ export function useCreateTransaction() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
       
-      console.log('✅ Transaction created - invalidated all related queries');
-      console.log('🔄 Invalidated ALL stats queries using predicate matcher');
     },
   });
 }
@@ -158,8 +146,6 @@ export function useUpdateTransaction() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
       
-      console.log('✅ Transaction updated - invalidated all related queries');
-      console.log('🔄 Invalidated ALL stats queries using predicate matcher');
     },
   });
 }
@@ -187,8 +173,6 @@ export function useDeleteTransaction() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
       
-      console.log('✅ Transaction deleted - invalidated all related queries');
-      console.log('🔄 Invalidated ALL stats queries using predicate matcher');
     },
   });
 }
@@ -218,8 +202,6 @@ export function useBulkDeleteTransactions() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
       
-      console.log('✅ Bulk delete completed - invalidated all related queries');
-      console.log('🔄 Invalidated ALL stats queries using predicate matcher');
     },
   });
 }
@@ -244,7 +226,6 @@ export function useImportCSV() {
       queryClient.invalidateQueries({ queryKey: ['dashboard-summary'] });
       queryClient.invalidateQueries({ queryKey: ['category-breakdown'] });
       
-      console.log('✅ CSV import completed - invalidated all related queries');
       
       // Show success toast
       if (typeof window !== 'undefined') {
@@ -256,7 +237,6 @@ export function useImportCSV() {
       return result;
     },
     onError: (error) => {
-      console.error('❌ CSV import failed:', error);
       
       // Provide user-friendly error messages
       let userMessage = 'Import failed. Please check your CSV file and try again.';
@@ -289,7 +269,6 @@ export function useExportTransactions() {
         // Download the file
         const filename = `transactions.${filters.format}`;
         transactionService.downloadExportFile(blob, filename);
-        console.log('✅ Export successful:', filename);
         
         // Show success feedback to user
         if (typeof window !== 'undefined' && 'navigator' in window && 'vibrate' in navigator) {
@@ -302,12 +281,10 @@ export function useExportTransactions() {
           toast.success(`Export completed! File downloaded as ${filename}`);
         }
       } catch (error) {
-        console.error('❌ Export download failed:', error);
         throw error; // Re-throw to trigger onError
       }
     },
     onError: (error) => {
-      console.error('❌ Export failed:', error);
       
       // Provide user-friendly error messages
       let userMessage = 'Export failed. Please try again.';

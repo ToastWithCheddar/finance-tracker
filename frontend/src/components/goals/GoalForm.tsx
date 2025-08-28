@@ -132,12 +132,10 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     });
     
     if (!targetAmount || targetAmount <= 0) {
-      console.log('❌ Invalid target amount:', targetAmount);
       return;
     }
     
     if (!targetDate) {
-      console.log('❌ No target date provided');
       return;
     }
     
@@ -151,7 +149,6 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     });
     
     if (target <= now) {
-      console.log('❌ Target date is in the past or today');
       return;
     }
     
@@ -175,7 +172,6 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     setMonthlyTargetInput(formatCurrencyDisplay(monthlyTargetCents));
     setValue('monthly_target_cents', monthlyTargetCents);
     
-    console.log('✅ Monthly target updated successfully');
   };
 
   // Watch target date for button enabling
@@ -408,7 +404,6 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
                 <Button
                   type="button"
                   onClick={() => {
-                    console.log('🖱️ Calculate button clicked (onClick handler)');
                     calculateMonthlyTarget();
                   }}
                   variant="outline"

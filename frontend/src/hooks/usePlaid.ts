@@ -58,7 +58,6 @@ export function useExchangeToken() {
       queryClient.invalidateQueries({ queryKey: ['transactions'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       // Also invalidate dashboard analytics which uses a different key
-      // Note: dashboard-analytics endpoint no longer exists, invalidating transaction stats instead
       queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
     },
   });
@@ -71,16 +70,15 @@ export function useSyncTransactions() {
 
   return useMutation({
     mutationFn: (request?: SyncTransactionsRequest) => {
-      console.log('🚀 useSyncTransactions mutation started with request:', request);
+      console.log('useSyncTransactions mutation started with request:', request);
       return plaidService.syncTransactions(request);
     },
     onSuccess: (data) => {
-      console.log('✅ Transaction sync successful:', JSON.stringify(data, null, 2));
+      console.log('Transaction sync successful:', JSON.stringify(data, null, 2));
       
       // Show detailed success message
       const results = data.data?.results || data.data;
       if (Array.isArray(results)) {
-        console.log('📊 Processing array of results:', results.length, 'accounts');
         results.forEach((result: any, index) => {
           console.log(`   Account ${index + 1}: ${result.account_name || result.name || 'Unknown'}`);
           // Handle both possible response structures
@@ -95,10 +93,8 @@ export function useSyncTransactions() {
         const totalUpdated = results.reduce((sum: number, r: any) => sum + ((r.result?.updated_transactions || r.updated_transactions) || 0), 0);
         console.log(`✨ TOTAL: ${totalNew} new, ${totalUpdated} updated transactions`);
       } else if (results) {
-        console.log('📊 Processing single result:', results);
         console.log(`✨ Successfully synced: ${results.new_transactions || 0} new, ${results.updated_transactions || 0} updated transactions`);
       } else {
-        console.log('⚠️ No results data found in response');
       }
       
       // Invalidate transaction-related queries
@@ -110,10 +106,8 @@ export function useSyncTransactions() {
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
     },
     onError: (error) => {
-      console.error('❌ Transaction sync failed:', error);
     },
     onMutate: (variables) => {
-      console.log('🔄 Transaction sync starting with variables:', variables);
     },
   });
 }
@@ -125,11 +119,9 @@ export function useSyncBalances() {
 
   return useMutation({
     mutationFn: (request?: SyncBalancesRequest) => {
-      console.log('🚀 useSyncBalances mutation started with request:', request);
       return plaidService.syncBalances(request);
     },
     onSuccess: (data) => {
-      console.log('✅ Balance sync successful:', data);
       
       // Invalidate account and dashboard queries - balances have updated
       queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Broad invalidation for all account queries
@@ -140,10 +132,8 @@ export function useSyncBalances() {
       queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
     },
     onError: (error) => {
-      console.error('❌ Balance sync failed:', error);
     },
     onMutate: (variables) => {
-      console.log('🔄 Mutation starting with variables:', variables);
     },
   });
 }

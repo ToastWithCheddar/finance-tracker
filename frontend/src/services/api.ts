@@ -280,7 +280,6 @@ class ApiClient {
 
         // One-shot silent refresh attempt
         retried = true;
-        console.log('🔄 Attempting silent token refresh...');
         
         try {
           const refreshResponse = await fetch(`${this.baseURL}/auth/refresh`, {
@@ -302,21 +301,18 @@ class ApiClient {
           try {
             refreshData = await refreshResponse.json();
           } catch (parseError) {
-            console.error('❌ Failed to parse refresh response JSON:', parseError);
             secureStorage.clearTokens();
             return this.handleResponse<T>(response);
           }
 
           // Validate refresh response structure
           if (!refreshData || !refreshData.accessToken || !refreshData.refreshToken) {
-            console.error('❌ Invalid refresh response structure:', refreshData);
             secureStorage.clearTokens();
             return this.handleResponse<T>(response);
           }
 
           const { accessToken, refreshToken, expiresIn } = refreshData;
           this.setAuthTokens(accessToken, refreshToken, expiresIn);
-          console.log('✅ Token refresh successful');
 
           // Update the authorization header for retry
           config.headers = {
@@ -327,7 +323,6 @@ class ApiClient {
           // Continue loop to retry the original request with new token
           continue;
         } catch (refreshError) {
-          console.error('❌ Token refresh error:', refreshError);
           // Clear tokens and bubble up original 401
           secureStorage.clearTokens();
           return this.handleResponse<T>(response);

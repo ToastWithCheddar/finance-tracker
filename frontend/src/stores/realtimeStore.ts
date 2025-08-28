@@ -731,7 +731,6 @@ useRealtimeStore.subscribe(
   (state) => state.milestoneAlerts.length,
   (len, prevLen) => {
     if (len > prevLen) {
-      console.log('[RealtimeStore] 🎉 New milestone achieved!', len);
     }
   },
 );

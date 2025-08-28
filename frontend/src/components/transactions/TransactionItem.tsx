@@ -44,14 +44,9 @@ export function TransactionItem({
           example: trainingText
         });
         
-        console.log(`✅ Positive feedback: Reinforced '${categoryName}' with example '${trainingText}'`);
       } else {
         // Thumbs down: User disagrees with categorization
-        // In a full implementation, we'd show a category picker here
-        // For now, just log the negative feedback
-        console.log(`❌ Negative feedback: User disagrees with '${categoryName}' for '${transaction.description}'`);
         
-        // TODO: Show modal to let user pick correct category, then add that as training example
         alert('Thanks for the feedback! In the future, this will let you pick the correct category to improve AI accuracy.');
       }
     } catch (error) {

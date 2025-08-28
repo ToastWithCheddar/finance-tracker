@@ -119,8 +119,6 @@ export function Transactions() {
     per_page: itemsPerPage,
   };
   
-  console.log('🔍 [Transactions] Final queryFilters for API:', queryFilters);
-  console.log('🔍 [Transactions] Stats filters (no pagination):', filters);
 
   // Always fetch flat transaction data - no more grouping
   const { data: transactionData, isLoading, error } = useTransactions(queryFilters);
@@ -151,12 +149,6 @@ export function Transactions() {
   const totalPages = transactionData?.pages || 1;
   
   // Debug logging for data structure
-  console.log('🔍 Transaction data structure:', {
-    hasData: !!transactionData,
-    transactionsCount: transactions.length,
-    totalCount,
-    totalPages
-  });
   
   // Removed: Complex grouping logic no longer needed - transactions are displayed as flat list
 
@@ -178,8 +170,6 @@ export function Transactions() {
 
   // Handle filter changes (triggers new API call)
   const handleFiltersChange = (newFilters: TransactionFilter) => {
-    console.log('🔍 [Transactions] Filters changed from:', filters);
-    console.log('🔍 [Transactions] Filters changed to:', newFilters);
     setFilters(newFilters);
     setCurrentPage(1); // Reset to first page when filters change
   };
@@ -339,7 +329,6 @@ export function Transactions() {
       transaction_type: filters.transaction_type,
     };
 
-    console.log('🎯 Exporting with filters:', exportFilters);
     exportTransactions(exportFilters);
   };
 

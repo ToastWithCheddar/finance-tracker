@@ -96,5 +96,4 @@ if (import.meta.env.DEV) {
     getApiUrl: () => import.meta.env.VITE_API_URL
   };
   
-  console.log('🛠️ Development helpers available at window.devMode');
 }

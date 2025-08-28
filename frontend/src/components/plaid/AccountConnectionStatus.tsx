@@ -32,7 +32,6 @@ export function AccountConnectionStatus() {
   } = usePlaidActions();
 
   const handlePlaidSuccess = () => {
-    console.log('✅ Successfully connected accounts');
     setShowPlaidLink(false);
     // Refetch connection status
     refetch();

@@ -159,7 +159,6 @@ export class PlaidService extends BaseService {
       const baseUrl = this.buildEndpoint('/accounts/plaid/exchange-token');
       const urlWithParams = `${baseUrl}?public_token=${encodeURIComponent(public_token)}`;
       
-      console.log('🔗 Exchanging Plaid token...', { url: urlWithParams, hasToken: !!public_token });
       
       const response = await this.post<{ 
         success: boolean; 
@@ -171,7 +170,6 @@ export class PlaidService extends BaseService {
         { context: options?.context }
       );
       
-      console.log('✅ Token exchange response:', response);
       
       // Handle both wrapped and direct response formats
       if (response && response.success && response.data) {
@@ -192,7 +190,6 @@ export class PlaidService extends BaseService {
       throw new Error('Invalid response format from token exchange endpoint');
       
     } catch (error: unknown) {
-      console.error('❌ Token exchange failed:', error);
       
       if ((error as { code?: string })?.code === 'UNAUTHORIZED' || (error as { code?: string })?.code === 'FORBIDDEN') {
         throw new Error('Authentication required for Plaid integration. Please log in again.');
@@ -272,16 +269,11 @@ export class PlaidService extends BaseService {
     request?: SyncTransactionsRequest,
     options?: { context?: ErrorContext }
   ): Promise<SyncTransactionsResponse> {
-    console.log('🔧 PlaidService.syncTransactions called with:', request);
-    
     // Prepare request body with proper structure for the backend
     const requestBody: SyncTransactionsRequest = {
       account_ids: request?.account_ids,
       days: request?.days ?? 90  // Default to 90 days for sandbox testing
     };
-    
-    console.log('📦 Sending transaction sync request body:', requestBody);
-    console.log('🎯 Transaction sync endpoint:', this.buildEndpoint('/accounts/sync-transactions'));
 
     return this.post<SyncTransactionsResponse>(
       '/accounts/sync-transactions',
@@ -294,16 +286,11 @@ export class PlaidService extends BaseService {
     request?: SyncBalancesRequest,
     options?: { context?: ErrorContext }
   ): Promise<SyncBalancesResponse> {
-    console.log('🔧 PlaidService.syncBalances called with:', request);
-    
     // Prepare request body with proper structure for the backend
     const requestBody: SyncBalancesRequest = {
       account_ids: request?.account_ids,
       force_sync: request?.force_sync
     };
-    
-    console.log('📦 Sending request body:', requestBody);
-    console.log('🎯 Endpoint:', this.buildEndpoint('/accounts/sync-balances'));
 
     return this.post<SyncBalancesResponse>(
       '/accounts/sync-balances',

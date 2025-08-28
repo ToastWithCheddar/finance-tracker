@@ -27,7 +27,6 @@ export function TransactionFilters({
       ...filters,
       [key]: value || undefined, // Convert empty strings to undefined
     };
-    console.log('🔍 [TransactionFilters] Filter changed:', { key, value, newFilters });
     onFiltersChange(newFilters);
   };
 
@@ -43,7 +42,6 @@ export function TransactionFilters({
         delete newFilters[key as keyof TransactionFilters];
       }
     });
-    console.log('🔍 [TransactionFilters] Multiple filters changed:', { updates, newFilters });
     onFiltersChange(newFilters);
   };
 

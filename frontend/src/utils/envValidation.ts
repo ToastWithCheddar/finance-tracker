@@ -102,14 +102,11 @@ class EnvironmentValidator {
     const { isValid, errors, warnings } = this.validateEnvironment();
     
     if (!isValid) {
-      console.error('❌ Environment validation failed:');
       errors.forEach(error => console.error(`  • ${error}`));
     } else {
-      console.log('✅ Environment validation passed');
     }
 
     if (warnings.length > 0) {
-      console.warn('⚠️ Environment warnings:');
       warnings.forEach(warning => console.warn(`  • ${warning}`));
     }
 

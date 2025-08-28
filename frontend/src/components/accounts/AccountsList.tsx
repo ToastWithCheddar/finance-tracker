@@ -50,7 +50,6 @@ export function AccountsList({ className = '', showTitle = true }: AccountsListP
   const closeModal = () => setShowModal(false);
 
   const handlePlaidSuccess = (accounts?: unknown[]) => {
-    console.log('✅ Successfully connected accounts:', accounts);
     setShowModal(false);
     refetch();
   };
