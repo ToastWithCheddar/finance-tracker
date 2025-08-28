@@ -129,7 +129,6 @@ export class TransactionService extends BaseService {
     } else if (filters?.category_id !== undefined) {
       params.category_id = filters.category_id;
     }
-    // (removed manual recurring demo filter)
     // Amount filtering with proper field name mapping
     if (filters?.amountMinCents !== undefined || filters?.min_amount_cents !== undefined) {
       params.min_amount_cents =

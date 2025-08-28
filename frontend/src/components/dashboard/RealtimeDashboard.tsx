@@ -24,7 +24,6 @@ import { CurrencyUtils, formatCurrency, getTimeBasedGreeting } from '../../utils
 import { getRelativeTime } from '../../utils/date';
 import RealtimeTransactionFeed from './RealtimeTransactionFeed';
 import { NotificationPanel } from './NotificationPanel';
-// Removed: import type { BudgetAlert } from '../../types/realtime';
 import { DashboardFilters } from './DashboardFilters';
 import { CategoryPieChart } from './CategoryPieChart';
 import { TransactionHistogram } from './TransactionHistogram';
@@ -37,8 +36,6 @@ import { NotificationService } from '../../services/notificationService';
 import { useRealtimeStore } from '../../stores/realtimeStore';
 import { invalidateDashboard } from '../../services/queryClient';
 
-
-// Connection widget removed per request
 
 export const RealtimeDashboard: React.FC = () => {
   // Isolation switches (set VITE_ENABLE_REALTIME or VITE_ENABLE_DASHBOARD_FETCH to 'false' to disable)
@@ -157,7 +154,6 @@ export const RealtimeDashboard: React.FC = () => {
             description: t.description || '',
             merchant: t.merchant,
             transactionDate: (t.transactionDate || t.transaction_date) as string,
-            // recurring/subscriptions removed
             createdAt: (t.createdAt || t.created_at || (t.transactionDate ? new Date(t.transactionDate).toISOString() : undefined)) as string,
             updatedAt: (t.updatedAt || t.updated_at || undefined) as string,
             // Required camelCase fields for Transaction
@@ -429,11 +425,6 @@ export const RealtimeDashboard: React.FC = () => {
           </div>
         </div>
       )}
-
-      {/* Money Flow Sankey Diagram - Removed (not implemented) */}
-
-      {/* Spending Heatmap - Removed */}
-
       {/* Charts Section */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <CategoryPieChart 

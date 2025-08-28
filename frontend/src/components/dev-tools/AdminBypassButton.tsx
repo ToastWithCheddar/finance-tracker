@@ -38,7 +38,6 @@ export function AdminBypassButton() {
         accessToken: 'dev-mock-token-12345',
         refreshToken: 'dev-mock-refresh-12345',
         expiresIn: 15 * 60,
-        // REMOVED: tokenType - Using Supabase-only authentication
       };
       
       // Set tokens in storage directly (bypass API call)

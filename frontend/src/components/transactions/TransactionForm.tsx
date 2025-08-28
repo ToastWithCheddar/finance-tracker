@@ -114,7 +114,6 @@ import { useAccounts } from '../../hooks/useAccounts';
           transactionDate: formData.transaction_date, // send camelCase; service will normalize if needed
           categoryId: formData.category_id,
           transaction_type: formData.transaction_type,
-          // recurring/subscription fields removed
           notes: formData.notes,
           tags: formData.tags,
         } as CreateTransactionRequest;

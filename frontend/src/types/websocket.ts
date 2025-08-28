@@ -33,8 +33,6 @@ export const MessageType = {
   GOAL_ACHIEVED: 'goal_achieved',
   GOAL_MILESTONE_REACHED: 'goal_milestone_reached',
   
-  // Insights and AI removed
-  
   // System events
   NOTIFICATION: 'notification',
   SYSTEM_ALERT: 'system_alert',
@@ -192,8 +190,6 @@ export interface SystemAlertPayload {
   created_at: string; // ISO datetime string
 }
 
-// Removed: AIInsightPayload
-
 export interface PingPayload {
   server_time: string; // ISO datetime string
   connection_status: 'active' | 'idle';
@@ -230,11 +226,6 @@ export interface BulkSyncPayload {
   total_errors: number;
   sync_time: string; // ISO datetime string
 }
-
-// Rule action payloads removed
-
-// Rule-related payloads removed
-
 
 // Union type for all possible payloads
 export type PayloadType = 
@@ -307,11 +298,6 @@ export function isGoalProgress(message: WebSocketMessage): message is GoalProgre
 export function isNotification(message: WebSocketMessage): message is NotificationMessage {
   return message.type === MessageType.NOTIFICATION;
 }
-
-// Recurring-related type guards removed
-
-// Rule-based type guards removed
-
 
 // WebSocket connection status
 export const ConnectionStatus = {

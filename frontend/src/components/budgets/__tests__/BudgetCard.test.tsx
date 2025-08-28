@@ -286,7 +286,6 @@ describe('BudgetCard', () => {
     it('should open calendar modal when calendar button is clicked', async () => {
       render(<BudgetCard budget={defaultBudget} onEdit={mockOnEdit} onDelete={mockOnDelete} onOpenAlertSettings={mockOnOpenAlertSettings} onOpenCalendar={mockOnOpenCalendar} />);
       
-      // Calendar button removed; no calendar interaction expected
       expect(screen.queryByRole('button', { name: /calendar view/i })).not.toBeInTheDocument();
     });
 

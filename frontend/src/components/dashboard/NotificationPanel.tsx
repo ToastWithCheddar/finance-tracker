@@ -156,7 +156,6 @@ export const NotificationPanel: React.FC<NotificationPanelProps> = ({
         return <AlertTriangle className={iconClass} />;
       case 'budget_threshold_reached':
         return <PiggyBank className={iconClass} />;
-      // AI Insight and pattern detection removed
       case 'goal_progress_update':
       case 'goal_milestone':
         return <Target className={iconClass} />;

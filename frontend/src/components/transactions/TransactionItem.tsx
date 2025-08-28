@@ -288,8 +288,6 @@ export function TransactionItem({
               </div>
             )}
 
-            {/* Recurring Information removed */}
-
             {/* ML Confidence Score */}
             {transaction.confidenceScore !== undefined && (
               <div className="space-y-2">

@@ -8,9 +8,7 @@ class SecureStorage {
   private readonly REFRESH_TOKEN_KEY = 'finance_refresh_token';
   private readonly EXPIRES_AT_KEY = 'finance_token_expires';
 
-  /**
-   * Store authentication tokens securely
-   */
+  // Store authentication token securely
   setTokens(accessToken: string, refreshToken: string, expiresIn?: number): void {
     try {
       const expiresAt = expiresIn ? Date.now() + (expiresIn * 1000) : Date.now() + (30 * 60 * 1000); // 30 min default
@@ -29,9 +27,7 @@ class SecureStorage {
     }
   }
 
-  /**
-   * Get tokens from cookies (for magic link authentication)
-   */
+  // Get tokens from cookies (for magic link authentication)
   private getCookieToken(name: string): string | null {
     if (typeof document === 'undefined') return null;
     
@@ -48,28 +44,26 @@ class SecureStorage {
    * Initialize tokens from cookies if available (for magic link flow)
    */
   initializeFromCookies(): boolean {
-    console.log('🍪 Checking for auth cookies...');
+    console.log('Checking for auth cookies...');
     const accessToken = this.getCookieToken('access_token');
     const refreshToken = this.getCookieToken('refresh_token');
     
-    console.log('🍪 Found cookies:', { 
+    console.log('Found cookies:', { 
       hasAccessToken: !!accessToken, 
       hasRefreshToken: !!refreshToken,
       accessTokenLength: accessToken?.length || 0
     });
     
     if (accessToken && refreshToken) {
-      console.log('🍪 Initializing tokens from cookies');
+      console.log('Initializing tokens from cookies');
       this.setTokens(accessToken, refreshToken);
       return true;
     }
-    console.log('🍪 No valid cookies found');
+    console.log('No valid cookies found');
     return false;
   }
 
-  /**
-   * Get access token
-   */
+  // Get access token
   getAccessToken(): string | null {
     try {
       const token = sessionStorage.getItem(this.ACCESS_TOKEN_KEY);
@@ -84,9 +78,7 @@ class SecureStorage {
     }
   }
 
-  /**
-   * Get refresh token
-   */
+  // Get refresh token
   getRefreshToken(): string | null {
     try {
       const token = sessionStorage.getItem(this.REFRESH_TOKEN_KEY);
@@ -101,9 +93,7 @@ class SecureStorage {
     }
   }
 
-  /**
-   * Check if tokens are expired
-   */
+  // Check if tokens are expired
   areTokensExpired(): boolean {
     try {
       const expiresAt = sessionStorage.getItem(this.EXPIRES_AT_KEY);
@@ -116,9 +106,7 @@ class SecureStorage {
     }
   }
 
-  /**
-   * Check if we have valid tokens
-   */
+  // Check if we have valid tokens
   hasValidTokens(): boolean {
     const accessToken = this.getAccessToken();
     const refreshToken = this.getRefreshToken();
@@ -126,9 +114,7 @@ class SecureStorage {
     return !!(accessToken && refreshToken && !this.areTokensExpired());
   }
 
-  /**
-   * Clear all stored tokens
-   */
+  // Clear all stored tokens
   clearTokens(): void {
     try {
       sessionStorage.removeItem(this.ACCESS_TOKEN_KEY);
@@ -142,9 +128,6 @@ class SecureStorage {
     }
   }
 
-  /**
-   * Clear legacy localStorage tokens (migration helper)
-   */
   private clearLegacyTokens(): void {
     try {
       localStorage.removeItem('accessToken');
@@ -155,9 +138,6 @@ class SecureStorage {
     }
   }
 
-  /**
-   * Get token data for debugging (development only)
-   */
   getTokenInfo(): { hasTokens: boolean; expiresAt: string | null; isExpired: boolean } {
     if (import.meta.env.PROD) {
       return { hasTokens: false, expiresAt: null, isExpired: true };
@@ -172,5 +152,4 @@ class SecureStorage {
   }
 }
 
-// Export singleton instance
 export const secureStorage = new SecureStorage();

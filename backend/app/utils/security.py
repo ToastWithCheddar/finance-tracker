@@ -1,7 +1,4 @@
 from passlib.context import CryptContext
-# REMOVED: JWT imports - No longer needed for Supabase-only auth
-# from jose import JWTError, jwt
-# from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 import secrets
 import string

@@ -40,9 +40,7 @@ export interface BulkMarkReadResponse {
 }
 
 export class NotificationService {
-  /**
-   * Get notifications for the current user with optional filtering
-   */
+  // Get notifications for the current user with optional filtering
   static async getNotifications(filters: NotificationFilters = {}): Promise<NotificationListResponse> {
     const params = new URLSearchParams();
     
@@ -54,63 +52,47 @@ export class NotificationService {
     return await apiClient.get<NotificationListResponse>(`/notifications?${params.toString()}`);
   }
 
-  /**
-   * Get notification statistics
-   */
+  // Get notification statistics 
   static async getNotificationStats(): Promise<NotificationStatsResponse> {
     return await apiClient.get<NotificationStatsResponse>('/notifications/stats');
   }
 
-  /**
-   * Get a specific notification by ID
-   */
+  // Get a specific notification by ID
   static async getNotification(id: string): Promise<NotificationResponse> {
     return await apiClient.get<NotificationResponse>(`/notifications/${id}`);
   }
 
-  /**
-   * Mark a notification as read
-   */
+  // Mark a notification as read
   static async markAsRead(id: string): Promise<NotificationResponse> {
     return await apiClient.patch<NotificationResponse>(`/notifications/${id}`, {
       is_read: true
     });
   }
 
-  /**
-   * Mark a notification as unread
-   */
+  // Mark a notification as unread
   static async markAsUnread(id: string): Promise<NotificationResponse> {
     return await apiClient.patch<NotificationResponse>(`/notifications/${id}`, {
       is_read: false
     });
   }
 
-  /**
-   * Dismiss (delete) a notification
-   */
+  // Dismiss a notification
   static async dismissNotification(id: string): Promise<void> {
     await apiClient.delete(`/notifications/${id}`);
   }
 
-  /**
-   * Mark all notifications as read
-   */
+  // Mark all notification as read
   static async markAllAsRead(): Promise<BulkMarkReadResponse> {
     return await apiClient.post<BulkMarkReadResponse>('/notifications/mark-all-read');
   }
 
-  /**
-   * Get unread count only (lightweight)
-   */
+  //Get unread count only (lightweight)
   static async getUnreadCount(): Promise<number> {
     const response = await apiClient.get<NotificationListResponse>('/notifications?limit=1&unread_only=true');
     return response.unread_count;
   }
 
-  /**
-   * Batch mark notifications as read
-   */
+  // Batch mark notifications as read
   static async batchMarkAsRead(ids: string[]): Promise<BulkMarkReadResponse> {
     // Since we don't have batch endpoint, mark individually
     let updated_count = 0;
@@ -129,9 +111,7 @@ export class NotificationService {
     };
   }
 
-  /**
-   * Filter notifications by type
-   */
+  // Filter notifications by type
   static async getNotificationsByType(type: string, filters: Omit<NotificationFilters, 'type_filter'> = {}): Promise<NotificationListResponse> {
     return this.getNotifications({
       ...filters,
@@ -139,9 +119,7 @@ export class NotificationService {
     });
   }
 
-  /**
-   * Get only unread notifications
-   */
+  // Get only unread notifications
   static async getUnreadNotifications(filters: Omit<NotificationFilters, 'unread_only'> = {}): Promise<NotificationListResponse> {
     return this.getNotifications({
       ...filters,

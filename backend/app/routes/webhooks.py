@@ -116,8 +116,6 @@ async def handle_plaid_webhook(
                 logger.info(f"Scheduled item error handling for Plaid item: {item_id}")
                 return {"status": "error handling scheduled"}
 
-        # Recurring transactions handling removed
-
         return {"status": "ignored", "reason": "Webhook type not handled"}
 
     except Exception as e:

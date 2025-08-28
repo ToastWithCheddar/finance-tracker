@@ -14,7 +14,6 @@ interface AuthActions {
   clearError: () => void;
   setLoading: (loading: boolean) => void;
   checkTokenExpiration: () => Promise<void>;
-  // REMOVED: initializeFromCookies - Using Supabase-only authentication
 }
 
 type AuthStore = AuthState & AuthActions;
@@ -162,9 +161,6 @@ export const useAuthStore = create<AuthStore>()(
           }
         }
       },
-
-      // REMOVED: initializeFromCookies() - Using Supabase-only authentication
-      // Magic link cookie initialization no longer needed
     }),
     {
       name: 'auth-store',

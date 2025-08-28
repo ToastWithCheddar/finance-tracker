@@ -70,23 +70,17 @@ export interface UserStats {
 }
 
 export class UserService {
-  /**
-   * Get current user's profile
-   */
+  // Get current user's profile
   async getCurrentUserProfile(): Promise<UserProfile> {
     return apiClient.get<UserProfile>('/users/me');
   }
 
-  /**
-   * Update current user's profile
-   */
+  // Update current user's profile
   async updateProfile(data: UserUpdateData): Promise<UserProfile> {
     return apiClient.put<UserProfile>('/users/me', data);
   }
 
-  /**
-   * Upload user avatar
-   */
+  // Upload user avatar
   async uploadAvatar(file: File): Promise<{ avatar_url: string }> {
     const formData = new FormData();
     formData.append('avatar', file);
@@ -94,37 +88,27 @@ export class UserService {
     return apiClient.postFormData<{ avatar_url: string }>('/users/me/avatar', formData);
   }
 
-  /**
-   * Remove user avatar
-   */
+  // Remove user avatar
   async removeAvatar(): Promise<UserProfile> {
     return apiClient.put<UserProfile>('/users/me', { avatar_url: null });
   }
 
-  /**
-   * Get user account statistics
-   */
+  // Get user account statistics
   async getUserStats(): Promise<UserStats> {
     return apiClient.get<UserStats>('/users/me/stats');
   }
 
-  /**
-   * Export user data
-   */
+  // Export user data
   async exportUserData(): Promise<Blob> {
     return apiClient.getBlob('/users/me/export');
   }
 
-  /**
-   * Deactivate user account
-   */
+  // Deactivate user account
   async deactivateAccount(): Promise<{ message: string }> {
     return apiClient.delete<{ message: string }>('/users/me');
   }
 
-  /**
-   * Change password
-   */
+  // Change password
   async changePassword(currentPassword: string, newPassword: string): Promise<{ message: string }> {
     return apiClient.post<{ message: string }>('/auth/change-password', {
       current_password: currentPassword,
@@ -132,9 +116,7 @@ export class UserService {
     });
   }
 
-  /**
-   * Get user sessions
-   */
+  // Get user session
   async getUserSessions(): Promise<Array<{
     id: string;
     device: string;
@@ -145,23 +127,17 @@ export class UserService {
     return apiClient.get('/users/me/sessions');
   }
 
-  /**
-   * Revoke user session
-   */
+  // Revoke user session
   async revokeSession(sessionId: string): Promise<{ message: string }> {
     return apiClient.delete<{ message: string }>(`/users/me/sessions/${sessionId}`);
   }
 
-  /**
-   * Revoke all sessions except current
-   */
+  // Revoke all session except current
   async revokeAllSessions(): Promise<{ message: string }> {
     return apiClient.post<{ message: string }>('/users/me/sessions/revoke-all');
   }
 
-  /**
-   * Get user activity feed
-   */
+  // Get user activity feed
   async getActivityFeed(options: ActivityFeedOptions = {}): Promise<ActivityResponse> {
     const params = new URLSearchParams();
     
@@ -182,5 +158,4 @@ export class UserService {
   }
 }
 
-// Export singleton instance
 export const userService = new UserService();

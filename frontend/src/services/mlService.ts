@@ -56,45 +56,31 @@ export interface CategoryExampleRequest {
 }
 
 class MLService {
-  /**
-   * Categorize a single transaction using ML model
-   */
+  //Categorize a single transaction using ML model
   async categorizeTransaction(request: MLCategorizeRequest): Promise<MLCategorizeResponse> {
     return await api.post<MLCategorizeResponse>('/ml/categorize', request);
   }
 
-  /**
-   * Categorize multiple transactions in batch
-   */
+  // Categorize multiple transactions in batch
   async batchCategorizeTransactions(request: BatchCategorizeRequest): Promise<BatchCategorizeResponse> {
     return await api.post<BatchCategorizeResponse>('/ml/batch-categorize', request);
   }
 
-
-  /**
-   * Add a new example to a category for training
-   */
   async addCategoryExample(request: CategoryExampleRequest) {
     return await api.post('/ml/add-example', request);
   }
 
-  /**
-   * Export model to ONNX format with quantization
-   */
+  // Export model to ONNX format with quantization
   async exportModel() {
     return await api.post('/ml/export-model');
   }
 
-  /**
-   * Get model performance metrics
-   */
+  // Get model performance metrics
   async getModelPerformance(): Promise<MLPerformanceMetrics> {
     return await api.get<MLPerformanceMetrics>('/ml/performance');
   }
 
-  /**
-   * Get ML system health status
-   */
+  // Get ML system health status
   async getHealthStatus(): Promise<MLHealthStatus> {
     return await api.get<MLHealthStatus>('/ml/health');
   }
@@ -121,10 +107,7 @@ class MLService {
     }
   }
 
-  /**
-   * Get category suggestions with all confidence levels
-   * Useful for showing multiple options to user
-   */
+  // Get category suggestions with all confidence levels
   async getCategorySuggestions(request: MLCategorizeRequest) {
     try {
       const result = await this.categorizeTransaction(request);
@@ -150,9 +133,7 @@ class MLService {
     }
   }
 
-  /**
-   * Bulk upload training examples from CSV or similar
-   */
+  // Bulk upload training examples from CSV or similar
   async bulkAddExamples(examples: CategoryExampleRequest[]) {
     const results = [];
     
@@ -168,9 +149,7 @@ class MLService {
     return results;
   }
 
-  /**
-   * Check if ML service is available
-   */
+  // Check if ML service is available
   async isMLServiceAvailable(): Promise<boolean> {
     try {
       const health = await this.getHealthStatus();
@@ -180,10 +159,7 @@ class MLService {
     }
   }
 
-  /**
-   * Get model training suggestions based on user's transaction history
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // Get model training suggestions based on user's transaction history
   async getTrainingSuggestions(_userId: string) {
     // This would analyze user's correction patterns and suggest
     // categories that need more training examples
@@ -213,7 +189,6 @@ class MLService {
   async getLiveClassification(
     description: string,
     amount?: number,
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _debounceMs: number = 500
   ): Promise<MLCategorizeResponse | null> {
     if (!description || description.length < 3) {

@@ -154,8 +154,6 @@ export function TransactionFilters({
         {/* Advanced Filters - Collapsible */}
         {isExpanded && (
           <div className="space-y-4 pt-4 border-t border-gray-200">
-            {/* Removed: Group By Section - using flat transaction list now */}
-            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {/* Date Range */}
               <div>

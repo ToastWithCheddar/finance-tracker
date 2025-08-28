@@ -65,8 +65,6 @@ export interface UpdateTransactionRequest extends Partial<CreateTransactionReque
   id: string;
 }
 
-// Removed: TransactionGroupBy - no longer using grouping functionality
-
 export interface TransactionFilters {
   accountId?: string;
   account_id?: string; // Backend compatibility
@@ -86,7 +84,6 @@ export interface TransactionFilters {
   page?: number;
   per_page?: number;
   limit?: number;
-  // Removed: group_by - no longer using grouping functionality
   transaction_type?: 'income' | 'expense';
 }
 

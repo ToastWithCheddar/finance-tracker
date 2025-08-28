@@ -41,8 +41,6 @@ class MessageType(str, Enum):
     GOAL_ACHIEVED = "goal_achieved"
     GOAL_MILESTONE_REACHED = "goal_milestone_reached"
     
-    # Insights and AI (removed)
-    
     # System events
     NOTIFICATION = "notification"
     SYSTEM_ALERT = "system_alert"
@@ -189,8 +187,6 @@ class SystemAlertPayload(BaseModel):
     message: str = Field(..., description="Alert message")
     system_wide: bool = Field(True, description="Whether alert is system-wide")
     created_at: datetime = Field(..., description="Creation timestamp")
-
-# Removed: AIInsightPayload
 
 class PingPayload(BaseModel):
     server_time: datetime = Field(..., description="Server timestamp")

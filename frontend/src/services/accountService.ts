@@ -38,10 +38,6 @@ export interface AccountCreate {
   currency?: string;
 }
 
-/* 
-This is a good structure because I don't have to create
-interface for every single update configuration. Much simpler
-*/
 export interface AccountUpdate {
   name?: string;
   account_type?: string;
@@ -103,7 +99,6 @@ export class AccountService extends BaseService {
   }> {
     
     try {
-      // FALLBACK: Calculate basic summary from account balance data since analytics endpoint is unavailable
       const accounts = await this.getAccounts({ context: options?.context });
       
       // Calculate basic financial summary from account balances
@@ -119,7 +114,6 @@ export class AccountService extends BaseService {
       
       
       // Return basic summary (since we don't have transaction data here, we'll provide minimal info)
-      // Note: This is a simplified fallback - in a real scenario we might fetch recent transactions too
       return {
         total_income: totalBalance > 0 ? totalBalance : 0,
         total_expenses: totalBalance < 0 ? Math.abs(totalBalance) : 0,

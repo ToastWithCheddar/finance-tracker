@@ -43,7 +43,6 @@ export interface TokenResponse {
 export interface AuthResponse {
   user: User;
   tokens: TokenResponse;
-  // REMOVED: tokenType - Using Supabase-only authentication
 }
 
 export interface PasswordResetRequest {

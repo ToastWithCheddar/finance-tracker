@@ -173,7 +173,6 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
               description: t.description || '',
               merchant: t.merchant,
               transactionDate: (t.transactionDate || t.transaction_date) as string,
-              // recurring/subscriptions removed
               createdAt: (t.createdAt || t.created_at || (t.transactionDate ? new Date(t.transactionDate).toISOString() : undefined)) as string,
               updatedAt: (t.updatedAt || t.updated_at || undefined) as string,
               accountName: t.accountName || t.account_name || '',

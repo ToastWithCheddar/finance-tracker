@@ -122,12 +122,6 @@ interface RealtimeState {
   addBudgetAlert: (alert: { message: string; category?: string; amount?: number }) => void;
   clearBudgetAlerts: () => void;
 
-
-  // Recurring transaction actions removed
-
-  // Categorization rules removed
-
-
   // WebSocket helpers
   handleWebSocketMessage: (message: Record<string, unknown>) => void;
   dispatchMessage: (message: { type: string; payload?: Record<string, unknown>; timestamp?: string }) => void;
@@ -404,12 +398,6 @@ export const useRealtimeStore = create<RealtimeState>()(
       set({ budgetAlerts: [] });
     },
 
-
-    /***** Recurring transaction actions removed *****/
-
-    /***** Categorization rule actions removed *****/
-
-
     /***** WebSocket helpers *****/
     handleWebSocketMessage: (message) => {
       try {
@@ -622,7 +610,6 @@ export const useRealtimeStore = create<RealtimeState>()(
           // Invalidate queries to trigger refetch
           queryClient.invalidateQueries({ queryKey: ['transactions'] });
           queryClient.invalidateQueries({ queryKey: ['accounts'] });
-          // Note: dashboard-analytics endpoint no longer exists, invalidating transaction stats instead
           queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
           
         } else if (typedMessage.type === MessageType.TRANSACTION_SYNC_COMPLETE) {
@@ -710,13 +697,6 @@ export const useRealtimeStats = () =>
       notificationCount: state.notifications.length,
     })
   );
-
-// Rule-related selectors removed
-
-
-/*****************************
- *  Debug subscriptions (can be removed in prod)
- *****************************/
 
 // Log connection status changes
 useRealtimeStore.subscribe(

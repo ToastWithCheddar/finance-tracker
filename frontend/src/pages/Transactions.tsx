@@ -107,8 +107,6 @@ export function Transactions() {
   const [editingTransaction, setEditingTransaction] = useState<any>();
   const [isBatchCategorizing, setIsBatchCategorizing] = useState(false);
   
-  // Removed: Date grouping state no longer needed
-  
   // Refs for click outside handling
   const exportDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -148,10 +146,6 @@ export function Transactions() {
   const totalCount = transactionData?.total || 0;
   const totalPages = transactionData?.pages || 1;
   
-  // Debug logging for data structure
-  
-  // Removed: Complex grouping logic no longer needed - transactions are displayed as flat list
-
   // Handle click outside for export dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
