@@ -3,6 +3,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 
+import { logger } from '../../utils/logger';
 interface CSVImportProps {
   isOpen: boolean;
   onClose: () => void;
@@ -67,7 +68,7 @@ export function CSVImport({ isOpen, onClose, onImport, isLoading = false }: CSVI
         // Check for unknown headers and warn (but don't error)
         const unknownHeaders = headers.filter(header => !allValidHeaders.includes(header));
         if (unknownHeaders.length > 0) {
-          console.warn(`Unknown columns will be ignored: ${unknownHeaders.join(', ')}`);
+          logger.warn(`Unknown columns will be ignored: ${unknownHeaders.join(', ')}`);
         }
 
         // Validate rows
@@ -128,14 +129,14 @@ export function CSVImport({ isOpen, onClose, onImport, isLoading = false }: CSVI
 
           // Category is now optional but warn if missing
           if (!category && categoryIndex !== -1) {
-            console.warn(`Row ${rowIndex + 2}: Missing category, will be auto-categorized`);
+            logger.warn(`Row ${rowIndex + 2}: Missing category, will be auto-categorized`);
           }
 
           if (isValid) {
             validRows++;
           } else {
             invalidRows++;
-            console.warn(`Row ${rowIndex + 2} invalid:`, rowErrors.join(', '));
+            logger.warn(`Row ${rowIndex + 2} invalid:`, rowErrors.join(', '));
           }
         });
 

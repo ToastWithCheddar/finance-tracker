@@ -7,6 +7,7 @@ import { Card } from '../ui/Card';
 import { useCreateGoal, useUpdateGoal, useGoalOptions } from '../../hooks/useGoals';
 import type { Goal, GoalCreate, GoalUpdate } from '../../types/goals';
 
+import { logger } from '../../utils/logger';
 interface GoalFormProps {
   goal?: Goal;
   isOpen: boolean;
@@ -98,7 +99,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
         milestone_percentage: data.milestone_percentage,
       };
 
-      console.log('Submitting goal data:', cleanData);
+      logger.info('Submitting goal data:', cleanData);
 
       if (isEditing) {
         await updateGoal.mutateAsync({
@@ -112,19 +113,19 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
       onSuccess?.();
       onClose();
     } catch (error) {
-      console.error('Goal submission error:', error);
+      logger.error('Goal submission error:', error);
       // Error handling is done in the hooks, but let's also log for debugging
     }
   };
 
 
   const calculateMonthlyTarget = () => {
-    console.log('🔢 Calculate button clicked');
+    logger.info('🔢 Calculate button clicked');
     
     const targetAmount = parseCurrencyInput(targetAmountInput);
     const targetDate = watchedTargetDate; // Use the watched value instead of calling watch again
     
-    console.log('Calculation inputs:', {
+    logger.info('Calculation inputs:', {
       targetAmountInput: targetAmountInput,
       targetAmount: targetAmount,
       targetDate: targetDate,
@@ -142,7 +143,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     const now = new Date();
     const target = new Date(targetDate);
     
-    console.log('📅 Date comparison:', {
+    logger.info('📅 Date comparison:', {
       now: now.toISOString(),
       target: target.toISOString(),
       isTargetInFuture: target > now
@@ -161,7 +162,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
     const remaining = targetAmount - currentAmount;
     const monthlyTargetCents = Math.max(0, Math.round(remaining / monthsRemaining));
     
-    console.log('Calculation results:', {
+    logger.info('Calculation results:', {
       currentAmount: currentAmount,
       remaining: remaining,
       monthsRemaining: monthsRemaining,
@@ -182,7 +183,7 @@ export function GoalForm({ goal, isOpen, onClose, onSuccess }: GoalFormProps) {
   
   // Debug state changes
   useEffect(() => {
-    console.log('🔘 Button state debug:', {
+    logger.info('🔘 Button state debug:', {
       targetAmountInput: targetAmountInput,
       watchedTargetDate: watchedTargetDate,
       isLoading: isLoading,

@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { goalService } from '../services/goalService';
 import { useRealtimeStore } from '../stores/realtimeStore';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 import type {
   Goal,
   GoalUpdate,

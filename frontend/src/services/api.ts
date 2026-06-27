@@ -8,6 +8,7 @@ import type {
 /**
  * Interface for error data returned by API
  */
+import { logger } from '../utils/logger';
 interface ApiErrorData {
   error?: {
     code?: string;
@@ -73,11 +74,8 @@ class ApiClient {
     const token = this.getAuthToken();
     if (token) {
       headers.Authorization = `Bearer ${token}`;
-      // Debug logging for first few characters
-      console.log('🔐 API Request with token:', token.substring(0, 20) + '...');
-    } else {
-      console.log('🚫 API Request without token');
     }
+    // FE-SEC-004: never log Authorization tokens (not even prefixes).
 
     return headers;
   }
@@ -292,7 +290,7 @@ class ApiClient {
           });
 
           if (!refreshResponse.ok) {
-            console.warn('🚨 Token refresh failed with status:', refreshResponse.status);
+            logger.warn('🚨 Token refresh failed with status:', refreshResponse.status);
             secureStorage.clearTokens();
             return this.handleResponse<T>(response);
           }
@@ -305,19 +303,28 @@ class ApiClient {
             return this.handleResponse<T>(response);
           }
 
-          // Validate refresh response structure
-          if (!refreshData || !refreshData.accessToken || !refreshData.refreshToken) {
+          // FE-SEC-003: backend returns snake_case (FastAPI default JSON
+          // shape). Reading camelCase keys produced silent token clears
+          // and forced full re-logins. Read snake_case directly; keep
+          // camelCase as a defensive fallback for tests/mocks.
+          const accessToken: string | undefined =
+            refreshData?.access_token ?? refreshData?.accessToken;
+          const refreshTokenNew: string | undefined =
+            refreshData?.refresh_token ?? refreshData?.refreshToken;
+          const expiresIn: number | undefined =
+            refreshData?.expires_in ?? refreshData?.expiresIn;
+
+          if (!refreshData || !accessToken || !refreshTokenNew) {
             secureStorage.clearTokens();
             return this.handleResponse<T>(response);
           }
 
-          const { accessToken, refreshToken, expiresIn } = refreshData;
-          this.setAuthTokens(accessToken, refreshToken, expiresIn);
+          this.setAuthTokens(accessToken, refreshTokenNew, expiresIn);
 
           // Update the authorization header for retry
           config.headers = {
             ...config.headers as Record<string, string>,
-            Authorization: `Bearer ${accessToken}`
+            Authorization: `Bearer ${accessToken!}`
           };
 
           // Continue loop to retry the original request with new token

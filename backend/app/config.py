@@ -82,9 +82,19 @@ class Settings(BaseSettings):
     REDIS_URL: str = os.getenv("REDIS_URL", "redis://localhost:6379")
     
     # ===== SECURITY SETTINGS =====
-    ENABLE_ADMIN_BYPASS: bool = os.getenv("ENABLE_ADMIN_BYPASS", "true").lower() in ("true", "1", "yes")
-    CSRF_PROTECTION: bool = os.getenv("CSRF_PROTECTION", "false").lower() in ("true", "1", "yes")
-    RATE_LIMITING: bool = os.getenv("RATE_LIMITING", "false").lower() in ("true", "1", "yes")
+    # BE-SEC-002 / BE-SEC-005 / BE-RL-001: defaults are now hardened.
+    # ENABLE_ADMIN_BYPASS must be explicitly opted-in for local dev.
+    ENABLE_ADMIN_BYPASS: bool = os.getenv("ENABLE_ADMIN_BYPASS", "false").lower() in ("true", "1", "yes")
+    CSRF_PROTECTION: bool = os.getenv("CSRF_PROTECTION", "true").lower() in ("true", "1", "yes")
+    RATE_LIMITING: bool = os.getenv("RATE_LIMITING", "true").lower() in ("true", "1", "yes")
+
+    # BE-SEC-003: HKDF salt for Fernet key derivation. Hex-encoded 32 bytes.
+    # If unset in development we generate an ephemeral salt at process start
+    # (cipher-text from previous runs cannot be decrypted — this is intentional).
+    ENCRYPTION_KEY_SALT: str = os.getenv("ENCRYPTION_KEY_SALT", "")
+
+    # BE-SEC-009: hard cap on /transactions/export row count.
+    EXPORT_MAX_ROWS: int = int(os.getenv("EXPORT_MAX_ROWS", "50000"))
     
     # ===== FEATURE TOGGLES =====
     ENABLE_DATABASE: bool = os.getenv("ENABLE_DATABASE", "true").lower() in ("true", "1", "yes")
@@ -146,6 +156,20 @@ class Settings(BaseSettings):
     PLAID_ENV: str = os.getenv("PLAID_ENV", "sandbox")
     PLAID_PRODUCTS: str = os.getenv("PLAID_PRODUCTS", "transactions,accounts,liabilities")
     PLAID_COUNTRY_CODES: str = os.getenv("PLAID_COUNTRY_CODES", "US")
+
+    # BE-SEC-006: Plaid base URL was previously read off settings but never
+    # declared. Resolve from PLAID_ENV when not explicitly set.
+    @property
+    def PLAID_BASE_URL(self) -> str:
+        explicit = os.getenv("PLAID_BASE_URL")
+        if explicit:
+            return explicit.rstrip("/")
+        env = (self.PLAID_ENV or "sandbox").lower()
+        return {
+            "sandbox": "https://sandbox.plaid.com",
+            "development": "https://development.plaid.com",
+            "production": "https://production.plaid.com",
+        }.get(env, "https://sandbox.plaid.com")
     
     
     

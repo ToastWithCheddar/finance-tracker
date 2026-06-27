@@ -3,6 +3,7 @@
  * Uses httpOnly cookies when possible, falls back to sessionStorage
  */
 
+import { logger } from '../utils/logger';
 class SecureStorage {
   private readonly ACCESS_TOKEN_KEY = 'finance_access_token';
   private readonly REFRESH_TOKEN_KEY = 'finance_refresh_token';
@@ -22,7 +23,7 @@ class SecureStorage {
       // Clear any old localStorage tokens for migration
       this.clearLegacyTokens();
     } catch (error) {
-      console.error('Failed to store tokens:', error);
+      logger.error('Failed to store tokens:', error);
       throw new Error('Token storage failed');
     }
   }
@@ -44,22 +45,22 @@ class SecureStorage {
    * Initialize tokens from cookies if available (for magic link flow)
    */
   initializeFromCookies(): boolean {
-    console.log('Checking for auth cookies...');
+    logger.info('Checking for auth cookies...');
     const accessToken = this.getCookieToken('access_token');
     const refreshToken = this.getCookieToken('refresh_token');
     
-    console.log('Found cookies:', { 
+    logger.info('Found cookies:', { 
       hasAccessToken: !!accessToken, 
       hasRefreshToken: !!refreshToken,
       accessTokenLength: accessToken?.length || 0
     });
     
     if (accessToken && refreshToken) {
-      console.log('Initializing tokens from cookies');
+      logger.info('Initializing tokens from cookies');
       this.setTokens(accessToken, refreshToken);
       return true;
     }
-    console.log('No valid cookies found');
+    logger.info('No valid cookies found');
     return false;
   }
 
@@ -73,7 +74,7 @@ class SecureStorage {
       }
       return token;
     } catch (error) {
-      console.error('Failed to retrieve access token:', error);
+      logger.error('Failed to retrieve access token:', error);
       return null;
     }
   }
@@ -88,7 +89,7 @@ class SecureStorage {
       }
       return token;
     } catch (error) {
-      console.error('Failed to retrieve refresh token:', error);
+      logger.error('Failed to retrieve refresh token:', error);
       return null;
     }
   }
@@ -101,7 +102,7 @@ class SecureStorage {
       
       return Date.now() >= parseInt(expiresAt);
     } catch (error) {
-      console.error('Failed to check token expiration:', error);
+      logger.error('Failed to check token expiration:', error);
       return true;
     }
   }
@@ -124,7 +125,7 @@ class SecureStorage {
       // Also clear legacy localStorage tokens
       this.clearLegacyTokens();
     } catch (error) {
-      console.error('Failed to clear tokens:', error);
+      logger.error('Failed to clear tokens:', error);
     }
   }
 

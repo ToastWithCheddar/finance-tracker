@@ -1,278 +1,259 @@
 """
-Test configuration and fixtures for the Finance Tracker backend.
+Audit-wave backend test fixtures.
 
-This module provides shared fixtures for unit and integration testing,
-including database setup, authentication, and common test data.
+This conftest deliberately replaces `backend/tests/conftest.py` (which is
+bit-rotted — see BE-TEST-001..004). The internship conftest is left in place;
+this file lives in a separate venv and runs against real Postgres + Redis via
+testcontainers, so JSONB / ARRAY / Postgres enums / `SET LOCAL` all work.
+
+Key invariants:
+- Environment variables that drive `app.config.Settings` are written BEFORE
+  any `from app.* import` statement. FastAPI Settings reads env at import
+  time; if we wait until inside a fixture, the app boots against whatever the
+  developer's local `.env` happens to contain.
+- Postgres + Redis containers are session-scoped (one per `pytest` invocation).
+- Each test runs inside a SAVEPOINT that rolls back on exit, so test order
+  doesn't matter and the schema is created exactly once.
+- Supabase is stubbed via respx routed at `https://stub.supabase.co`; no test
+  in this suite is allowed to talk to a live Supabase.
 """
+
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+from typing import Generator, Iterator
+
 import pytest
-from uuid import uuid4
-from datetime import datetime, timezone
-from sqlalchemy import create_engine, StaticPool
-from sqlalchemy.orm import sessionmaker, Session
-from sqlalchemy.pool import StaticPool
-from fastapi.testclient import TestClient
 
-from app.main import app
-from app.models.base import Base
-from app.models.user import User
-from app.models.account import Account
-from app.models.category import Category
-from app.models.transaction import Transaction
-from app.models.budget import Budget
-from app.models.goal import Goal
-from app.services.user_service import UserService
+# ---------------------------------------------------------------------------
+# 1. sys.path: expose `backend/app` without installing the app as a package.
+#
+# `pip install -e ../../../backend` is the recommended path (see README), but
+# if the user forgets, falling back to a sys.path insertion lets the suite at
+# least *attempt* to import. This is intentionally narrow — we add exactly one
+# directory.
+# ---------------------------------------------------------------------------
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_BACKEND_DIR = _REPO_ROOT / "backend"
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
 
 
+# ---------------------------------------------------------------------------
+# 2. Containers: start Postgres + Redis BEFORE any `app.*` import.
+#
+# We do this at module import (not in a fixture) because `app.config.Settings`
+# evaluates `os.getenv("DATABASE_URL", ...)` at class-body time. If we set the
+# env vars from inside a `pytest_configure` hook, Settings has already been
+# constructed against localhost.
+# ---------------------------------------------------------------------------
+def _bootstrap_containers() -> tuple:
+    """Start Postgres + Redis testcontainers and write env vars.
+
+    Returns the container instances so the session-scoped fixtures below can
+    yield them and stop them at teardown.
+    """
+    # Imported lazily so `pytest --collect-only` without Docker still produces
+    # a useful error message rather than failing during collection.
+    from testcontainers.postgres import PostgresContainer
+    from testcontainers.redis import RedisContainer
+
+    pg = PostgresContainer("postgres:15-alpine")
+    pg.start()
+
+    rd = RedisContainer("redis:7-alpine")
+    rd.start()
+
+    # PostgresContainer returns a URL with the `postgresql+psycopg2://` driver
+    # already baked in on recent versions; older versions return plain
+    # `postgresql://`. Normalize to the driver our app expects.
+    db_url = pg.get_connection_url()
+    if db_url.startswith("postgresql://"):
+        db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+
+    redis_host = rd.get_container_host_ip()
+    redis_port = rd.get_exposed_port(6379)
+    redis_url = f"redis://{redis_host}:{redis_port}/0"
+
+    os.environ["DATABASE_URL"] = db_url
+    os.environ["REDIS_URL"] = redis_url
+    os.environ["ENVIRONMENT"] = "test"
+    os.environ["DEBUG"] = "true"
+    # Settings.validate_required_settings() only enforces these in `production`,
+    # but we set them anyway so the suite can flip ENVIRONMENT=production later
+    # (see security/test_dev_bypass_disabled_in_prod.py).
+    os.environ["SECRET_KEY"] = "test-secret-must-be-32-chars-long-xx"
+    os.environ["SUPABASE_URL"] = "https://stub.supabase.co"
+    os.environ["SUPABASE_ANON_KEY"] = "stub-anon-key"
+    os.environ["SUPABASE_WEBHOOK_SECRET"] = "stub-webhook-secret"
+    # Disable seeding/feature toggles that would make a HTTP call we don't mock.
+    os.environ.setdefault("ENABLE_PLAID", "false")
+    os.environ.setdefault("ENABLE_ML_WORKER", "false")
+
+    return pg, rd
+
+
+# Module-level bootstrap. If Docker is missing, this raises during collection
+# with a clear `DockerException`, which is the correct failure mode.
+_PG_CONTAINER, _REDIS_CONTAINER = _bootstrap_containers()
+
+
+# ---------------------------------------------------------------------------
+# 3. Now it's safe to import the app. Settings has been constructed against
+#    the testcontainer URLs.
+# ---------------------------------------------------------------------------
+from app.main import app  # noqa: E402
+from app.database import get_db  # noqa: E402
+# IMPORTANT: there are two `Base` declarations in this codebase.
+# `app.database.Base` is a legacy declarative_base() that is empty (no model
+# inherits from it). The real one is `app.models.base.Base` (DeclarativeBase),
+# which every actual model class extends. Use the real one for create_all.
+from app.models.base import Base  # noqa: E402
+import importlib as _importlib  # noqa: E402
+_importlib.import_module("app.models")  # ensure all model modules register
+from sqlalchemy import create_engine  # noqa: E402
+from sqlalchemy.orm import sessionmaker, Session  # noqa: E402
+
+
+# ---------------------------------------------------------------------------
+# 4. Session-scoped fixtures
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="session")
+def postgres_container():
+    """Yield the running Postgres container (started at import time)."""
+    yield _PG_CONTAINER
+    _PG_CONTAINER.stop()
+
+
+@pytest.fixture(scope="session")
+def redis_container():
+    """Yield the running Redis container (started at import time)."""
+    yield _REDIS_CONTAINER
+    _REDIS_CONTAINER.stop()
+
+
+@pytest.fixture(scope="session")
+def engine(postgres_container):
+    """Build a SQLAlchemy engine pointed at the testcontainer Postgres.
+
+    We deliberately do NOT reuse `app.database.engine` because that engine was
+    constructed at import time and may have cached connection metadata. A
+    fresh engine guarantees we see the schema we just created here.
+
+    NOTE: Section D will switch this to running Alembic migrations instead of
+    `Base.metadata.create_all`. For this foundation wave we use create_all so
+    new tests aren't blocked on the migration backfill (BE-PR-001/002).
+    """
+    eng = create_engine(os.environ["DATABASE_URL"], future=True)
+    Base.metadata.create_all(bind=eng)
+    yield eng
+    eng.dispose()
+
+
+@pytest.fixture(scope="session")
+def session_factory(engine):
+    return sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+# ---------------------------------------------------------------------------
+# 5. Function-scoped DB session inside a SAVEPOINT.
+#
+# Pattern lifted from the SQLAlchemy docs ("Joining a Session into an external
+# transaction"). The outer transaction is rolled back at teardown, so every
+# test starts from the same empty DB without re-running create_all.
+# ---------------------------------------------------------------------------
 @pytest.fixture(scope="function")
-def test_db_session() -> Session:
-    """
-    Create an isolated in-memory SQLite database session for each test function.
-    
-    This fixture ensures complete test isolation by creating a fresh database
-    for each test. All tables are created at the start and dropped at the end.
-    
-    Returns:
-        Session: SQLAlchemy session connected to test database
-    """
-    # Create in-memory SQLite database with connection pooling
-    engine = create_engine(
-        "sqlite:///:memory:",
-        echo=False,  # Set to True for SQL debugging
-        poolclass=StaticPool,
-        connect_args={
-            "check_same_thread": False,  # Allow multi-threading
-        },
-    )
-    
-    # Create all tables
-    Base.metadata.create_all(bind=engine)
-    
-    # Create session
-    SessionLocal = sessionmaker(
-        autocommit=False, 
-        autoflush=False, 
-        bind=engine
-    )
-    db = SessionLocal()
-    
+def db_session(engine, session_factory) -> Iterator[Session]:
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = session_factory(bind=connection)
+
+    # Bind a nested SAVEPOINT so service code that calls `session.commit()`
+    # only commits to the savepoint, not the outer transaction.
+    nested = connection.begin_nested()
+
+    from sqlalchemy import event as _event
+
+    @_event.listens_for(session, "after_transaction_end")
+    def _restart_savepoint(sess, trans):  # pragma: no cover - SA hook
+        nonlocal nested
+        if trans.nested and not trans._parent.nested:
+            nested = connection.begin_nested()
+
     try:
-        yield db
+        yield session
     finally:
-        # Clean up
-        db.close()
-        Base.metadata.drop_all(bind=engine)
+        session.close()
+        if transaction.is_active:
+            transaction.rollback()
+        connection.close()
 
 
-@pytest.fixture
-def test_user(test_db_session: Session) -> User:
+# ---------------------------------------------------------------------------
+# 6. Supabase mock — installed for every test via autouse so no test
+#    accidentally hits the real Supabase (which would 401 against `stub-key`
+#    and produce confusing failures).
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def supabase_mock():
+    """Mount respx routes for stub Supabase auth endpoints.
+
+    Tests that need to assert specific Supabase behaviour can import
+    `helpers.supabase_mock.install_default_routes` and add their own routes on
+    top of the returned `respx_mock` object.
     """
-    Create a test user in the database.
-    
-    Args:
-        test_db_session: Database session fixture
-        
-    Returns:
-        User: Created test user
-    """
-    user = User(
-        id=uuid4(),
-        email="test@example.com",
-        display_name="Test User",
-        locale="en-US",
-        timezone="UTC",
-        currency="USD",
-        is_active=True,
-        avatar_url=None
-    )
-    test_db_session.add(user)
-    test_db_session.commit()
-    test_db_session.refresh(user)
-    return user
+    from helpers.supabase_mock import install_default_routes
+    import respx
+
+    with respx.mock(assert_all_called=False) as router:
+        install_default_routes(router)
+        # Expose the active router so helpers (e.g. auth_client) can register
+        # per-test routes on the SAME MockRouter that's actually intercepting
+        # httpx traffic. Plain `respx.get(...)` registers on the global mock,
+        # which is a different router and never gets consulted.
+        from helpers import supabase_mock as _sb
+        _sb._ACTIVE_ROUTER = router
+        try:
+            yield router
+        finally:
+            _sb._ACTIVE_ROUTER = None
 
 
-@pytest.fixture
-def test_account(test_db_session: Session, test_user: User) -> Account:
-    """
-    Create a test account for the test user.
-    
-    Args:
-        test_db_session: Database session fixture
-        test_user: Test user fixture
-        
-    Returns:
-        Account: Created test account
-    """
-    account = Account(
-        id=uuid4(),
-        user_id=test_user.id,
-        name="Test Checking Account",
-        account_type="checking",
-        balance_cents=100000,  # $1000.00
-        currency="USD",
-        is_active=True,
-        institution_name="Test Bank",
-        last_four="1234"
-    )
-    test_db_session.add(account)
-    test_db_session.commit()
-    test_db_session.refresh(account)
-    return account
+# ---------------------------------------------------------------------------
+# 7. App client with `get_db` overridden to use our SAVEPOINT session.
+# ---------------------------------------------------------------------------
+@pytest.fixture(scope="function")
+def app_client(db_session):
+    from fastapi.testclient import TestClient
 
+    def _override_get_db():
+        try:
+            yield db_session
+        finally:
+            # Don't close — the db_session fixture handles teardown.
+            pass
 
-@pytest.fixture
-def test_category(test_db_session: Session, test_user: User) -> Category:
-    """
-    Create a test category for the test user.
-    
-    Args:
-        test_db_session: Database session fixture
-        test_user: Test user fixture
-        
-    Returns:
-        Category: Created test category
-    """
-    category = Category(
-        id=uuid4(),
-        user_id=test_user.id,
-        name="Test Category",
-        description="Test category for testing",
-        emoji="🧪",
-        color="#FF6B6B",
-        is_system=False,
-        is_active=True,
-        sort_order=1
-    )
-    test_db_session.add(category)
-    test_db_session.commit()
-    test_db_session.refresh(category)
-    return category
+    app.dependency_overrides[get_db] = _override_get_db
+    # `get_db_with_user_context` depends on `get_db`, so override is inherited.
 
-
-@pytest.fixture
-def sample_transaction_data() -> dict:
-    """
-    Provide sample transaction data for testing.
-    
-    Returns:
-        dict: Sample transaction data
-    """
-    return {
-        "amount_cents": 2500,  # $25.00
-        "currency": "USD",
-        "description": "Test Transaction",
-        "merchant": "Test Merchant",
-        "transaction_date": datetime.now(timezone.utc).date(),
-        "status": "completed",
-        "is_transfer": False,
-        "notes": "Test transaction for testing",
-        "tags": ["test", "sample"]
-    }
-
-
-@pytest.fixture
-def sample_budget_data() -> dict:
-    """
-    Provide sample budget data for testing.
-    
-    Returns:
-        dict: Sample budget data
-    """
-    return {
-        "name": "Test Budget",
-        "amount_cents": 50000,  # $500.00
-        "period": "monthly",
-        "start_date": datetime.now(timezone.utc).date(),
-        "alert_threshold": 0.8,  # 80%
-        "is_active": True
-    }
-
-
-@pytest.fixture
-def sample_goal_data() -> dict:
-    """
-    Provide sample goal data for testing.
-    
-    Returns:
-        dict: Sample goal data
-    """
-    return {
-        "name": "Test Savings Goal",
-        "description": "Save money for testing",
-        "target_amount_cents": 100000,  # $1000.00
-        "goal_type": "savings",
-        "priority": "medium",
-        "status": "active",
-        "monthly_target_cents": 10000,  # $100.00
-        "milestone_percentage": 25
-    }
-
-
-# Async fixtures for async tests
-@pytest.fixture
-async def async_test_db_session():
-    """
-    Async version of test_db_session for async tests.
-    Note: This is a placeholder - in a real implementation you'd use
-    asyncpg and async SQLAlchemy for proper async database testing.
-    """
-    # For now, we'll use the sync version since our services are mostly sync
-    # In a full async implementation, you'd use:
-    # - asyncpg instead of sqlite
-    # - async SQLAlchemy session
-    # - async context managers
-    pass
-
-
-@pytest.fixture(scope="module")
-def api_client():
-    """
-    Create FastAPI TestClient for API testing.
-    
-    Returns:
-        TestClient: FastAPI test client
-    """
     with TestClient(app) as client:
         yield client
 
-
-@pytest.fixture(scope="function")
-def authenticated_api_client(test_db_session: Session, api_client: TestClient):
-    """
-    Create authenticated API client with valid JWT token.
-    
-    Args:
-        test_db_session: Database session fixture
-        api_client: FastAPI test client
-        
-    Returns:
-        TestClient: Authenticated FastAPI test client
-    """
-    # 1. Create a user directly in the test DB
-    user_data = {
-        "email": "test@example.com",
-        "password": "SecureTestPassword123!",
-        "display_name": "Test User"
-    }
-    
-    # Use UserService to create user with proper password hashing
-    user_service = UserService(test_db_session)
-    user = user_service.create_user(user_data)
-    
-    # 2. Use the regular client to log in and get a token
-    login_data = {
-        "username": user_data["email"],
-        "password": user_data["password"]
-    }
-    response = api_client.post("/auth/login", data=login_data)
-    assert response.status_code == 200, f"Login failed: {response.text}"
-    token = response.json()["access_token"]
-    
-    # 3. Create new client with auth header
-    authenticated_client = TestClient(app)
-    authenticated_client.headers["Authorization"] = f"Bearer {token}"
-    
-    yield authenticated_client
+    app.dependency_overrides.pop(get_db, None)
 
 
-# Markers for test organization
-pytestmark = pytest.mark.unit  # Default marker for all tests in this conftest
+# ---------------------------------------------------------------------------
+# 8. Make factories see the per-test session.
+#
+# factory-boy needs `sqlalchemy_session` set before `.create()` is called. We
+# do that here so individual tests can just call `UserFactory.create()`.
+# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _bind_factories_to_session(db_session):
+    from factories import bind_session, unbind_session
+
+    bind_session(db_session)
+    yield
+    unbind_session()

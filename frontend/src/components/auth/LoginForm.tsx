@@ -7,6 +7,7 @@ import { useAuthStore } from '../../stores/authStore';
 import type { LoginCredentials } from '../../types/auth';
 
 
+import { logger } from '../../utils/logger';
 interface LoginFormProps {
   onSuccess?: () => void;
   onSwitchToRegister?: () => void;
@@ -122,7 +123,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
           className="text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300"
           onClick={() => {
             // TODO: Implement forgot password
-            console.log('Forgot password clicked');
+            logger.info('Forgot password clicked');
           }}
         >
           Forgot your password?

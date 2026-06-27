@@ -5,6 +5,7 @@ import { Button } from '../ui/Button';
 import { LoadingSpinner } from '../ui';
 import { userService, type UserProfile, type UserUpdateData } from '../../services/userService';
 
+import { logger } from '../../utils/logger';
 interface UserPreferencesProps {
   profile: UserProfile;
   onUpdate: (updatedProfile: UserProfile) => void;
@@ -53,7 +54,7 @@ export function UserPreferences({ profile, onUpdate }: UserPreferencesProps) {
         spending_alert_threshold_cents: updatedProfile.spending_alert_threshold_cents || null,
       });
     } catch (error) {
-      console.error('Failed to update preferences:', error);
+      logger.error('Failed to update preferences:', error);
       alert('Failed to update preferences. Please try again.');
     } finally {
       setIsLoading(false);

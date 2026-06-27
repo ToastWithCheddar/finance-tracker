@@ -1,0 +1,17 @@
+# Per-suite virtualenvs and caches
+**/.venv/
+**/node_modules/
+**/__pycache__/
+**/*.egg-info/
+**/.pytest_cache/
+**/.vitest-cache/
+**/coverage/
+**/.coverage
+**/htmlcov/
+
+# Bench reports — keep folder, drop contents except a baseline.json checked in by humans
+**/reports/*
+!**/reports/.gitkeep
+!**/reports/baseline.json
+backend/reports/requests_raw.csv
+backend/reports/percentiles.csv

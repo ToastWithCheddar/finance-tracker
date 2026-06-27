@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { getStartOfWeek } from '../../utils/date';
 import type { DashboardFilters as FilterType } from '../../services/dashboardService';
 
+import { logger } from '../../utils/logger';
 interface DashboardFiltersProps {
   filters: FilterType;
   onFiltersChange: (filters: FilterType) => void;
@@ -28,21 +29,21 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
   React.useEffect(() => {
     if (filters.start_date && filters.end_date) {
       const presets = getDateRangePresets();
-      console.log('[DEBUG DashboardFilters] Initializing selectedRangeKey. Current filters:', filters);
-      console.log('[DEBUG DashboardFilters] Available presets:', presets);
+      logger.info('[DEBUG DashboardFilters] Initializing selectedRangeKey. Current filters:', filters);
+      logger.info('[DEBUG DashboardFilters] Available presets:', presets);
       
       // Find matching predefined range
       for (const range of PREDEFINED_RANGES) {
         const preset = presets[range.key];
         if (preset.start_date === filters.start_date && preset.end_date === filters.end_date) {
-          console.log('[DEBUG DashboardFilters] Found matching range key:', range.key);
+          logger.info('[DEBUG DashboardFilters] Found matching range key:', range.key);
           setSelectedRangeKey(range.key);
           return;
         }
       }
       
       // No predefined range matches, clear selectedRangeKey
-      console.log('[DEBUG DashboardFilters] No predefined range matches, clearing selectedRangeKey');
+      logger.info('[DEBUG DashboardFilters] No predefined range matches, clearing selectedRangeKey');
       setSelectedRangeKey(null);
     }
   }, [filters.start_date, filters.end_date]);
@@ -81,11 +82,11 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
   };
 
   const handlePredefinedRangeClick = (rangeKey: string) => {
-    console.log('[DEBUG DashboardFilters] handlePredefinedRangeClick called with:', rangeKey);
+    logger.info('[DEBUG DashboardFilters] handlePredefinedRangeClick called with:', rangeKey);
     const presets = getDateRangePresets();
-    console.log('[DEBUG DashboardFilters] Date range presets:', presets);
+    logger.info('[DEBUG DashboardFilters] Date range presets:', presets);
     const range = presets[rangeKey as keyof typeof presets];
-    console.log(`[DEBUG DashboardFilters] Selected range "${rangeKey}":`, range);
+    logger.info(`[DEBUG DashboardFilters] Selected range "${rangeKey}":`, range);
     
     if (range) {
       const newFilters = {
@@ -93,27 +94,27 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
         start_date: range.start_date,
         end_date: range.end_date,
       };
-      console.log('[DEBUG DashboardFilters] About to call onFiltersChange with:', newFilters);
-      console.log('[DEBUG DashboardFilters] Date range for', rangeKey, ':', range);
+      logger.info('[DEBUG DashboardFilters] About to call onFiltersChange with:', newFilters);
+      logger.info('[DEBUG DashboardFilters] Date range for', rangeKey, ':', range);
       
       // Track which range key was explicitly selected
       setSelectedRangeKey(rangeKey);
       onFiltersChange(newFilters);
       setShowCustomRange(false);
     } else {
-      console.log('[DEBUG DashboardFilters] No range found for key:', rangeKey);
+      logger.info('[DEBUG DashboardFilters] No range found for key:', rangeKey);
     }
   };
 
   const handleCustomRangeSubmit = () => {
-    console.log('[DEBUG DashboardFilters] handleCustomRangeSubmit called');
+    logger.info('[DEBUG DashboardFilters] handleCustomRangeSubmit called');
     if (customStartDate && customEndDate) {
       const newFilters = {
         ...filters,
         start_date: customStartDate,
         end_date: customEndDate,
       };
-      console.log('[DEBUG DashboardFilters] About to call onFiltersChange with custom range:', newFilters);
+      logger.info('[DEBUG DashboardFilters] About to call onFiltersChange with custom range:', newFilters);
       
       // Clear selected range key for custom ranges
       setSelectedRangeKey(null);
@@ -165,7 +166,7 @@ export function DashboardFilters({ filters, onFiltersChange }: DashboardFiltersP
         <div className="flex flex-wrap gap-2">
           {PREDEFINED_RANGES.map((range) => {
             const isSelected = selectedRangeKey === range.key;
-            console.log(`[DEBUG DashboardFilters] Button ${range.key}: selectedRangeKey=${selectedRangeKey}, isSelected=${isSelected}`);
+            logger.info(`[DEBUG DashboardFilters] Button ${range.key}: selectedRangeKey=${selectedRangeKey}, isSelected=${isSelected}`);
             return (
               <Button
                 key={range.key}

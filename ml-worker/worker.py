@@ -1,5 +1,6 @@
 from celery import Celery
-from celery.signals import worker_ready
+from celery.signals import worker_ready, worker_init, task_prerun, task_postrun
+import structlog
 import os
 import logging
 import asyncio
@@ -12,13 +13,49 @@ os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 os.environ.setdefault("CUDA_VISIBLE_DEVICES", "")
 
 from ml_classification_service import classifier
-from production_orchestrator import create_production_orchestrator
+from production_orchestrator import ProductionOrchestrator
 from model_monitoring import model_monitor
 from ab_testing_framework import ab_framework
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+try:
+    from prometheus_client import start_http_server as _prom_start_http_server
+except Exception:  # pragma: no cover
+    _prom_start_http_server = None
+
+# Configure structured logging via shared config (ML-LOG-001).
+try:
+    from app.logging_config import configure_logging  # type: ignore
+except Exception:  # pragma: no cover
+    try:
+        from logging_config import configure_logging  # type: ignore
+    except Exception:
+        def configure_logging(_name: str) -> None:  # type: ignore
+            return None
+configure_logging("ml-worker")
 logger = logging.getLogger(__name__)
+
+# Propagate request_id from backend Celery callsite (apply_async(headers={...}))
+# into structlog contextvars so every ml-worker log line carries the same id.
+@task_prerun.connect
+def _bind_request_id(sender=None, task_id=None, task=None, **kwargs):
+    request_id = None
+    try:
+        headers = getattr(task.request, "headers", None) or {}
+        request_id = headers.get("X-Request-ID") or headers.get("x-request-id")
+    except Exception:
+        request_id = None
+    if not request_id:
+        request_id = task_id or "no-request-id"
+    structlog.contextvars.bind_contextvars(request_id=request_id, task_name=getattr(task, "name", "?"))
+
+
+@task_postrun.connect
+def _unbind_request_id(sender=None, task_id=None, task=None, **kwargs):
+    try:
+        structlog.contextvars.unbind_contextvars("request_id", "task_name")
+    except Exception:
+        pass
+
 
 # Create Celery app
 app = Celery('ml_worker')
@@ -34,12 +71,19 @@ app.conf.update(
     enable_utc=True,
 )
 
-# Global production orchestrator (unused in light startup)
-production_orchestrator = None
+# Module-level singletons. Each Celery prefork child gets its own copy
+# (Celery prefork model: workers fork after import, signals fire post-fork).
+# ML-PR-003: one event loop per worker child instead of per task.
+production_orchestrator: "ProductionOrchestrator | None" = None
+_worker_loop: "asyncio.AbstractEventLoop | None" = None
+
 
 def _is_light_startup() -> bool:
-    """Always use light startup to avoid heavy init paths."""
-    return True
+    """Light startup is now opt-in via env (ML_LIGHT_STARTUP=1).
+
+    Default: heavy startup (orchestrator init) so the live ONNX path is wired.
+    """
+    return os.getenv("ML_LIGHT_STARTUP", "0") == "1"
 
 
 def _ensure_onnx_in_background():
@@ -62,22 +106,72 @@ def _ensure_onnx_in_background():
         onnx_converter.load_model()
         onnx_converter.export_to_onnx(base_path)
         onnx_converter.quantize_dynamic(base_path, dyn_path)
-        logger.info("✅ Background ONNX export complete")
+        logger.info("[ok] Background ONNX export complete")
     except Exception as e:
         logger.warning(f"Background ONNX export skipped due to error: {e}")
+
+
+# ML-PR-003: allocate a single event loop per Celery prefork child at
+# worker_init (post-fork, pre-task). Each task reuses this loop instead of
+# instantiating a new one per call. Caveat: Celery prefork forks one
+# child per --concurrency unit; each child gets its own loop. Threaded
+# execution pools are not supported by this design (would need a
+# loop-running thread).
+@worker_init.connect
+def _init_worker_loop_and_metrics(sender=None, **kwargs):
+    global _worker_loop
+    try:
+        _worker_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_worker_loop)
+        logger.info("worker event loop initialized")
+    except Exception as e:
+        logger.error(f"failed to init worker event loop: {e}")
+        _worker_loop = None
+
+    # Start Prometheus on a non-conflicting port (backend uses :8000).
+    # Wrap in try/except — port-in-use must not crash the worker.
+    if _prom_start_http_server is not None:
+        port = int(os.getenv("ML_METRICS_PORT", "8002"))
+        try:
+            _prom_start_http_server(port)
+            logger.info(f"ml-worker prometheus metrics on port {port}")
+        except OSError as e:
+            logger.warning(f"prometheus port {port} unavailable: {e}")
+        except Exception as e:
+            logger.warning(f"prometheus start failed: {e}")
 
 
 # Initialize ML classifier on worker startup
 @worker_ready.connect
 def setup_worker_tasks(sender, **kwargs):
     """Setup periodic tasks and initialize ML system.
-    In light startup, preload basic model/prototypes and skip heavy production init
-    so the worker can accept tasks immediately.
+
+    Default path (Section F, ML-PR-001): instantiate ProductionOrchestrator
+    and call initialize_production() synchronously via asyncio.run() once.
+    Failures degrade to the PyTorch fallback rather than crashing the
+    worker. Set ML_LIGHT_STARTUP=1 to skip the orchestrator entirely.
     """
     global production_orchestrator
 
-    # Light startup path: fast readiness, no heavy production init
-    if _is_light_startup():
+    if not _is_light_startup():
+        try:
+            production_orchestrator = ProductionOrchestrator()
+            asyncio.run(production_orchestrator.initialize_production())
+            logger.info(
+                "production orchestrator initialized: %s",
+                production_orchestrator.health(),
+            )
+        except Exception as e:
+            logger.error(
+                "production orchestrator init failed; degrading to PyTorch fallback: %s",
+                e,
+                exc_info=True,
+            )
+            production_orchestrator = None
+
+    # Light startup / fallback path: prime basic classifier so the PyTorch
+    # fallback is always hot regardless of orchestrator state.
+    if _is_light_startup() or production_orchestrator is None:
         try:
             models_dir = classifier._models_root()
             prototypes_path = os.path.join(models_dir, 'category_prototypes.pkl')
@@ -107,66 +201,91 @@ def setup_worker_tasks(sender, **kwargs):
             # Skip creating production orchestrator to avoid heavy startup
             # Kick off minimal ONNX generation in the background
             threading.Thread(target=_ensure_onnx_in_background, daemon=True).start()
-            logger.info("✅ Light ML startup complete - model ready for inference")
+            logger.info("[ok] Light ML startup complete - model ready for inference")
             return
         except Exception as e:
             logger.error(f"Light startup failed: {e}", exc_info=True)
 
+async def _classify_async(transaction_data: Dict) -> Dict:
+    """Live inference path. Tries ONNX-INT8 via OptimizedInferenceEngine,
+    falls back to PyTorch via TransactionClassifier on any failure or when
+    the orchestrator is not initialized. (ML-PR-001 / ML-PERF-001)
+    """
+    global production_orchestrator
+
+    description = transaction_data.get('description', '') or ''
+    merchant = transaction_data.get('merchant')
+    text = f"{merchant} {description}".strip() if merchant else description
+
+    # Path 1: optimized ONNX-INT8 engine via orchestrator.
+    if production_orchestrator is not None and getattr(
+        production_orchestrator, "is_initialized", False
+    ):
+        try:
+            engine = production_orchestrator.optimized_engine
+            res = await engine.predict(text)
+            logger.info(
+                "ml.classify served by optimized_engine",
+                extra={
+                    "path": "optimized",
+                    "backend": res.get("backend"),
+                    "label": res["label"],
+                    "score": res["score"],
+                    "latency_ms": res["latency_ms"],
+                },
+            )
+            return {
+                'predicted_category': res['label'],
+                'confidence': float(res['score']),
+                'confidence_level': res['confidence_level'],
+                'inference_time_ms': float(res['latency_ms']),
+                'model_version': getattr(engine, 'model_version', 'optimized'),
+                'all_similarities': res.get('all_similarities', {}),
+                'transaction_id': transaction_data.get('id'),
+                'inference_path': 'optimized',
+            }
+        except Exception as opt_err:
+            logger.warning(
+                "optimized_engine.predict failed; falling back to PyTorch: %s",
+                opt_err,
+            )
+
+    # Path 2: PyTorch fallback via the basic classifier.
+    result = classifier.classify_transaction(
+        description=description,
+        amount=transaction_data.get('amount'),
+        merchant=merchant,
+    )
+    result['transaction_id'] = transaction_data.get('id')
+    result['inference_path'] = 'pytorch_fallback'
+    logger.info(
+        "ml.classify served by pytorch fallback",
+        extra={
+            "path": "pytorch_fallback",
+            "label": result.get('predicted_category'),
+            "confidence": result.get('confidence'),
+        },
+    )
+    return result
+
+
 @app.task(bind=True, max_retries=3)
 def classify_transaction(self, transaction_data: Dict):
-    """Classify a single transaction using production-optimized ML system"""
-    global production_orchestrator
-    
+    """Classify a single transaction using the live ONNX path with PyTorch
+    fallback. ML-PR-003: uses the worker-shared event loop.
+    """
+    global _worker_loop
     try:
-        if production_orchestrator:
-            # Use production orchestrator with A/B testing and monitoring
+        loop = _worker_loop
+        if loop is None or loop.is_closed():
+            # Defensive: should not happen post worker_init, but guard anyway.
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            
-            result = loop.run_until_complete(
-                production_orchestrator.classify_transaction(
-                    description=transaction_data.get('description', ''),
-                    amount=transaction_data.get('amount'),
-                    merchant=transaction_data.get('merchant'),
-                    user_id=transaction_data.get('user_id')
-                )
-            )
-            
-            loop.close()
-            
-            # Convert to dict format
-            result_dict = {
-                'predicted_category': result.predicted_category,
-                'confidence': result.confidence,
-                'confidence_level': result.confidence_level,
-                'inference_time_ms': result.inference_time_ms,
-                'model_version': result.model_version,
-                'all_similarities': result.all_similarities,
-                'transaction_id': transaction_data.get('id')
-            }
-            
-            logger.info(f"Production classified transaction {transaction_data.get('id')}: "
-                       f"{result.predicted_category} (confidence: {result.confidence:.3f}, "
-                       f"time: {result.inference_time_ms:.1f}ms)")
-            
-            return result_dict
-        
-        else:
-            # Fallback to basic classifier
-            result = classifier.classify_transaction(
-                description=transaction_data.get('description', ''),
-                amount=transaction_data.get('amount'),
-                merchant=transaction_data.get('merchant')
-            )
-            
-            result['transaction_id'] = transaction_data.get('id')
-            logger.info(f"Fallback classified transaction {transaction_data.get('id')}: {result['predicted_category']} (confidence: {result['confidence']:.3f})")
-            
-            return result
-        
+        return loop.run_until_complete(_classify_async(transaction_data))
     except Exception as e:
-        logger.error(f"Classification failed for transaction {transaction_data.get('id')}: {e}")
-        # Retry with exponential backoff
+        logger.error(
+            f"Classification failed for transaction {transaction_data.get('id')}: {e}"
+        )
         raise self.retry(countdown=60 * (2 ** self.request.retries), exc=e)
 
 @app.task(bind=True, max_retries=3)
@@ -194,7 +313,7 @@ def batch_classify_transactions(self, transactions: List[Dict]):
         end_time = datetime.now()
         
         processing_time = (end_time - start_time).total_seconds()
-        logger.info(f"✅ Batch classified {batch_size} transactions in {processing_time:.2f}s ({processing_time/batch_size:.3f}s per transaction)")
+        logger.info(f"[ok] Batch classified {batch_size} transactions in {processing_time:.2f}s ({processing_time/batch_size:.3f}s per transaction)")
         return results
         
     except Exception as e:

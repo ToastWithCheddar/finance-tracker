@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 
 from app.websocket.manager import redis_websocket_manager as manager
 from app.websocket.events import WebSocketEvents, MessageType
-from app.auth.dependencies import get_current_user_from_token
+from app.auth.dependencies import get_current_user_from_token, require_admin
 from app.database import get_db
 from app.models import User
 from app.core.exceptions import (
@@ -24,16 +24,50 @@ router = APIRouter()
 @router.websocket("/ws")
 async def websocket_endpoint(
     websocket: WebSocket,
-    token: str = Query(..., description="JWT authentication token"),
+    token: Optional[str] = Query(None, description="(deprecated) JWT in querystring"),
     db: Session = Depends(get_db)
 ):
-    """Main WebSocket endpoint for real-time updates"""
+    """Main WebSocket endpoint for real-time updates.
+
+    FE-SEC-001 / BE-SEC-007 hardening: accept the connection first, then
+    require the client to send `{"type":"auth","token":"<jwt>"}` as the
+    first frame. The legacy `?token=` querystring path is honoured for one
+    release window so clients can roll forward, but should be removed.
+    """
     user = None
     try:
-        # Authenticate user from token
-        user = await get_current_user_from_token(token=token, db=db)
+        # We must accept() before we can receive frames.
+        await websocket.accept()
+
+        auth_token: Optional[str] = token
+        if not auth_token:
+            # Read first message — must be the auth handshake.
+            try:
+                first_frame = await asyncio.wait_for(
+                    websocket.receive_json(), timeout=10.0
+                )
+            except (asyncio.TimeoutError, Exception) as e:
+                logger.info(f"WS auth handshake failed (no/invalid first frame): {e}")
+                await websocket.close(code=4401, reason="Auth handshake required")
+                return
+
+            if not isinstance(first_frame, dict) or first_frame.get("type") != "auth":
+                await websocket.close(code=4401, reason="First frame must be auth")
+                return
+            auth_token = first_frame.get("token")
+            if not isinstance(auth_token, str) or not auth_token:
+                await websocket.close(code=4401, reason="Missing token in auth frame")
+                return
+
+        # Authenticate user from token (after accept()).
+        try:
+            user = await get_current_user_from_token(token=auth_token, db=db)
+        except Exception as e:
+            logger.info(f"WS token validation failed: {e}")
+            await websocket.close(code=4401, reason="Authentication failed")
+            return
         if not user:
-            await websocket.close(code=4001, reason="Authentication failed")
+            await websocket.close(code=4401, reason="Authentication failed")
             return
 
         logger.info(f"WebSocket connection attempt for user: {user.id}")
@@ -74,7 +108,8 @@ async def websocket_endpoint(
         logger.error(f"WebSocket connection error: {str(e)}")
         try:
             await websocket.close(code=4000, reason="Connection error")
-        except:
+        except Exception:
+            # Socket may already be closed; nothing more we can do here.
             pass
     finally:
         # Always cleanup connection
@@ -164,7 +199,7 @@ async def websocket_health():
 
 # Admin endpoint to get connection statistics
 @router.get("/ws/stats")
-async def get_websocket_stats(current_user: User = Depends(get_current_user_from_token)):
+async def get_websocket_stats(current_user: User = Depends(require_admin)):
     """Get detailed WebSocket connection statistics (admin only)"""
     try:
         stats = await manager.get_connection_stats()
@@ -187,7 +222,7 @@ async def send_test_message(
     user_id: str,
     message_type: str,
     message_data: Dict[str, Any],
-    current_user: User = Depends(get_current_user_from_token)
+    current_user: User = Depends(require_admin)
 ):
     """Send test message to a user (for testing purposes)"""
     try:
@@ -223,7 +258,7 @@ async def broadcast_system_message(
     message_type: str,
     message_data: Dict[str, Any],
     priority: str = "medium",
-    current_user: User = Depends(get_current_user_from_token)
+    current_user: User = Depends(require_admin)
 ):
     """Broadcast system message to all connected users (admin only)"""
     try:

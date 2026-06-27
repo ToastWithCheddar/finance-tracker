@@ -1,0 +1,23 @@
+{
+  "name": "finance-tracker-frontend-benchmarks",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend performance benchmarking scaffolding (Lighthouse CI + bundle analysis + Playwright trace) for finance-tracker. Self-contained; install only inside this directory.",
+  "scripts": {
+    "baseline": "bash scripts/capture_baseline.sh",
+    "lhci": "lhci autorun --config=./lighthouserc.cjs",
+    "analyze:bundle": "node scripts/analyze_bundle.mjs",
+    "trace:dashboard": "node scripts/render_trace.mjs",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@lhci/cli": "0.14.0",
+    "@playwright/test": "1.47.2",
+    "@types/node": "20.16.10",
+    "playwright": "1.47.2",
+    "rollup-plugin-visualizer": "5.12.0",
+    "tsx": "4.19.1",
+    "typescript": "5.6.2"
+  }
+}

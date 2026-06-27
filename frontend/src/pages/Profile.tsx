@@ -12,6 +12,7 @@ import { SessionManagementModal } from '../components/profile/SessionManagementM
 import { userService, type UserProfile, type UserStats } from '../services/userService';
 import { useAuthStore } from '../stores/authStore';
 
+import { logger } from '../utils/logger';
 export function Profile() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
@@ -42,7 +43,7 @@ export function Profile() {
       setProfile(profileData);
       setStats(statsData);
     } catch (error) {
-      console.error('Failed to load profile:', error);
+      logger.error('Failed to load profile:', error);
       setError('Failed to load profile data');
     } finally {
       setIsLoading(false);
@@ -73,7 +74,7 @@ export function Profile() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Export failed:', error);
+      logger.error('Export failed:', error);
       alert('Failed to export data. Please try again.');
     } finally {
       setIsExporting(false);
@@ -99,7 +100,7 @@ export function Profile() {
       alert('Your account has been deactivated. You will now be logged out.');
       logout();
     } catch (error) {
-      console.error('Account deletion failed:', error);
+      logger.error('Account deletion failed:', error);
       alert('Failed to delete account. Please contact support.');
     }
   };
@@ -110,7 +111,7 @@ export function Profile() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: 'hsl(var(--bg))' }}>
+      <div className="min-h-screen flex items-center justify-center bg-bg">
         <LoadingSpinner size="lg" />
       </div>
     );
@@ -118,7 +119,7 @@ export function Profile() {
 
   if (error || !profile) {
     return (
-      <div className="min-h-screen" style={{ backgroundColor: 'hsl(var(--bg))' }}>
+      <div className="min-h-screen bg-bg">
         <ErrorState
           message={error || 'Failed to load profile'}
           onRetry={loadProfileData}
@@ -129,7 +130,7 @@ export function Profile() {
   }
 
   return (
-    <div className="min-h-screen py-8" style={{ backgroundColor: 'hsl(var(--bg))', color: 'hsl(var(--text))' }}>
+    <div className="min-h-screen py-8 bg-bg text-text">
       <div className="max-w-4xl mx-auto px-4">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-[hsl(var(--text))]">My Profile</h1>

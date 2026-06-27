@@ -284,7 +284,7 @@ class PlaidClientService:
                 try:
                     error_json = response.json()
                     error_detail = error_json.get('error_message', error_detail)
-                except:
+                except (ValueError, KeyError):
                     pass
                 raise Exception(f"Plaid API error ({response.status_code}): {error_detail}")
             

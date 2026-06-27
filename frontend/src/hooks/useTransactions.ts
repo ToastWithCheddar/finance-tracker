@@ -12,6 +12,7 @@ import type {
 } from '../types/transaction';
 
 // Query keys
+import { logger } from '../utils/logger';
 const TRANSACTION_KEYS = {
   all: ['transactions'] as const,
   lists: () => [...TRANSACTION_KEYS.all, 'list'] as const,
@@ -31,12 +32,6 @@ export function useTransactions(filters?: Partial<TransactionFilters>, enabled: 
     enabled: enabled,
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-    meta: {
-      onSuccess: (data: any) => {
-      },
-      onError: (error: any) => {
-      },
-    },
   });
 }
 
@@ -55,12 +50,6 @@ export function useTransactionsGrouped(
     enabled: !!filters && !!filters.group_by,
     staleTime: 2 * 60 * 1000, // 2 minutes
     gcTime: 10 * 60 * 1000, // 10 minutes
-    meta: {
-      onSuccess: (data: any) => {
-      },
-      onError: (error: any) => {
-      },
-    },
   });
 }
 
@@ -81,12 +70,6 @@ export function useTransactionStats(filters?: TransactionFilter) {
     queryFn: () => transactionService.getTransactionStats(filters),
     staleTime: 5 * 60 * 1000, // 5 minutes
     retry: 1, // Only retry once since we now use fallback calculation
-    meta: {
-      onSuccess: (data: any) => {
-      },
-      onError: (error: any) => {
-      },
-    },
   });
 }
 
@@ -229,7 +212,7 @@ export function useImportCSV() {
       
       // Show success toast
       if (typeof window !== 'undefined') {
-        import('react-hot-toast').then(({ toast }) => {
+        import('sonner').then(({ toast }) => {
           toast.success(`Successfully imported ${result.imported_count} transactions!`);
         });
       }
@@ -252,7 +235,7 @@ export function useImportCSV() {
       
       // Show error toast
       if (typeof window !== 'undefined') {
-        import('react-hot-toast').then(({ toast }) => {
+        import('sonner').then(({ toast }) => {
           toast.error(userMessage);
         });
       }
@@ -277,7 +260,7 @@ export function useExportTransactions() {
         
         // Show success toast
         if (typeof window !== 'undefined') {
-          const { toast } = await import('react-hot-toast');
+          const { toast } = await import('sonner');
           toast.success(`Export completed! File downloaded as ${filename}`);
         }
       } catch (error) {
@@ -300,11 +283,11 @@ export function useExportTransactions() {
       
       // Show error toast
       if (typeof window !== 'undefined') {
-        import('react-hot-toast').then(({ toast }) => {
+        import('sonner').then(({ toast }) => {
           toast.error(userMessage);
         });
       }
-      console.error('User message:', userMessage);
+      logger.error('User message:', userMessage);
     },
   });
 }

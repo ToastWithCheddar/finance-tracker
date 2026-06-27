@@ -4,6 +4,7 @@ Handles automated transaction import and sync with Plaid
 """
 
 import logging
+import uuid
 from typing import Dict, Any, List, Optional, Set, Union
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
@@ -49,54 +50,95 @@ class TransactionSyncService:
     
 
     
-    async def _acquire_sync_lock(self, account_id: str) -> bool:
-        """Acquire a distributed lock for account synchronization using Redis"""
+    # BE-CONC-002: Lua CAS-DELETE — only delete the lock if the value matches
+    # the caller's fence token. Without this, any caller could DEL another
+    # worker's lock (Martin Kleppmann fence-token problem).
+    _RELEASE_LUA = (
+        "if redis.call('get', KEYS[1]) == ARGV[1] then "
+        "return redis.call('del', KEYS[1]) "
+        "else return 0 end"
+    )
 
+    # Stash tokens so the public sync_account_transactions() flow can
+    # release with the right token even if callers don't pass it explicitly.
+    _local_fence_tokens: Dict[str, str] = {}
+
+    async def _acquire_sync_lock(self, account_id: str) -> Optional[str]:
+        """Acquire a distributed lock; return the fence token on success, else None.
+
+        Backwards-compatible: callers that treated the return as a bool will
+        still see truthy on success and falsy on failure.
+        """
+
+        lock_key = f"sync-lock:{account_id}"
+        token = uuid.uuid4().hex
         try:
             conn = await redis_client.get_connection()
-            lock_key = f"sync-lock:{account_id}"
-            lock_value = f"worker-{asyncio.current_task().get_name() if asyncio.current_task() else 'unknown'}"
-            
-            # Use SET with NX (not exists) and EX (expiration) options
-            # This is atomic - either sets the key with expiration or fails
-            result = await conn.set(
-                lock_key, 
-                lock_value, 
-                nx=True,  # Only set if key doesn't exist
-                ex=self.lock_timeout_seconds  # Set expiration
-            )
-            
-            await conn.close()
-            
+            try:
+                # Atomic SET NX EX.
+                result = await conn.set(
+                    lock_key,
+                    token,
+                    nx=True,
+                    ex=self.lock_timeout_seconds,
+                )
+            finally:
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
+
             if result:
-                logger.info(f"Acquired sync lock for account {account_id}")
-                return True
-            else:
-                logger.warning(f"Failed to acquire sync lock for account {account_id} - already locked")
-                return False
-                
+                self._local_fence_tokens[account_id] = token
+                logger.info(f"Acquired sync lock for account {account_id} (token={token[:6]}…)")
+                return token
+            logger.warning(f"Failed to acquire sync lock for account {account_id} - already locked")
+            return None
+
         except Exception as e:
             logger.error(f"Error acquiring sync lock for account {account_id}: {str(e)}")
             raise Exception(f"Failed to acquire distributed lock: {str(e)}")
-    
-    async def _release_sync_lock(self, account_id: str) -> bool:
-        """Release the distributed lock for account synchronization"""
+
+    async def _release_sync_lock(
+        self,
+        account_id: str,
+        fence_token: Optional[str] = None,
+    ) -> bool:
+        """Release the distributed lock — only if `fence_token` matches.
+
+        BE-CONC-002: uses a Lua CAS-DELETE for atomicity. Callers MUST pass
+        the token returned by `_acquire_sync_lock`. If the caller is the same
+        in-process worker that acquired the lock and didn't pass a token, we
+        fall back to the stashed local token (best-effort cleanup).
+        """
+
+        lock_key = f"sync-lock:{account_id}"
+        token = fence_token or self._local_fence_tokens.get(account_id)
+        if not token:
+            logger.warning(
+                f"Refusing to release lock for {account_id}: no fence token provided"
+            )
+            return False
 
         try:
             conn = await redis_client.get_connection()
-            lock_key = f"sync-lock:{account_id}"
-            
-            # Delete the lock key
-            result = await conn.delete(lock_key)
-            await conn.close()
-            
-            if result:
+            try:
+                deleted = await conn.eval(self._RELEASE_LUA, 1, lock_key, token)
+            finally:
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
+
+            if deleted:
+                self._local_fence_tokens.pop(account_id, None)
                 logger.info(f"Released sync lock for account {account_id}")
                 return True
-            else:
-                logger.warning(f"Attempted to release non-existent lock for account {account_id}")
-                return False
-                
+            logger.warning(
+                f"Lock for {account_id} not released: token mismatch or key absent"
+            )
+            return False
+
         except Exception as e:
             logger.error(f"Error releasing sync lock for account {account_id}: {str(e)}")
             # Don't raise here - we want to ensure cleanup continues
@@ -111,9 +153,9 @@ class TransactionSyncService:
     ) -> SyncResult:
         """Sync transactions for a single account"""
         
-        # Attempt to acquire distributed lock
-        lock_acquired = await self._acquire_sync_lock(account_id)
-        if not lock_acquired:
+        # Attempt to acquire distributed lock (BE-CONC-002: returns fence token).
+        fence_token = await self._acquire_sync_lock(account_id)
+        if not fence_token:
             raise Exception(f"Account {account_id} is already being synced")
         
         start_time = datetime.now(timezone.utc)
@@ -206,15 +248,20 @@ class TransactionSyncService:
                     account.connection_health = 'failed'
                     db.add(account)
                     db.commit()
-            except:
-                pass
+            except Exception as status_err:
+                # Best-effort error-status write; roll back so the broken session
+                # doesn't mask the original failure we re-raise below.
+                logger.warning(
+                    f"Failed to persist error status for account {account_id}: {status_err}"
+                )
+                db.rollback()
             
             logger.error(f"Transaction sync failed for account {account_id}: {e}")
             raise
             
         finally:
-            # Always release the distributed lock
-            await self._release_sync_lock(account_id)
+            # Always release the distributed lock (with our fence token).
+            await self._release_sync_lock(account_id, fence_token=fence_token)
     
     async def sync_user_transactions(
         self,
@@ -642,12 +689,12 @@ class TransactionSyncService:
         
         try:
             return datetime.fromisoformat(date_str).replace(tzinfo=timezone.utc)
-        except:
+        except (ValueError, TypeError):
             try:
                 # Try parsing as date only
                 from dateutil.parser import parse
                 return parse(date_str).replace(tzinfo=timezone.utc)
-            except:
+            except (ValueError, TypeError, ImportError):
                 return None
     
     def _calculate_sync_days(self, account: Account, force_sync: bool = False) -> int:

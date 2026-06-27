@@ -26,6 +26,8 @@ class User(BaseModel):
     # Account Status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # BE-SEC-007: admin guard for /ws/stats, /ws/test-message, /ws/broadcast.
+    is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
     # Preferences (simplified notifications)
     notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

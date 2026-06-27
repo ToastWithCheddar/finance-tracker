@@ -9,6 +9,7 @@ import { useSuccessToast, useErrorToast } from '../ui/Toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 import { getRelativeTime } from '../../utils/date';
 
+import { logger } from '../../utils/logger';
 interface SessionManagementModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -47,7 +48,7 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
       const sessionsData = await userService.getUserSessions();
       setSessions(sessionsData);
     } catch (error) {
-      console.error('Failed to load sessions:', error);
+      logger.error('Failed to load sessions:', error);
       setError('Failed to load active sessions');
     } finally {
       setIsLoading(false);
@@ -72,7 +73,7 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
       showSuccess('Session revoked successfully');
       setConfirmRevoke(null);
     } catch (error) {
-      console.error('Failed to revoke session:', error);
+      logger.error('Failed to revoke session:', error);
       showError('Failed to revoke session. Please try again.');
     } finally {
       setIsRevoking(null);
@@ -96,7 +97,7 @@ export function SessionManagementModal({ isOpen, onClose }: SessionManagementMod
       showSuccess('All other sessions have been revoked successfully');
       setConfirmRevokeAll(false);
     } catch (error) {
-      console.error('Failed to revoke all sessions:', error);
+      logger.error('Failed to revoke all sessions:', error);
       showError('Failed to revoke all sessions. Please try again.');
     } finally {
       setIsRevokingAll(false);

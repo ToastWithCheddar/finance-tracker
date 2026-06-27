@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Header, Query, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 from typing import Any, Dict
@@ -6,6 +6,7 @@ from typing import Any, Dict
 from app.database import get_db
 from app.auth.auth_service import AuthService
 from app.auth.dependencies import get_current_user, get_current_active_user, get_auth_service
+from app.core.rate_limit import limiter
 from app.schemas.auth import (
     UserRegister, UserLogin, RefreshTokenRequest,
     PasswordResetRequest, ResendVerificationRequest, AuthResponse, PasswordUpdate
@@ -21,19 +22,23 @@ async def get_me(current_user: User = Depends(get_current_active_user)) -> User:
     return current_user
 
 @router.post("/register", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
+@limiter.limit("3/hour")
 async def register(
+    request: Request,
     user_data: UserRegister,
     auth_service: AuthService = Depends(get_auth_service)
 ) -> Dict[str, Any]:
-    """Registers a new user."""
+    """Registers a new user. Rate limit: 3/hour per IP (BE-RL-001)."""
     return await auth_service.register_user(user_data)
 
 @router.post("/login", response_model=AuthResponse)
+@limiter.limit("10/minute")
 async def login(
+    request: Request,
     login_data: UserLogin,
     auth_service: AuthService = Depends(get_auth_service)
 ) -> AuthResponse:
-    """Authenticates a user and returns a token."""
+    """Authenticates a user and returns a token. Rate limit: 10/minute (BE-RL-001)."""
     result = await auth_service.login_user(login_data)
     return AuthResponse(**result)
 
@@ -57,11 +62,13 @@ async def refresh_token(
     return AuthResponse(**result)
 
 @router.post("/request-password-reset", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("3/hour")
 async def request_password_reset(
+    request: Request,
     reset_data: PasswordResetRequest,
     auth_service: AuthService = Depends(get_auth_service)
 ):
-    """Sends a password reset email."""
+    """Sends a password reset email. Rate limit: 3/hour (BE-RL-001)."""
     await auth_service.send_password_reset(reset_data.email)
     return
 

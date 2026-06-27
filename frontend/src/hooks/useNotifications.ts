@@ -1,10 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { NotificationService } from '../services/notificationService';
 import type { NotificationFilters, NotificationResponse } from '../services/notificationService';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 import { useRealtimeStore } from '../stores/realtimeStore';
 
 // Query keys for React Query
+import { logger } from '../utils/logger';
 export const NOTIFICATION_KEYS = {
   all: ['notifications'] as const,
   lists: () => [...NOTIFICATION_KEYS.all, 'list'] as const,
@@ -81,7 +82,7 @@ export function useMarkAsRead() {
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.unread() });
     },
     onError: (error) => {
-      console.error('Failed to mark notification as read:', error);
+      logger.error('Failed to mark notification as read:', error);
       toast.error('Failed to mark notification as read');
     },
   });
@@ -108,7 +109,7 @@ export function useMarkAsUnread() {
       queryClient.invalidateQueries({ queryKey: NOTIFICATION_KEYS.unread() });
     },
     onError: (error) => {
-      console.error('Failed to mark notification as unread:', error);
+      logger.error('Failed to mark notification as unread:', error);
       toast.error('Failed to mark notification as unread');
     },
   });
@@ -138,7 +139,7 @@ export function useDismissNotification() {
       toast.success('Notification dismissed');
     },
     onError: (error) => {
-      console.error('Failed to dismiss notification:', error);
+      logger.error('Failed to dismiss notification:', error);
       toast.error('Failed to dismiss notification');
     },
   });
@@ -163,7 +164,7 @@ export function useMarkAllAsRead() {
       toast.success(`Marked ${result.updated_count} notifications as read`);
     },
     onError: (error) => {
-      console.error('Failed to mark all notifications as read:', error);
+      logger.error('Failed to mark all notifications as read:', error);
       toast.error('Failed to mark all notifications as read');
     },
   });

@@ -8,6 +8,7 @@ import type { AuthResponse } from '../../types/auth';
  * DEVELOPMENT ONLY: Admin bypass for testing without full auth setup
  * This should be disabled in production!
  */
+import { logger } from '../../utils/logger';
 export function AdminBypassButton() {
   const [bypassing, setBypassing] = useState(false);
   const { isAuthenticated } = useAuthStore();
@@ -27,7 +28,7 @@ export function AdminBypassButton() {
           id: 'eadc6056-0799-423c-9bf9-6c1c4c811231',
           email: 'dev@example.com',
           displayName: 'Development User',
-          avatarUrl: null,
+          avatarUrl: undefined,
           locale: 'en-US',
           timezone: 'UTC',
           currency: 'USD',
@@ -35,14 +36,20 @@ export function AdminBypassButton() {
           updatedAt: '2025-08-07T13:26:03.139796Z',
           isActive: true,
         },
-        accessToken: 'dev-mock-token-12345',
-        refreshToken: 'dev-mock-refresh-12345',
-        expiresIn: 15 * 60,
+        tokens: {
+          access_token: 'dev-mock-token-12345',
+          refresh_token: 'dev-mock-refresh-12345',
+          token_type: 'bearer',
+          expires_in: 15 * 60,
+        },
       };
-      
+
       // Set tokens in storage directly (bypass API call)
       const { apiClient } = await import('../../services/api');
-      apiClient.setAuthTokens(mockAuthResponse.accessToken, mockAuthResponse.refreshToken);
+      apiClient.setAuthTokens(
+        mockAuthResponse.tokens.access_token,
+        mockAuthResponse.tokens.refresh_token ?? '',
+      );
       
       // Update auth store
       useAuthStore.setState({
@@ -52,10 +59,10 @@ export function AdminBypassButton() {
         error: null,
       });
       
-      console.log('🔓 Development auth bypass activated');
+      logger.info('🔓 Development auth bypass activated');
       
     } catch (error) {
-      console.error('Failed to bypass auth:', error);
+      logger.error('Failed to bypass auth:', error);
     } finally {
       setBypassing(false);
     }

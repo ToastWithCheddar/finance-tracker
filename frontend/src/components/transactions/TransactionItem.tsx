@@ -9,6 +9,7 @@ import { formatDate } from '../../utils/date';
 import { getTransactionStatusVisuals } from '../../utils';
 import { ChevronDown, Pencil, Trash2, Building, Tag, FileText, Calendar, CreditCard, Check, Clock, CheckCheck, Circle, Brain, ThumbsUp, ThumbsDown } from 'lucide-react';
 
+import { logger } from '../../utils/logger';
 interface TransactionItemProps {
   transaction: Transaction;
   onEdit: (transaction: Transaction) => void;
@@ -50,7 +51,7 @@ export function TransactionItem({
         alert('Thanks for the feedback! In the future, this will let you pick the correct category to improve AI accuracy.');
       }
     } catch (error) {
-      console.error('Failed to submit ML feedback:', error);
+      logger.error('Failed to submit ML feedback:', error);
       alert('Failed to submit feedback. Please try again.');
     }
   };

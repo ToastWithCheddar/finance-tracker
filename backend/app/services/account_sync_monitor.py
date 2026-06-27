@@ -338,7 +338,7 @@ class AccountSyncMonitor:
                 if timestamp_str:
                     try:
                         return datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
-                    except:
+                    except (ValueError, AttributeError):
                         pass
         
         return None
@@ -380,7 +380,7 @@ class AccountSyncMonitor:
                 return 'stale'
             else:
                 return 'very_stale'
-        except:
+        except (ValueError, AttributeError, TypeError):
             return 'unknown'
     
     def _generate_recommendations(

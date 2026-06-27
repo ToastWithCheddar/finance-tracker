@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { TestTube, Eye, Info, Check } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { useBudgetAlertActions } from '../../hooks/useBudgetAlerts';

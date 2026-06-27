@@ -115,21 +115,33 @@ def get_transaction_histogram(
         bins=bins
     )
 
+from fastapi import Request as _Request
+from app.core.rate_limit import limiter as _limiter
+from app.config import settings as _settings
+
+
 @router.get("/export")
+@_limiter.limit("5/minute")
 async def export_transactions(
+    request: _Request,
     format: str = Query("csv", pattern="^(csv|json)$", description="Export format"),
     start_date: Optional[datetime] = Query(None, description="Start date filter"),
     end_date: Optional[datetime] = Query(None, description="End date filter"),
     category_id: Optional[str] = Query(None, description="Category ID filter"),
     transaction_type: Optional[str] = Query(None, description="Transaction type filter (income/expense)"),
+    max_rows: Optional[int] = Query(None, ge=1, description="Optional row cap (clamped by EXPORT_MAX_ROWS)"),
     db: Session = Depends(get_db_with_user_context),
     current_user: User = Depends(get_current_user)
 ):
-    """Export transactions in CSV or JSON format using streaming for efficient memory usage"""
+    """Export transactions in CSV/JSON. Streamed; rate-limited to 5/min;
+    bounded by `EXPORT_MAX_ROWS` to mitigate DoS (BE-SEC-009)."""
     from fastapi.responses import StreamingResponse
     import json
     import csv
     import io
+
+    hard_cap = int(getattr(_settings, "EXPORT_MAX_ROWS", 50_000) or 50_000)
+    row_cap = min(max_rows, hard_cap) if max_rows else hard_cap
     
     filters = TransactionFilter(
         start_date=start_date,
@@ -160,24 +172,30 @@ async def export_transactions(
             output = io.StringIO()
             fieldnames = ['id', 'amount', 'category', 'description', 'transaction_date', 'transaction_type', 'created_at', 'updated_at']
             writer = csv.DictWriter(output, fieldnames=fieldnames)
-            
+
             # Write header
             writer.writeheader()
             yield output.getvalue()
-            
+
+            emitted = 0
             # Stream transactions in chunks
             for transaction_chunk in TransactionService.stream_transactions_for_export(db, current_user.id, filters):
+                if emitted >= row_cap:
+                    break
                 # Clear buffer for next chunk
                 output.seek(0)
                 output.truncate(0)
-                
-                # Write chunk to buffer
+
+                # Write chunk to buffer (respect row_cap)
                 for transaction in transaction_chunk:
+                    if emitted >= row_cap:
+                        break
                     formatted_transaction = format_transaction_for_export(transaction)
                     # Remove updated_at for CSV to match original format
                     formatted_transaction.pop('updated_at')
                     writer.writerow(formatted_transaction)
-                
+                    emitted += 1
+
                 # Yield chunk content
                 yield output.getvalue()
         
@@ -192,10 +210,16 @@ async def export_transactions(
             """Generator function for JSON streaming"""
             yield "["  # Start JSON array
             first_item = True
-            
+            emitted = 0
+
             # Stream transactions in chunks
             for transaction_chunk in TransactionService.stream_transactions_for_export(db, current_user.id, filters):
+                if emitted >= row_cap:
+                    break
                 for transaction in transaction_chunk:
+                    if emitted >= row_cap:
+                        break
+                    emitted += 1
                     formatted_transaction = format_transaction_for_export(transaction)
                     # Update date formatting for JSON
                     formatted_transaction['transaction_date'] = transaction.transaction_date.isoformat()

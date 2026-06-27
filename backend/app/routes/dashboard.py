@@ -15,6 +15,7 @@ from app.models.account import Account
 from app.models.transaction import Transaction
 from app.models.category import Category
 from app.services.financial_health_service import get_financial_health_service
+from app.core.redis_client import redis_client
 from sqlalchemy import func, and_
 
 logger = logging.getLogger(__name__)
@@ -318,25 +319,37 @@ async def get_dashboard_summary(
     db: Session = Depends(get_db_with_user_context)
 ):
     """Get dashboard summary including net worth, account totals, and financial health"""
+    # BE-PERF-005: cache the summary payload per user for 30s. The endpoint runs
+    # several sequential count() queries plus the financial-health calculation,
+    # which is expensive and changes slowly relative to dashboard polling. Redis
+    # outages must not break the endpoint, so cache reads/writes are best-effort.
+    cache_key = f"dashboard:summary:{current_user.id}"
+    try:
+        cached = await redis_client.get_cache(cache_key)
+        if cached is not None:
+            return cached
+    except Exception as cache_err:  # pragma: no cover - defensive
+        logger.warning(f"Dashboard summary cache read failed (falling through): {cache_err}")
+
     try:
         # Calculate user financial health
         health_service = get_financial_health_service()
         financial_health = health_service.calculate_user_financial_health(db, current_user.id)
-        
+
         # Get recent transactions count
         thirty_days_ago = datetime.now() - timedelta(days=30)
         recent_transactions = db.query(Transaction).filter(
             Transaction.user_id == current_user.id,
             Transaction.transaction_date >= thirty_days_ago.date()
         ).count()
-        
+
         # Get account count
         account_count = db.query(Account).filter(
             Account.user_id == current_user.id,
             Account.is_active == True
         ).count()
-        
-        return {
+
+        payload = {
             "net_worth": financial_health.get("net_worth", 0),
             "total_liquid": financial_health.get("total_liquid", 0),
             "total_debt": financial_health.get("total_debt", 0),
@@ -347,7 +360,14 @@ async def get_dashboard_summary(
             "recent_transactions": recent_transactions,
             "recommendations": financial_health.get("recommendations", []),
         }
-        
+
+        try:
+            await redis_client.set_cache(cache_key, payload, expire_seconds=30)
+        except Exception as cache_err:  # pragma: no cover - defensive
+            logger.warning(f"Dashboard summary cache write failed: {cache_err}")
+
+        return payload
+
     except Exception as e:
         logger.error(f"Failed to get dashboard summary for user {current_user.id}: {e}")
         raise HTTPException(

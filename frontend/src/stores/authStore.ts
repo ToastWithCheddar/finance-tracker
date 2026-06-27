@@ -4,7 +4,9 @@ import type { AuthState, User, LoginCredentials, RegisterCredentials, AuthRespon
 import { apiClient } from '../services/api';
 import { secureStorage } from '../services/secureStorage';
 import { csrfService } from '../services/csrf';
+import { queryClient } from '../services/queryClient';
 
+import { logger } from '../utils/logger';
 interface AuthActions {
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (credentials: RegisterCredentials) => Promise<void>;
@@ -62,9 +64,23 @@ export const useAuthStore = create<AuthStore>()(
           set({ isLoading: true, error: null });
           
           const response = await apiClient.post<AuthResponse>('/auth/register', credentials);
-          
-          // Store tokens securely
-          apiClient.setAuthTokens(response.accessToken, response.refreshToken);
+
+          // FE-SEC-003: backend returns snake_case (FastAPI default).
+          // Some register flows return tokens nested under `tokens`, others
+          // return them at the top level — handle both shapes with one typed cast.
+          type FlexibleRegisterResponse = AuthResponse & {
+            access_token?: string; accessToken?: string;
+            refresh_token?: string; refreshToken?: string;
+            expires_in?: number; expiresIn?: number;
+            tokens?: { access_token?: string; refresh_token?: string; expires_in?: number };
+          };
+          const r = response as FlexibleRegisterResponse;
+          const access = r.tokens?.access_token ?? r.access_token ?? r.accessToken;
+          const refresh = r.tokens?.refresh_token ?? r.refresh_token ?? r.refreshToken;
+          const expiresIn = r.tokens?.expires_in ?? r.expires_in ?? r.expiresIn;
+          if (access && refresh) {
+            apiClient.setAuthTokens(access, refresh, expiresIn);
+          }
           
           set({
             user: response.user,
@@ -86,7 +102,11 @@ export const useAuthStore = create<AuthStore>()(
         apiClient.removeAuthTokens();
         // Clear CSRF token
         csrfService.clearToken();
-        
+        // FE-SEC-010: drop all cached query data synchronously so the next
+        // user can't briefly see the previous user's data before the
+        // user-id-change effect in useAuthCacheManagement fires.
+        queryClient.clear();
+
         // Reset state
         set({
           user: null,
@@ -124,7 +144,7 @@ export const useAuthStore = create<AuthStore>()(
           });
         } catch (error) {
           // If refresh fails, logout the user
-          console.error('Token refresh failed:', error);
+          logger.error('Token refresh failed:', error);
           get().logout();
           throw error;
         }

@@ -342,7 +342,7 @@ class ReconciliationService:
                     score += 0.15
                 elif date_diff <= 7:
                     score += 0.05
-            except:
+            except (ValueError, AttributeError, TypeError, KeyError):
                 pass
         
         # Description matching
@@ -806,7 +806,7 @@ class ReconciliationService:
                     entry_date = datetime.fromisoformat(entry['timestamp'].replace('Z', '+00:00'))
                     if entry_date >= cutoff_date:
                         filtered_history.append(entry)
-                except:
+                except (ValueError, AttributeError, KeyError):
                     # Include entries with invalid dates
                     filtered_history.append(entry)
             
@@ -818,9 +818,9 @@ class ReconciliationService:
                 key=lambda x: datetime.fromisoformat(x['timestamp'].replace('Z', '+00:00')),
                 reverse=True
             )
-        except:
+        except (ValueError, AttributeError, KeyError, TypeError):
             pass
-        
+
         return reconciliation_history
     
     async def schedule_daily_reconciliation(self, db: Session) -> Dict[str, Any]:

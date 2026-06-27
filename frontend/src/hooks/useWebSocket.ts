@@ -8,6 +8,7 @@ import { transactionService } from '../services/transactionService';
 import { NotificationService } from '../services/notificationService';
 import { secureStorage } from '../services/secureStorage';
 
+import { logger } from '../utils/logger';
 const WEBSOCKET_URL_BASE = import.meta.env.VITE_WEBSOCKET_URL || 'ws://localhost:8000/ws';
 
 export interface WebSocketMessage {
@@ -96,6 +97,12 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
   }, [queryClient]);
 
   useEffect(() => {
+    // FE-WS-001: short-circuit before any socket open if the caller explicitly
+    // disabled autoConnect. The teardown effect handles cleanup of an
+    // already-open socket; this guard prevents the *initial* open.
+    if (options?.autoConnect === false) {
+      return;
+    }
     if (!isAuthenticated || !user?.id || !accessToken) {
       // If not authenticated, ensure any existing connection is closed
       if (socketRef.current) {
@@ -130,12 +137,23 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
     const connect = () => {
       setIsConnecting(true);
       updateConnectionStatusRef.current('connecting', reconnectAttemptsRef.current);
-      const socketUrl = `${WEBSOCKET_URL_BASE}?token=${accessToken}`;
-      const socket = new WebSocket(socketUrl);
+      // FE-SEC-001: never put the JWT in the URL — proxies log it. Open the
+      // socket without auth, then send `{type:"auth",token}` as the first
+      // frame. The backend (`backend/app/routes/websockets.py`) accepts the
+      // socket, reads exactly one auth frame, validates the token, and
+      // closes with code 4401 on failure.
+      const socket = new WebSocket(WEBSOCKET_URL_BASE);
       socketRef.current = socket;
 
       socket.onopen = () => {
-        console.log('🔌 WebSocket connection established');
+        logger.info('🔌 WebSocket connection established (sending auth frame)');
+        try {
+          socket.send(JSON.stringify({ type: 'auth', token: accessToken }));
+        } catch (e) {
+          logger.error('Failed to send WS auth frame:', e);
+          try { socket.close(); } catch {}
+          return;
+        }
         setIsConnected(true);
         setIsConnecting(false);
         reconnectAttemptsRef.current = 0;
@@ -151,7 +169,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
             try {
               socketRef.current.send('ping');
             } catch (e) {
-              console.warn('Heartbeat ping send failed:', e);
+              logger.warn('Heartbeat ping send failed:', e);
             }
           }
         }, 30_000);
@@ -196,7 +214,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
             }));
             mergeNotifications(notifMapped);
           } catch (e) {
-            console.warn('Realtime backfill failed:', e);
+            logger.warn('Realtime backfill failed:', e);
           }
         })();
       };
@@ -210,7 +228,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
 
         try {
           const message = JSON.parse(event.data);
-          console.log('📬 WebSocket message received:', message);
+          logger.info('📬 WebSocket message received:', message);
 
           // Call custom onMessage handler if provided
           if (onMessageRef.current) {
@@ -226,12 +244,12 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
             refreshDashboard();
           }
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          logger.error('Error parsing WebSocket message:', error);
         }
       };
 
       socket.onclose = (event) => {
-        console.log('🔌 WebSocket connection closed:', event.code, event.reason);
+        logger.info('🔌 WebSocket connection closed:', event.code, event.reason);
         socketRef.current = null;
         setIsConnected(false);
         setIsConnecting(false);
@@ -262,7 +280,7 @@ export function useWebSocket(options?: UseWebSocketOptions): WebSocketState {
       };
 
       socket.onerror = (error) => {
-        console.error('🔌 WebSocket error:', error);
+        logger.error('🔌 WebSocket error:', error);
         setIsConnected(false);
         setIsConnecting(false);
         updateConnectionStatusRef.current('disconnected', reconnectAttemptsRef.current);

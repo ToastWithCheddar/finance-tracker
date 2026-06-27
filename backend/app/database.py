@@ -1,5 +1,6 @@
 # Standard library imports
 import logging
+import os
 from contextlib import contextmanager
 from typing import Generator
 
@@ -17,6 +18,35 @@ logger = logging.getLogger(__name__)
 # Database URL
 DATABASE_URL = settings.DATABASE_URL
 
+# BE-LOG-003: SQL echo is dev-only AND opt-in via LOG_SQL_PARAMS.
+# Default OFF in non-development environments to avoid PII leaks.
+_ENV_IS_DEV = os.getenv("ENVIRONMENT", "development").lower() == "development"
+_LOG_SQL_PARAMS = os.getenv("LOG_SQL_PARAMS", "").lower() in {"1", "true", "yes", "on"}
+_ECHO_SQL = bool(_ENV_IS_DEV and _LOG_SQL_PARAMS)
+
+
+class _TruncatingFilter(logging.Filter):
+    """Truncate any SQLAlchemy log message that exceeds the limit."""
+
+    def __init__(self, max_chars: int = 200) -> None:
+        super().__init__()
+        self.max_chars = max_chars
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            msg = record.getMessage()
+        except Exception:
+            return True
+        if len(msg) > self.max_chars:
+            record.msg = msg[: self.max_chars] + "...[truncated]"
+            record.args = ()
+        return True
+
+
+# Apply truncation filter to SQLAlchemy loggers.
+for _name in ("sqlalchemy.engine", "sqlalchemy.engine.Engine"):
+    logging.getLogger(_name).addFilter(_TruncatingFilter(200))
+
 # Create engine with optimized settings
 engine = create_engine(
     DATABASE_URL,
@@ -24,7 +54,7 @@ engine = create_engine(
     max_overflow=30,
     pool_pre_ping=True,
     pool_recycle=3600,
-    echo=settings.DEBUG,
+    echo=_ECHO_SQL,
     connect_args={
         "application_name": "finance-tracker",
         "client_encoding": "utf8",
@@ -105,7 +135,11 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
 
 @event.listens_for(engine, "before_cursor_execute")
 def receive_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
-    """Log SQL queries in debug mode"""
-    if settings.DEBUG:
-        logger.debug(f"SQL Query: {statement}")
-        logger.debug(f"Parameters: {parameters}")
+    """Log SQL queries in dev when LOG_SQL_PARAMS is opt-in. Truncated to 200 chars."""
+    if _ENV_IS_DEV and _LOG_SQL_PARAMS:
+        stmt = (statement or "")[:200]
+        params_repr = repr(parameters)
+        if len(params_repr) > 200:
+            params_repr = params_repr[:200] + "...[truncated]"
+        logger.debug(f"SQL Query: {stmt}")
+        logger.debug(f"Parameters: {params_repr}")

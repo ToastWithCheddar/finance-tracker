@@ -1,5 +1,6 @@
 import { api } from './api';
 
+import { logger } from '../utils/logger';
 export interface MLCategorizeRequest {
   description: string;
   amount: number;
@@ -102,7 +103,7 @@ class MLService {
       
       return null; // Low confidence, let user decide
     } catch (error: unknown) {
-      console.error('Auto-categorization failed:', error);
+      logger.error('Auto-categorization failed:', error);
       return null;
     }
   }
@@ -128,7 +129,7 @@ class MLService {
         model_version: result.model_version
       };
     } catch (error: unknown) {
-      console.error('Failed to get category suggestions:', error);
+      logger.error('Failed to get category suggestions:', error);
       return null;
     }
   }
@@ -177,7 +178,7 @@ class MLService {
         user_feedback_count: performance.total_feedback
       };
     } catch (error: unknown) {
-      console.error('Failed to get training suggestions:', error);
+      logger.error('Failed to get training suggestions:', error);
       return null;
     }
   }
@@ -202,7 +203,7 @@ class MLService {
         amount: amount || 0
       });
     } catch (error: unknown) {
-      console.error('Live classification failed:', error);
+      logger.error('Live classification failed:', error);
       return null;
     }
   }

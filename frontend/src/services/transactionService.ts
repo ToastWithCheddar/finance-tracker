@@ -10,6 +10,7 @@ import type {
 } from '../types/transaction';
 
 // Re-export types for use in other files
+import { logger } from '../utils/logger';
 export type { TransactionFilters } from '../types/transaction';
 import type { ErrorContext } from '../types/errors';
 
@@ -153,7 +154,7 @@ export class TransactionService extends BaseService {
     }
 
     // Comprehensive logging for debugging
-    console.debug?.('TransactionService fetching:', this.baseEndpoint, params);
+    logger.debug('TransactionService fetching:', this.baseEndpoint, params);
     
     const response = await this.get<any>(
       '/',
@@ -165,7 +166,7 @@ export class TransactionService extends BaseService {
       }
     );
     
-    console.debug?.('TransactionService raw response:', response);
+    logger.debug('TransactionService raw response:', response);
 
     // Normalize list envelope first, then normalize each transaction item
     const list = normalizeListEnvelope<any>(response);
@@ -177,7 +178,7 @@ export class TransactionService extends BaseService {
       pages: list.pages || 1,
     };
     
-    console.debug?.('TransactionService normalized response:', normalizedResponse);
+    logger.debug('TransactionService normalized response:', normalizedResponse);
     return normalizedResponse;
   }
 
@@ -214,7 +215,7 @@ export class TransactionService extends BaseService {
     params.group_by = filters.group_by;
 
     // Debug-level logging
-    console.debug?.('TransactionService fetching grouped:', this.baseEndpoint, params);
+    logger.debug('TransactionService fetching grouped:', this.baseEndpoint, params);
     
     const response = await this.get<any>(
       '/',
@@ -226,7 +227,7 @@ export class TransactionService extends BaseService {
       }
     );
     
-    console.debug?.('TransactionService raw grouped response:', response);
+    logger.debug('TransactionService raw grouped response:', response);
 
     // Process the grouped response
     const groupedResponse: TransactionGroupedResponse = {
@@ -243,7 +244,7 @@ export class TransactionService extends BaseService {
       grouped: true,
     };
     
-    console.debug?.('TransactionService normalized grouped response:', groupedResponse);
+    logger.debug('TransactionService normalized grouped response:', groupedResponse);
     return groupedResponse;
   }
 
@@ -350,7 +351,6 @@ export class TransactionService extends BaseService {
       });
       
       const totalCountFromAPI = transactionData?.total || 0;
-      const totalPages = transactionData?.pages || 1;
       const transactions = transactionData?.items || [];
       
       
@@ -388,7 +388,7 @@ export class TransactionService extends BaseService {
         }
       };
       
-      console.log('✨ [getTransactionStats] Final calculated stats:', stats);
+      logger.info('✨ [getTransactionStats] Final calculated stats:', stats);
       
       return stats;
       
@@ -520,7 +520,7 @@ export class TransactionService extends BaseService {
 
   downloadExportFile(blob: Blob, filename: string): void {
     try {
-      console.log('📥 Starting download:', filename, 'Size:', blob.size, 'Type:', blob.type);
+      logger.info('📥 Starting download:', filename, 'Size:', blob.size, 'Type:', blob.type);
       
       // Validate blob
       if (!blob || blob.size === 0) {
@@ -555,7 +555,7 @@ export class TransactionService extends BaseService {
           }
           window.URL.revokeObjectURL(url);
         } catch (cleanupError) {
-          console.warn('Minor cleanup error:', cleanupError);
+          logger.warn('Minor cleanup error:', cleanupError);
         }
       }, 100);
       

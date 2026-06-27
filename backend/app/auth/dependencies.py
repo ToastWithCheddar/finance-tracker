@@ -6,6 +6,7 @@ from typing import Optional
 from contextlib import contextmanager
 import uuid
 import logging
+import secrets
 from gotrue.errors import AuthError
 from jose import jwt, JWTError
 import httpx
@@ -30,51 +31,130 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
     return AuthService(db)
 
 def _provision_user_from_supabase(auth_service: AuthService, user_data) -> User:
-    """Provisions a local user record from Supabase user data"""
+    """Provisions a local user record from Supabase user data.
+
+    BE-CONC-001: race-safe — uses INSERT ... ON CONFLICT DO NOTHING and re-reads
+    the row whether it was inserted or already existed. Concurrent first-login
+    requests for the same Supabase user converge to a single row.
+    """
 
     uid = uuid.UUID(user_data.user.id)
+    email = user_data.user.email
+    is_verified = user_data.user.email_confirmed_at is not None
+    metadata = user_data.user.user_metadata or {}
+    display_name = metadata.get("display_name")
+    first_name = metadata.get("first_name")
+    last_name = metadata.get("last_name")
 
     # Check if a local user exists with the same e-mail (created earlier without UID)
     existing_by_email = auth_service.user_service.get_by_email(
         db=auth_service.db,
-        email=user_data.user.email,
+        email=email,
     )
 
     if existing_by_email:
-        # Link the Supabase UID to that user and update verification flag
+        # Link the Supabase UID to that user and update verification flag.
+        # Use a UPDATE-and-fetch path that tolerates concurrent updates.
         try:
-            existing_by_email.supabase_user_id = uid
-            existing_by_email.is_verified = user_data.user.email_confirmed_at is not None
-            auth_service.db.add(existing_by_email)
-            auth_service.db.commit()
-            auth_service.db.refresh(existing_by_email)
+            if existing_by_email.supabase_user_id != uid or existing_by_email.is_verified != is_verified:
+                existing_by_email.supabase_user_id = uid
+                existing_by_email.is_verified = is_verified
+                auth_service.db.add(existing_by_email)
+                auth_service.db.commit()
+                auth_service.db.refresh(existing_by_email)
             return existing_by_email
         except Exception as e:
             auth_service.db.rollback()
             logger.error(f"Linking existing user failed: {e}")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
-    else:
-        # Create a brand-new row
+
+    # Race-safe insert path. ON CONFLICT on (email) and (supabase_user_id)
+    # both DO NOTHING. We then SELECT the row by either key — whichever
+    # request "won" the race owns the row, the loser still gets the same row.
+    try:
+        new_id = uuid.uuid4()
+        auth_service.db.execute(
+            text(
+                """
+                INSERT INTO users (
+                    id, email, supabase_user_id, display_name,
+                    first_name, last_name, is_verified, is_active,
+                    locale, timezone, currency, notifications_enabled,
+                    theme, auto_categorization_enabled, default_items_per_page,
+                    created_at, updated_at
+                )
+                VALUES (
+                    :id, :email, :supabase_user_id, :display_name,
+                    :first_name, :last_name, :is_verified, TRUE,
+                    'en-US', 'UTC', 'USD', TRUE,
+                    'light', TRUE, 25,
+                    NOW(), NOW()
+                )
+                ON CONFLICT (email) DO NOTHING
+                """
+            ),
+            {
+                "id": new_id,
+                "email": email,
+                "supabase_user_id": uid,
+                "display_name": display_name,
+                "first_name": first_name,
+                "last_name": last_name,
+                "is_verified": is_verified,
+            },
+        )
+        auth_service.db.commit()
+    except Exception as e:
+        # Fall back to ORM create path (e.g. SQLite test backends that
+        # don't support the ON CONFLICT syntax above).
+        auth_service.db.rollback()
+        logger.warning(f"Race-safe INSERT failed, falling back to ORM create: {e}")
         try:
             return auth_service.user_service.create(
                 db=auth_service.db,
                 obj_in=UserCreate(
-                    email=user_data.user.email,
-                    display_name=(user_data.user.user_metadata or {}).get("display_name"),
-                    first_name=(user_data.user.user_metadata or {}).get("first_name"),
-                    last_name=(user_data.user.user_metadata or {}).get("last_name"),
+                    email=email,
+                    display_name=display_name,
+                    first_name=first_name,
+                    last_name=last_name,
                     supabase_user_id=uid,
-                    is_verified=user_data.user.email_confirmed_at is not None,
+                    is_verified=is_verified,
                 ),
             )
-        except Exception as e:
+        except Exception:
+            # Likely the loser of a race — try a final read.
+            auth_service.db.rollback()
+            existing = auth_service.user_service.get_by_email(db=auth_service.db, email=email)
+            if existing:
+                return existing
             logger.error(f"Auto-provisioning local user failed: {e}")
             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
 
+    # Re-read after the INSERT (or the conflict).
+    user = auth_service.user_service.get_by_supabase_id(
+        db=auth_service.db, supabase_user_id=uid
+    ) or auth_service.user_service.get_by_email(
+        db=auth_service.db, email=email
+    )
+    if not user:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="User sync failed")
+    return user
+
 def _validate_dev_token(token: str, auth_service: AuthService) -> Optional[User]:
-    """Validates development mock tokens and returns/creates dev user"""
+    """Validates development mock tokens and returns/creates dev user.
+
+    BE-SEC-002: only fires when **all three** flags are true:
+      ENVIRONMENT == 'development' AND DEBUG AND ENABLE_ADMIN_BYPASS.
+    Defaults are hardened (ENABLE_ADMIN_BYPASS=False) so this code path is
+    inert outside of explicit local development.
+    """
     from app.config import settings
-    if hasattr(settings, 'ENVIRONMENT') and settings.ENVIRONMENT == 'development':
+    bypass_enabled = (
+        getattr(settings, "ENVIRONMENT", "production") == "development"
+        and bool(getattr(settings, "DEBUG", False))
+        and bool(getattr(settings, "ENABLE_ADMIN_BYPASS", False))
+    )
+    if bypass_enabled:
         if token.startswith('dev-mock-token-'):
             # Return or create a development user
             dev_user = auth_service.user_service.get_by_email(
@@ -100,9 +180,18 @@ def _validate_dev_token(token: str, auth_service: AuthService) -> Optional[User]
             return dev_user
     return None
 
-def _validate_supabase_token(token: str, auth_service: AuthService):
-    """Validates token with Supabase and returns user data"""
-    user_data = auth_service.supabase.client.auth.get_user(token)
+async def _validate_supabase_token(token: str, auth_service: AuthService):
+    """Validates token with Supabase and returns user data.
+
+    BE-SEC-008: the supabase-py client is synchronous and does blocking HTTP
+    I/O. Calling it directly from an async route blocks the event loop, so
+    we run it in a worker thread.
+    """
+    import asyncio
+    loop = asyncio.get_running_loop()
+    user_data = await loop.run_in_executor(
+        None, auth_service.supabase.client.auth.get_user, token
+    )
     if not user_data or not user_data.user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
     return user_data
@@ -135,7 +224,7 @@ async def get_current_user(
     
     try:
         # Single Supabase token validation path
-        user_data = _validate_supabase_token(token, auth_service)
+        user_data = await _validate_supabase_token(token, auth_service)
         user = _get_or_provision_local_user(user_data, auth_service)
         return user
         
@@ -194,6 +283,16 @@ def require_verified_user(
     """Require verified user"""
     return current_user
 
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """BE-SEC-007: gate admin-only endpoints behind the `is_admin` flag."""
+    if not bool(getattr(current_user, "is_admin", False)):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required.",
+        )
+    return current_user
+
 async def get_optional_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db)
@@ -224,11 +323,16 @@ def user_context_db(db: Session, user: User):
 
 def get_db_with_user_context(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-) -> Session:
-    """FastAPI dependency to provide a DB session with the user context set for RLS."""
+    current_user: User = Depends(get_current_user),
+):
+    """FastAPI dependency to provide a DB session with the user context set for RLS.
+
+    BE-SEC-001: this MUST be a generator that yields *inside* the
+    `user_context_db` context, otherwise `SET LOCAL` is rolled back before
+    the route handler ever runs and Postgres RLS policies see a NULL GUC.
+    """
     with user_context_db(db, current_user) as session:
-        return session
+        yield session
 
 def verify_supabase_webhook(authorization: Optional[str] = Header(None)) -> bool:
     """Verifies the Authorization header from a Supabase webhook."""
@@ -246,7 +350,12 @@ def verify_supabase_webhook(authorization: Optional[str] = Header(None)) -> bool
         )
 
     scheme, _, secret = authorization.partition(" ")
-    if scheme.lower() != "bearer" or secret != settings.SUPABASE_WEBHOOK_SECRET:
+    # Constant-time comparison to avoid leaking the secret via timing (BE-SEC-009).
+    secret_matches = secrets.compare_digest(
+        secret.encode("utf-8"),
+        settings.SUPABASE_WEBHOOK_SECRET.encode("utf-8"),
+    )
+    if scheme.lower() != "bearer" or not secret_matches:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid webhook secret.",
@@ -262,8 +371,17 @@ async def get_current_user_from_token(
     auth_service = AuthService(db)
     
     try:
-        # Supabase token validation
-        user_data = auth_service.supabase.client.auth.get_user(token)
+        # Dev mock-token bypass (gated behind three flags — see BE-SEC-002).
+        dev_user = _validate_dev_token(token, auth_service)
+        if dev_user:
+            return dev_user
+
+        # Supabase token validation (run sync client off the event loop).
+        import asyncio
+        loop = asyncio.get_running_loop()
+        user_data = await loop.run_in_executor(
+            None, auth_service.supabase.client.auth.get_user, token
+        )
         if not user_data or not user_data.user:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
 

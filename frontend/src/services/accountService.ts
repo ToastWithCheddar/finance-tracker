@@ -1,5 +1,4 @@
 import { BaseService } from './base/BaseService';
-import { apiClient } from './api';
 import type { ErrorContext } from '../types/errors';
 
 export interface Account {

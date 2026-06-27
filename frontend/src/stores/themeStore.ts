@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 
+import { logger } from '../utils/logger';
 export type Theme = 'light' | 'dark' | 'auto';
 
 interface ThemeState {
@@ -67,7 +68,7 @@ export const useThemeStore = create<ThemeState>()(
       try {
         localStorage.setItem('theme-preference', theme);
       } catch (error) {
-        console.warn('Failed to save theme preference:', error);
+        logger.warn('Failed to save theme preference:', error);
       }
     },
 
@@ -82,7 +83,7 @@ export const useThemeStore = create<ThemeState>()(
           storedTheme = stored as Theme;
         }
       } catch (error) {
-        console.warn('Failed to read theme preference:', error);
+        logger.warn('Failed to read theme preference:', error);
       }
       
       const actualTheme = resolveActualTheme(storedTheme, systemTheme);

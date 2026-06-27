@@ -88,3 +88,7 @@ ml_models/*.joblib
 
 # Local development overrides
 docker-compose.override.yml
+
+# Self-signed TLS certs for local prod-up smoke (regenerate with `make tls-cert`).
+nginx/ssl/*.pem
+!nginx/ssl/README.md

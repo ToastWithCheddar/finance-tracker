@@ -19,9 +19,43 @@ import onnx
 import onnxruntime as ort
 import torch
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure structured logging via shared config (ML-LOG-001).
+try:
+    from app.logging_config import configure_logging  # type: ignore
+except Exception:  # pragma: no cover
+    try:
+        from logging_config import configure_logging  # type: ignore
+    except Exception:
+        def configure_logging(_name: str) -> None:  # type: ignore
+            return None
+configure_logging("ml-worker")
 logger = logging.getLogger(__name__)
+
+
+# ML-PR-002: confidence-bucket spec. Section F (F-ml-worker-revival.md) defines
+# four buckets so downstream gating (TransactionService ML_CONFIDENCE_THRESHOLD)
+# can distinguish "no signal" from "weak signal". Mirrors but extends the
+# 3-bucket helper in ml-worker/tests/helpers/confidence.py.
+_CONF_HIGH = 0.85
+_CONF_MEDIUM = 0.65
+_CONF_LOW = 0.45
+
+
+def _confidence_bucket(similarity: float) -> str:
+    """Map cosine similarity to {high, medium, low, very_low}.
+
+    NaN inputs raise ValueError to fail loudly on degenerate prototypes.
+    """
+    if similarity != similarity:  # NaN
+        raise ValueError("similarity is NaN")
+    if similarity >= _CONF_HIGH:
+        return "high"
+    if similarity >= _CONF_MEDIUM:
+        return "medium"
+    if similarity >= _CONF_LOW:
+        return "low"
+    return "very_low"
+
 
 class TransactionClassifier:
     """
@@ -979,10 +1013,12 @@ class TransactionClassifier:
         # Find best match
         best_category = max(similarities, key=similarities.get)
         confidence = similarities[best_category]
-        
-        # Demo mode: always use highest probability prediction
-        confidence_level = "high"
-        
+
+        # ML-PR-002: real confidence bucket from cosine similarity.
+        # Spec mirrors ml-worker/tests/helpers/confidence.py extended
+        # with the "very_low" floor required by Section F (audit deliverable).
+        confidence_level = _confidence_bucket(float(confidence))
+
         return {
             'predicted_category': best_category,
             'confidence': float(confidence),
@@ -1039,8 +1075,8 @@ class TransactionClassifier:
             best_category = categories[idx]
             confidence = float(sims[i, idx])
 
-            # Demo mode: always use highest probability prediction
-            confidence_level = "high"
+            # ML-PR-002: real confidence bucket from cosine similarity.
+            confidence_level = _confidence_bucket(confidence)
 
             # Collect per-category similarities for optional UI
             all_similarities = {categories[j]: float(sims[i, j]) for j in range(len(categories))}
@@ -1120,30 +1156,99 @@ class TransactionClassifier:
             logger.error(f"Failed to load ONNX model: {e}")
     
     def save_prototypes(self, filepath: str):
-        """Save category prototypes for persistence"""
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        
-        with open(filepath, 'wb') as f:
-            pickle.dump({
-                'prototypes': self.category_prototypes,
-                'model_version': self.model_version,
-                'model_name': self.model_name
-            }, f)
-        
-        logger.info(f"Prototypes saved to {filepath}")
-    
-    def load_prototypes(self, filepath: str):
-        """Load category prototypes from file"""
+        """Save category prototypes for persistence.
+
+        ML-SEC-001: switched away from `pickle` (RCE on load if the file is
+        attacker-writable). We persist a `.safetensors` array file plus a
+        sidecar JSON with the category-name → row-index mapping and metadata.
+        Old `.pkl` paths are migrated transparently below in load_prototypes
+        and via `ml-worker/scripts/migrate_pickles.py`.
+        """
+        # Normalise to .safetensors regardless of caller-supplied extension.
+        base, _ = os.path.splitext(filepath)
+        st_path = base + ".safetensors"
+        meta_path = base + ".meta.json"
+        os.makedirs(os.path.dirname(st_path) or ".", exist_ok=True)
+
+        protos = self.category_prototypes or {}
+        if not protos:
+            logger.warning("save_prototypes: no prototypes to save")
+            return
+
         try:
-            if not os.path.exists(filepath):
-                logger.info(f"Prototypes file not found at {filepath}; will continue with defaults")
+            from safetensors.numpy import save_file as _st_save
+        except Exception as e:
+            raise RuntimeError(
+                "safetensors is required for prototype persistence (ML-SEC-001). "
+                "Install with `pip install safetensors`."
+            ) from e
+
+        # safetensors expects a flat dict of name -> ndarray. Each prototype
+        # is already an ndarray; just ensure dtype is consistent.
+        tensors = {
+            str(name): np.asarray(arr, dtype=np.float32)
+            for name, arr in protos.items()
+        }
+        _st_save(tensors, st_path)
+
+        with open(meta_path, "w", encoding="utf-8") as f:
+            json.dump(
+                {
+                    "model_version": self.model_version,
+                    "model_name": self.model_name,
+                    "categories": list(tensors.keys()),
+                    "format": "safetensors-v1",
+                },
+                f,
+            )
+
+        logger.info(f"Prototypes saved to {st_path} (+ {os.path.basename(meta_path)})")
+
+    def load_prototypes(self, filepath: str):
+        """Load category prototypes from disk.
+
+        ML-SEC-001: prefer `.safetensors`. Fall back to legacy `.pkl` ONLY
+        when explicitly opted in via `ALLOW_LEGACY_PICKLE_LOAD=1`, with a
+        loud warning. The recommended migration path is
+        `ml-worker/scripts/migrate_pickles.py`.
+        """
+        try:
+            base, _ = os.path.splitext(filepath)
+            st_path = base + ".safetensors"
+            meta_path = base + ".meta.json"
+
+            if os.path.exists(st_path):
+                from safetensors.numpy import load_file as _st_load
+                tensors = _st_load(st_path)
+                self.category_prototypes = {k: v for k, v in tensors.items()}
+                if os.path.exists(meta_path):
+                    with open(meta_path, "r", encoding="utf-8") as f:
+                        meta = json.load(f)
+                    self.model_version = meta.get("model_version", self.model_version)
+                logger.info(f"Prototypes loaded from {st_path}")
                 return
-            with open(filepath, 'rb') as f:
-                data = pickle.load(f)
-                self.category_prototypes = data['prototypes']
-                self.model_version = data.get('model_version', 'v1.0')
-                
-            logger.info(f"Prototypes loaded from {filepath}")
+
+            # Legacy pickle fallback — disabled by default.
+            if os.path.exists(filepath) and filepath.endswith(".pkl"):
+                if os.environ.get("ALLOW_LEGACY_PICKLE_LOAD") == "1":
+                    logger.warning(
+                        "Loading legacy pickle prototypes from %s — RCE risk. "
+                        "Run ml-worker/scripts/migrate_pickles.py to convert.",
+                        filepath,
+                    )
+                    with open(filepath, "rb") as f:
+                        data = pickle.load(f)  # noqa: S301 — gated behind env flag
+                    self.category_prototypes = data["prototypes"]
+                    self.model_version = data.get("model_version", "v1.0")
+                    return
+                logger.error(
+                    "Refusing to load legacy pickle prototypes at %s. "
+                    "Set ALLOW_LEGACY_PICKLE_LOAD=1 only for a one-time migration.",
+                    filepath,
+                )
+                return
+
+            logger.info(f"Prototypes file not found at {filepath}; will continue with defaults")
         except Exception as e:
             logger.warning(f"Failed to load prototypes from {filepath}: {e}")
     

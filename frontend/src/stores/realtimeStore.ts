@@ -26,6 +26,7 @@ import {
  *  Types & Interfaces
  *****************************/
 
+import { logger } from '../utils/logger';
 export interface RealtimeNotification {
   id: string;
   type: 'info' | 'success' | 'warning' | 'error' | string;
@@ -232,13 +233,15 @@ export const useRealtimeStore = create<RealtimeState>()(
 
     addTransactionUpdate: (update) => {
       set((state) => ({
+        // FE-PERF-006: cap at 50 with sliding-window semantics so this array
+        // can't grow unbounded over a long-running session.
         transactionUpdates: [
           ...state.transactionUpdates,
           {
             ...update,
             timestamp: new Date().toISOString(),
           },
-        ],
+        ].slice(-50),
       }));
     },
 
@@ -405,7 +408,7 @@ export const useRealtimeStore = create<RealtimeState>()(
 
         // Validate message structure
         if (!isValidWebSocketMessage(data)) {
-          console.warn('[RealtimeStore] Invalid WebSocket message structure:', data);
+          logger.warn('[RealtimeStore] Invalid WebSocket message structure:', data);
           return;
         }
 
@@ -414,7 +417,7 @@ export const useRealtimeStore = create<RealtimeState>()(
         // Handle messages with type safety
         if (isDashboardUpdate(typedMessage)) {
           // Dashboard update - could trigger a full refresh
-          console.log('[RealtimeStore] Dashboard update received');
+          logger.info('[RealtimeStore] Dashboard update received');
           
         } else if (typedMessage.type === MessageType.BALANCE_UPDATE) {
           const payload = typedMessage.payload as any;
@@ -433,7 +436,7 @@ export const useRealtimeStore = create<RealtimeState>()(
           if (payload?.id) {
             const last = recentTransactionIds.get(payload.id);
             if (last && now - last < RECENT_ID_TTL_MS) {
-              console.debug?.('[RealtimeStore] Skipping duplicate NEW_TRANSACTION for id', payload.id);
+              logger.debug('[RealtimeStore] Skipping duplicate NEW_TRANSACTION for id', payload.id);
               return;
             }
             recentTransactionIds.set(payload.id, now);
@@ -486,7 +489,7 @@ export const useRealtimeStore = create<RealtimeState>()(
           if (payload?.id) {
             const last = recentTransactionIds.get(payload.id);
             if (last && now - last < RECENT_ID_TTL_MS) {
-              console.debug?.('[RealtimeStore] Skipping duplicate TRANSACTION_UPDATED for id', payload.id);
+              logger.debug('[RealtimeStore] Skipping duplicate TRANSACTION_UPDATED for id', payload.id);
               return;
             }
             recentTransactionIds.set(payload.id, now);
@@ -539,7 +542,7 @@ export const useRealtimeStore = create<RealtimeState>()(
           if (payload?.id) {
             const last = recentTransactionIds.get(payload.id);
             if (last && now - last < RECENT_ID_TTL_MS) {
-              console.debug?.('[RealtimeStore] Skipping duplicate TRANSACTION_DELETED for id', payload.id);
+              logger.debug('[RealtimeStore] Skipping duplicate TRANSACTION_DELETED for id', payload.id);
               return;
             }
             recentTransactionIds.set(payload.id, now);
@@ -648,14 +651,14 @@ export const useRealtimeStore = create<RealtimeState>()(
           
         } else if (typedMessage.type === MessageType.PING) {
           // Handle ping - could send pong response
-          console.log('[RealtimeStore] Ping received');
+          logger.info('[RealtimeStore] Ping received');
           
         
         } else {
-          console.warn('[RealtimeStore] Unhandled WebSocket message type:', typedMessage.type);
+          logger.warn('[RealtimeStore] Unhandled WebSocket message type:', typedMessage.type);
         }
       } catch (error) {
-        console.error('[RealtimeStore] Error handling WebSocket message:', error, message);
+        logger.error('[RealtimeStore] Error handling WebSocket message:', error, message);
       }
     },
 
@@ -702,7 +705,7 @@ export const useRealtimeStats = () =>
 useRealtimeStore.subscribe(
   (state) => state.connectionStatus,
   (status) => {
-    console.log('[RealtimeStore] WebSocket status →', status);
+    logger.info('[RealtimeStore] WebSocket status →', status);
   },
 );
 

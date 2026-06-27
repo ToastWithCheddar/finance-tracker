@@ -8,6 +8,7 @@ import { goalService as importedGoalService, GoalService } from './goalService';
 import { type ServiceResponse, type ServiceError, type ServiceResult } from './base/BaseService';
 
 // Service instances - using the enhanced legacy services
+import { logger } from '../utils/logger';
 const services = {
   transaction: importedTransactionService,
   budget: importedBudgetService,
@@ -57,7 +58,7 @@ export class ServiceRegistry implements IServiceRegistry {
         goal: true,
       };
     } catch (error) {
-      console.error('Service health check failed:', error);
+      logger.error('Service health check failed:', error);
       return {
         transaction: false,
         budget: false,

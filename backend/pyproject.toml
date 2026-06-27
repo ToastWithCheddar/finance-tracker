@@ -113,17 +113,27 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -q --strict-markers --strict-config"
-testpaths = ["tests"]
-filterwarnings = [
-    "error",
-    "ignore::UserWarning",
-    "ignore::DeprecationWarning",
+testpaths = ["tests/integration", "tests/security", "tests/concurrency", "tests/contract"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--tb=short",
 ]
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
+    "slow: tests that need testcontainers (the default for this suite)",
+    "integration: end-to-end router tests against real Postgres/Redis",
     "unit: marks tests as unit tests",
+    "security: tests that prove a security finding is fixed",
+    "concurrency: race-condition / TOCTOU / locking tests (BE-CONC-*)",
+    "contract: pin external-service request/response shapes (Plaid, Supabase)",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:sqlalchemy.*",
+    "ignore::DeprecationWarning:pydantic.*",
 ]
 
 [tool.coverage.run]

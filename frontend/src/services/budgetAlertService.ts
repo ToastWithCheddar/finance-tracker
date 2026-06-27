@@ -119,7 +119,7 @@ class BudgetAlertService extends BaseService {
   }
 
   // Helper methods
-  getDefaultAlertSettings(budgetId: string): CreateBudgetAlertSettingsRequest {
+  getDefaultAlertSettings(_budgetId: string): CreateBudgetAlertSettingsRequest {
     return {
       alerts_enabled: true,
       alert_thresholds: [0.5, 0.8, 0.95],

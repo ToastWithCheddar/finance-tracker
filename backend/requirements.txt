@@ -55,8 +55,10 @@ black==24.10.0
 flake8==7.1.1
 mypy==1.13.0
 
-# Monitoring
+# Monitoring / Observability (Wave 5 — Section C)
 prometheus-client==0.21.0
+prometheus-fastapi-instrumentator==7.0.0
+structlog==24.4.0
 supabase==2.16.0
 
 # Additional Security

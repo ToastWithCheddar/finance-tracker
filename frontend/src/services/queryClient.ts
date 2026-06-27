@@ -5,6 +5,7 @@ import type { BudgetFilters } from '../types/budgets';
 import type { Transaction } from '../types/transaction';
 
 // Error handler for queries and mutations
+import { logger } from '../utils/logger';
 const errorHandler = (error: unknown) => {
   const message = error instanceof Error ? error.message : 'An unexpected error occurred';
   
@@ -13,7 +14,7 @@ const errorHandler = (error: unknown) => {
     useAuthStore.getState().logout();
   }
   
-  console.error('Query/Mutation Error:', message);
+  logger.error('Query/Mutation Error:', message);
 };
 
 // Create query client with default configuration
@@ -110,7 +111,13 @@ export const queryKeys = {
     options: () => [...queryKeys.goals.all, 'options'] as const,
   },
 
-  
+  // Dashboard / aggregates
+  dashboard: {
+    all: ['dashboard'] as const,
+    summary: () => [...queryKeys.dashboard.all, 'summary'] as const,
+    transactionStats: () => ['transactions', 'stats'] as const,
+    categoryBreakdown: () => ['category-breakdown'] as const,
+  },
 } as const;
 
 // ==========================

@@ -1,73 +1,64 @@
 /**
- * CSRF protection service
- * Generates and validates CSRF tokens for API requests
+ * CSRF protection — double-submit cookie strategy (FE-SEC-002).
+ *
+ * The backend (`backend/app/main.py` `csrf_double_submit` middleware) issues a
+ * `csrf_token` cookie on every safe-method response. That cookie is NOT
+ * HttpOnly so this module can read it and copy the value into the
+ * `X-CSRF-Token` header on every mutating request. The backend then verifies
+ * `cookie == header`. There is no client-generated token anymore.
+ *
+ * See `docs/runbooks/csrf-strategy.md` for the full design.
  */
 
-class CSRFService {
-  private csrfToken: string | null = null;
-  private readonly TOKEN_KEY = 'csrf_token';
-  private readonly TOKEN_HEADER = 'X-CSRF-Token';
+const TOKEN_HEADER = 'X-CSRF-Token';
+const TOKEN_COOKIE = 'csrf_token';
 
-  /**
-   * Generate a new CSRF token
-   */
-  private generateToken(): string {
-    const array = new Uint8Array(32);
-    crypto.getRandomValues(array);
-    return Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined' || !document.cookie) return null;
+  const target = `${name}=`;
+  for (const part of document.cookie.split(';')) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(target)) {
+      return decodeURIComponent(trimmed.slice(target.length));
+    }
   }
+  return null;
+}
 
+class CSRFService {
   /**
-   * Get or generate CSRF token
+   * Read the current CSRF token from the cookie, if any. Returns an empty
+   * string when no cookie is present (e.g. before the first GET request).
    */
   getToken(): string {
-    if (!this.csrfToken) {
-      this.csrfToken = this.generateToken();
-      sessionStorage.setItem(this.TOKEN_KEY, this.csrfToken);
-    }
-    return this.csrfToken;
+    return readCookie(TOKEN_COOKIE) ?? '';
   }
 
   /**
-   * Get CSRF headers for API requests
+   * Headers to attach to mutating requests. When no cookie is present we
+   * omit the header rather than send an empty one — the backend treats a
+   * missing header as a 403 only on mutating requests, and the SPA always
+   * has at least one safe-method round-trip before its first mutation.
    */
   getHeaders(): Record<string, string> {
-    return {
-      [this.TOKEN_HEADER]: this.getToken(),
-    };
+    const token = this.getToken();
+    return token ? { [TOKEN_HEADER]: token } : {};
   }
 
-  /**
-   * Refresh CSRF token (call on login/logout)
-   */
+  /** Login/logout flows used to call this; now a no-op (server owns the cookie). */
   refreshToken(): void {
-    this.csrfToken = this.generateToken();
-    sessionStorage.setItem(this.TOKEN_KEY, this.csrfToken);
+    // No-op. The backend rotates the cookie on its own schedule.
   }
 
-  /**
-   * Clear CSRF token
-   */
+  /** Cleared by the browser when the cookie expires; nothing to do here. */
   clearToken(): void {
-    this.csrfToken = null;
-    sessionStorage.removeItem(this.TOKEN_KEY);
+    // No-op.
   }
 
-  /**
-   * Restore token from storage (on page refresh)
-   */
+  /** Compatibility shim for older imports that called this on init. */
   restoreToken(): void {
-    const stored = sessionStorage.getItem(this.TOKEN_KEY);
-    if (stored) {
-      this.csrfToken = stored;
-    } else {
-      this.refreshToken();
-    }
+    // No-op.
   }
 }
 
-// Export singleton instance
 export const csrfService = new CSRFService();
-
-// Initialize on import
-csrfService.restoreToken();

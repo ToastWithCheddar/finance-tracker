@@ -7,6 +7,7 @@ import { AvatarUpload } from './AvatarUpload';
 import { userService, type UserProfile, type UserUpdateData } from '../../services/userService';
 import { useErrorToast } from '../ui/Toast';
 
+import { logger } from '../../utils/logger';
 interface EditProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -81,7 +82,7 @@ export function EditProfileModal({ isOpen, onClose, profile, onSave }: EditProfi
       const result = await userService.uploadAvatar(file);
       setFormData(prev => ({ ...prev, avatar_url: result.avatar_url }));
     } catch (error) {
-      console.error('Avatar upload failed:', error);
+      logger.error('Avatar upload failed:', error);
       showError('Failed to upload avatar. Please try again.');
     } finally {
       setIsUploadingAvatar(false);
@@ -94,7 +95,7 @@ export function EditProfileModal({ isOpen, onClose, profile, onSave }: EditProfi
       await userService.removeAvatar();
       setFormData(prev => ({ ...prev, avatar_url: '' }));
     } catch (error) {
-      console.error('Avatar removal failed:', error);
+      logger.error('Avatar removal failed:', error);
       showError('Failed to remove avatar. Please try again.');
     } finally {
       setIsUploadingAvatar(false);
@@ -119,7 +120,7 @@ export function EditProfileModal({ isOpen, onClose, profile, onSave }: EditProfi
       onSave(updatedProfile);
       onClose();
     } catch (error) {
-      console.error('Profile update failed:', error);
+      logger.error('Profile update failed:', error);
       showError('Failed to update profile. Please try again.');
     } finally {
       setIsLoading(false);

@@ -7,7 +7,7 @@ import os
 import time
 import json
 import logging
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union  # noqa: F401
 from datetime import datetime
 from dataclasses import dataclass
 import threading
@@ -36,14 +36,26 @@ class ProductionOrchestrator:
     optimization, monitoring, and A/B testing
     """
     
-    def __init__(self, config: ProductionConfig):
+    def __init__(self, config: Optional[ProductionConfig] = None):
+        # Section F (ML-PR-001): allow no-arg construction so worker_ready can
+        # do `ProductionOrchestrator()`. Falls back to a sane default config.
+        if config is None:
+            config = ProductionConfig(
+                model_variants=[],
+                default_model_path=os.getenv("MODELS_DIR", "models/sentence_transformer"),
+                monitoring_enabled=True,
+                ab_testing_enabled=False,
+            )
         self.config = config
-        
+
         # Core components
         self.inference_engine = OptimizedInferenceEngine()
+        # Public alias used by worker.py live path (ML-PERF-001).
+        self.optimized_engine = self.inference_engine
         self.onnx_converter = ONNXConverter()
         self.model_monitor = ModelMonitor() if config.monitoring_enabled else None
         self.ab_framework = ABTestingFramework() if config.ab_testing_enabled else None
+        self.is_initialized = False
         
         # Model management
         self.active_models: Dict[str, Any] = {}
@@ -65,37 +77,67 @@ class ProductionOrchestrator:
         self.lock = threading.RLock()
     
     async def initialize_production(self):
-        """Initialize production deployment"""
-        
+        """Initialize production deployment.
+
+        Section F (ML-PR-001): tolerant of missing model weights. When
+        ML_PROD_REQUIRE_WEIGHTS!=1, a missing checkpoint produces a degraded
+        (but live) state rather than crashing the worker. The fallback
+        PyTorch path in worker.py picks up the slack.
+        """
         logger.info("Initializing production ML system...")
-        
+        require_weights = os.getenv("ML_PROD_REQUIRE_WEIGHTS", "0") == "1"
+
         try:
-            # 1. Load and optimize models
-            await self._setup_models()
-            
+            # 1. Load and optimize models. Soft-fail unless require_weights.
+            try:
+                await self._setup_models()
+            except Exception as setup_err:
+                if require_weights:
+                    raise
+                logger.warning(
+                    "model setup failed (degraded mode, ML_PROD_REQUIRE_WEIGHTS=0): %s",
+                    setup_err,
+                )
+
             # 2. Start monitoring if enabled
             if self.model_monitor:
-                self.model_monitor.start_monitoring()
-                logger.info("Model monitoring started")
-            
-            # 3. Run performance benchmarks
-            await self._run_initial_benchmarks()
-            
+                try:
+                    self.model_monitor.start_monitoring()
+                    logger.info("Model monitoring started")
+                except Exception as mon_err:
+                    logger.warning("monitoring start failed: %s", mon_err)
+
+            # 3. Run performance benchmarks (skip if no models loaded).
+            if self.active_models:
+                try:
+                    await self._run_initial_benchmarks()
+                except Exception as bench_err:
+                    logger.warning("initial benchmark failed: %s", bench_err)
+
             # 4. Setup A/B testing if enabled
-            if self.ab_framework:
-                await self._setup_ab_testing()
-                logger.info("A/B testing framework initialized")
-            
+            if self.ab_framework and self.active_models:
+                try:
+                    await self._setup_ab_testing()
+                    logger.info("A/B testing framework initialized")
+                except Exception as ab_err:
+                    logger.warning("A/B testing init failed: %s", ab_err)
+
             # 5. Validate production readiness
-            self.is_production_ready = await self._validate_production_readiness()
-            
+            try:
+                self.is_production_ready = await self._validate_production_readiness()
+            except Exception:
+                self.is_production_ready = False
+
+            self.is_initialized = True
+
             if self.is_production_ready:
-                logger.info("🚀 Production ML system ready!")
+                logger.info("Production ML system ready")
             else:
-                logger.warning("⚠️ Production readiness checks failed")
-                
+                logger.warning("Production readiness checks failed; degraded mode")
+
         except Exception as e:
             logger.error(f"Failed to initialize production system: {e}")
+            self.is_initialized = False
             raise
     
     async def _setup_models(self):
@@ -277,7 +319,7 @@ class ProductionOrchestrator:
         
         # Log check results
         for check_name, passed in checks:
-            status = "✅ PASS" if passed else "❌ FAIL"
+            status = "[ok] PASS" if passed else "[fail] FAIL"
             logger.info(f"Production check {check_name}: {status}")
         
         return all(passed for _, passed in checks)
@@ -355,6 +397,25 @@ class ProductionOrchestrator:
             raise
     
     
+    def health(self) -> Dict[str, Any]:
+        """Readiness probe payload (Section F deliverable, ML-PR-001).
+
+        Used by ml-worker/scripts/health_probe.py. Cheap — no I/O, no locks
+        beyond the engine's own state inspection.
+        """
+        engine = getattr(self, "optimized_engine", None) or self.inference_engine
+        onnx_loaded = bool(getattr(engine, "onnx_session", None))
+        prototypes_loaded = bool(getattr(engine, "category_prototypes", {}))
+        cache_size = len(getattr(engine, "embedding_cache", {}) or {})
+        return {
+            "initialized": bool(self.is_initialized),
+            "production_ready": bool(self.is_production_ready),
+            "onnx_loaded": onnx_loaded,
+            "prototypes_loaded": prototypes_loaded,
+            "cache_size": cache_size,
+            "active_models": list(self.active_models.keys()),
+        }
+
     def get_production_status(self) -> Dict[str, Any]:
         """Get comprehensive production system status"""
         

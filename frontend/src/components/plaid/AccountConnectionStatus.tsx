@@ -17,6 +17,7 @@ import {
   Banknote
 } from 'lucide-react';
 
+import { logger } from '../../utils/logger';
 export function AccountConnectionStatus() {
   const [showPlaidLink, setShowPlaidLink] = useState(false);
   const [isQuickLinking, setIsQuickLinking] = useState(false);
@@ -51,7 +52,7 @@ export function AccountConnectionStatus() {
       await plaidService.quickSandboxLink();
       await refetch();
     } catch (e) {
-      console.error('Quick sandbox link failed:', e);
+      logger.error('Quick sandbox link failed:', e);
     } finally {
       setIsQuickLinking(false);
     }

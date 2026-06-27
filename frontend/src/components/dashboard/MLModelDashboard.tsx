@@ -5,6 +5,7 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useToast } from '../ui/Toast';
 import { mlService } from '../../services/mlService';
 
+import { logger } from '../../utils/logger';
 interface MLModelPerformance {
   total_predictions: number;
   total_feedback: number;
@@ -69,7 +70,7 @@ export const MLModelDashboard: React.FC = () => {
       setPerformance(performanceData);
       setHealth(healthData);
     } catch (err) {
-      console.error('Error fetching ML data:', err);
+      logger.error('Error fetching ML data:', err);
       setError('Failed to load ML model data');
     } finally {
       setLoading(false);
@@ -89,7 +90,7 @@ export const MLModelDashboard: React.FC = () => {
       setNewExample({ category: '', example: '' });
       fetchMLData(); // Refresh data
     } catch (error) {
-      console.error('Error adding example:', error);
+      logger.error('Error adding example:', error);
       showToast('Failed to add example', 'error');
     } finally {
       setIsAddingExample(false);
@@ -105,7 +106,7 @@ export const MLModelDashboard: React.FC = () => {
         'success'
       );
     } catch (error) {
-      console.error('Error exporting model:', error);
+      logger.error('Error exporting model:', error);
       showToast('Failed to export model', 'error');
     } finally {
       setIsExporting(false);

@@ -1,5 +1,6 @@
 import { apiClient } from './api';
 
+import { logger } from '../utils/logger';
 export interface NotificationResponse {
   id: string;
   user_id: string;
@@ -101,7 +102,7 @@ export class NotificationService {
         await this.markAsRead(id);
         updated_count++;
       } catch (error) {
-        console.error(`Failed to mark notification ${id} as read:`, error);
+        logger.error(`Failed to mark notification ${id} as read:`, error);
       }
     }
     

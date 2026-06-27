@@ -11,6 +11,7 @@ import { getReconciliationStatusIcon, getReconciliationStatusColor } from '../..
 import { useAccountReconciliation, type ReconciliationResult } from '../../hooks/useAccountReconciliation';
 
 
+import { logger } from '../../utils/logger';
 interface AccountReconciliationProps {
   accountId: string;
   onReconciliationComplete?: () => void;
@@ -50,7 +51,7 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
       onReconciliationComplete?.();
     } catch (err) {
       // Error is handled by the hook
-      console.error('Reconciliation failed:', err);
+      logger.error('Reconciliation failed:', err);
     }
   }, [accountId, performReconciliation, resetReconciliationError, onReconciliationComplete]);
 
@@ -77,7 +78,7 @@ export function AccountReconciliation({ accountId, onReconciliationComplete }: A
       await handlePerformReconciliation();
     } catch (err) {
       // Error is handled by the hook
-      console.error('Adjustment creation failed:', err);
+      logger.error('Adjustment creation failed:', err);
     }
   };
 

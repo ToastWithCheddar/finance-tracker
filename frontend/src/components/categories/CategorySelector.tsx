@@ -3,6 +3,7 @@ import { ChevronDownIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outlin
 import { categoryService } from '../../services/categoryService';
 import type { Category, CategoryWithChildren } from '../../types/category';
 
+import { logger } from '../../utils/logger';
 interface CategorySelectorProps {
   value?: string;
   onChange: (categoryId: string | undefined, category: Category | undefined) => void;
@@ -43,7 +44,7 @@ export function CategorySelector({
       const hierarchy = buildHierarchy(categoryList);
       setCategories(hierarchy);
     } catch (error) {
-      console.error('Failed to load categories:', error);
+      logger.error('Failed to load categories:', error);
     } finally {
       setLoading(false);
     }
@@ -66,7 +67,7 @@ export function CategorySelector({
       const category = await categoryService.getCategory(categoryId);
       setSelectedCategory(category);
     } catch (error) {
-      console.error('Failed to find category:', error);
+      logger.error('Failed to find category:', error);
       setSelectedCategory(undefined);
     }
   };

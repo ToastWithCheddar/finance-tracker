@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Button } from '../components/ui/Button';
 import { Card, CardContent } from '../components/ui/Card';
 import { LoadingSpinner } from '../components/ui/LoadingSpinner';
@@ -9,7 +9,7 @@ import { GoalForm } from '../components/goals/GoalForm';
 import { GoalsDashboard } from '../components/goals/GoalDashboard';
 import { useGoals, useDeleteGoal } from '../hooks/useGoals';
 import { GoalStatus, GoalType, GoalPriority, type Goal } from '../types/goals';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 type ViewMode = 'dashboard' | 'list' | 'grid';
 

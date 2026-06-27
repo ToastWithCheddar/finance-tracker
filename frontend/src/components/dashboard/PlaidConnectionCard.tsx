@@ -335,7 +335,7 @@ export const PlaidConnectionCard: React.FC<PlaidConnectionCardProps> = ({ onSucc
             <Button
               onClick={confirmDelete}
               disabled={isDeleting}
-              variant="destructive"
+              variant="danger"
               className="flex-1"
             >
               {isDeleting ? (

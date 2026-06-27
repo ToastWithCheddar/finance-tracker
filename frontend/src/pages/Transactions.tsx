@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Button } from '../components/ui/Button';
 import { LoadingSpinner } from '../components/ui';
@@ -9,11 +9,10 @@ import { TransactionForm } from '../components/transactions/TransactionForm';
 import { CSVImport } from '../components/transactions/CSVImport';
 import { useTransactions, useTransactionStats, useTransactionActions } from '../hooks/useTransactions';
 import { useCategories } from '../hooks/useCategories';
-import type { 
-  CreateTransactionRequest as TransactionCreate, 
-  UpdateTransactionRequest as TransactionUpdate, 
+import type {
+  CreateTransactionRequest as TransactionCreate,
+  UpdateTransactionRequest as TransactionUpdate,
   TransactionFilters as TransactionFilter,
-  Transaction
 } from '../types/transaction';
 import type { TransactionFilters as TransactionFiltersType } from '../services/transactionService';
 import { ReceiptText, Brain } from 'lucide-react';
@@ -21,6 +20,7 @@ import { mlService } from '../services/mlService';
 
 
 // Tab definitions
+import { logger } from '../utils/logger';
 type TransactionTab = 'all';
 
 interface TabConfig {
@@ -238,7 +238,7 @@ export function Transactions() {
                 updatedTransactionIds.push(originalTransaction.id);
                 totalCategorized++;
               } catch (error) {
-                console.error(`Failed to update transaction ${chunk[i].id}:`, error);
+                logger.error(`Failed to update transaction ${chunk[i].id}:`, error);
                 // Continue with next transaction rather than failing entire batch
               }
             }
@@ -246,14 +246,14 @@ export function Transactions() {
 
           // Show progress for large batches
           if (chunks.length > 1) {
-            console.log(`Processed chunk ${chunkIndex + 1}/${chunks.length} (${totalCategorized} categorized so far)`);
+            logger.info(`Processed chunk ${chunkIndex + 1}/${chunks.length} (${totalCategorized} categorized so far)`);
           }
 
         } catch (chunkError) {
-          console.error(`Failed to process chunk ${chunkIndex + 1}:`, chunkError);
+          logger.error(`Failed to process chunk ${chunkIndex + 1}:`, chunkError);
           // Continue with next chunk rather than failing entire batch
           if (chunks.length > 1) {
-            console.log(`Skipping failed chunk ${chunkIndex + 1}, continuing with remaining chunks`);
+            logger.info(`Skipping failed chunk ${chunkIndex + 1}, continuing with remaining chunks`);
           }
         }
       }
@@ -270,7 +270,7 @@ export function Transactions() {
       alert(`Successfully auto-categorized ${totalCategorized} transactions!${updatedTransactionIds.length > 0 ? '\n\nNote: You can undo this batch operation if needed.' : ''}`);
       
     } catch (error) {
-      console.error('Batch categorization failed:', error);
+      logger.error('Batch categorization failed:', error);
       alert('Batch categorization failed. Please try again.');
     } finally {
       setIsBatchCategorizing(false);
@@ -353,7 +353,7 @@ export function Transactions() {
   }
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: 'hsl(var(--bg))' }}>
+    <div className="min-h-screen bg-bg">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="mb-8 glass-surface p-6">

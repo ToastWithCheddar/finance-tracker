@@ -12,6 +12,7 @@ import { Input } from '../components/ui/Input';
 import { categoryService } from '../services/categoryService';
 import type { Category, CategoryWithChildren, CreateCategoryRequest, UpdateCategoryRequest } from '../types/category';
 
+import { logger } from '../utils/logger';
 interface CategoryFormData {
   name: string;
   description: string;
@@ -53,7 +54,7 @@ export function Categories() {
       const hierarchy = await categoryService.getCategoriesHierarchy({ include_system: true });
       setCategories(hierarchy);
     } catch (error) {
-      console.error('Failed to load categories:', error);
+      logger.error('Failed to load categories:', error);
     } finally {
       setLoading(false);
     }
@@ -112,7 +113,7 @@ export function Categories() {
       setIsCreateModalOpen(false);
       resetForm();
     } catch (error) {
-      console.error('Failed to create category:', error);
+      logger.error('Failed to create category:', error);
       setFormErrors({ submit: 'Failed to create category. Please try again.' });
     } finally {
       setIsSubmitting(false);
@@ -138,7 +139,7 @@ export function Categories() {
       setEditingCategory(null);
       resetForm();
     } catch (error) {
-      console.error('Failed to update category:', error);
+      logger.error('Failed to update category:', error);
       setFormErrors({ submit: 'Failed to update category. Please try again.' });
     } finally {
       setIsSubmitting(false);
@@ -155,7 +156,7 @@ export function Categories() {
       setIsDeleteModalOpen(false);
       setDeletingCategory(null);
     } catch (error) {
-      console.error('Failed to delete category:', error);
+      logger.error('Failed to delete category:', error);
     } finally {
       setIsSubmitting(false);
     }

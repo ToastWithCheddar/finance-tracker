@@ -4,6 +4,75 @@ import { Card, CardHeader, CardTitle, CardContent } from './Card';
 
 export type MetricCardTheme = 'default' | 'income' | 'expense' | 'success' | 'savings';
 
+interface ThemeStyles {
+  cardClass: string;
+  iconColor: string;
+  titleColor: string;
+  valueColor: string;
+  changeColor: string;
+}
+
+// Single source of truth for the five theme variants. A color tweak now
+// changes one row, not six branches (FE-PR-006 / phase A3).
+const THEME_STYLES: Record<MetricCardTheme, ThemeStyles> = {
+  income: {
+    cardClass: 'bg-income-gradient border-income-200 shadow-lg shadow-income-100/50 dark:shadow-income-800/50',
+    iconColor: 'text-income-600 dark:text-green-300',
+    titleColor: 'text-income-700 dark:text-gray-300',
+    valueColor: 'text-income-900 dark:text-gray-100',
+    changeColor: 'text-income-600 dark:text-gray-400',
+  },
+  expense: {
+    cardClass: 'bg-expense-gradient border-expense-200 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50',
+    iconColor: 'text-expense-600 dark:text-red-300',
+    titleColor: 'text-expense-700 dark:text-gray-300',
+    valueColor: 'text-expense-900 dark:text-gray-100',
+    changeColor: 'text-expense-600 dark:text-gray-400',
+  },
+  success: {
+    cardClass: 'bg-success-gradient border-success-200 shadow-lg shadow-success-100/50 dark:shadow-success-800/50',
+    iconColor: 'text-success-600 dark:text-green-300',
+    titleColor: 'text-success-700 dark:text-gray-300',
+    valueColor: 'text-success-900 dark:text-gray-100',
+    changeColor: 'text-success-600 dark:text-gray-400',
+  },
+  savings: {
+    cardClass: 'bg-savings-gradient border-savings-200 shadow-lg shadow-savings-100/50 dark:shadow-savings-800/50',
+    iconColor: 'text-savings-600 dark:text-blue-300',
+    titleColor: 'text-savings-700 dark:text-gray-300',
+    valueColor: 'text-savings-900 dark:text-gray-100',
+    changeColor: 'text-savings-600 dark:text-gray-400',
+  },
+  default: {
+    cardClass: 'bg-gradient-to-br from-white to-gray-50 border-gray-200 shadow-lg dark:from-gray-800 dark:to-gray-700 dark:border-gray-600',
+    iconColor: 'text-gray-500 dark:text-gray-400',
+    titleColor: 'text-gray-600 dark:text-gray-400',
+    valueColor: 'text-gray-900 dark:text-gray-100',
+    changeColor: 'text-gray-600 dark:text-gray-400',
+  },
+};
+
+// Override applied when caller passes `change + changeType` without a
+// theme — flips the card to success/expense based on the change sign.
+function deriveChangeOverride(changeType: 'positive' | 'negative' | 'neutral'): ThemeStyles {
+  const isPositive = changeType === 'positive';
+  return isPositive
+    ? {
+        cardClass: 'bg-success-gradient border-success-200 dark:border-success-700 shadow-lg shadow-success-100/50 dark:shadow-success-800/50',
+        iconColor: 'text-success-600 dark:text-success-300',
+        titleColor: 'text-success-700 dark:text-success-200',
+        valueColor: 'text-success-900 dark:text-success-100',
+        changeColor: 'text-success-600 dark:text-success-300',
+      }
+    : {
+        cardClass: 'bg-expense-gradient border-expense-200 dark:border-expense-700 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50',
+        iconColor: 'text-expense-600 dark:text-expense-300',
+        titleColor: 'text-expense-700 dark:text-expense-200',
+        valueColor: 'text-expense-900 dark:text-expense-100',
+        changeColor: 'text-expense-600 dark:text-expense-300',
+      };
+}
+
 export interface MetricCardProps {
   title: string;
   value: string;
@@ -39,65 +108,11 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   className = '',
   variant = 'standard'
 }) => {
-  // Get themed colors based on theme type
-  const getCardTheme = () => {
-    switch (theme) {
-      case 'income':
-        return {
-          cardClass: 'bg-income-gradient border-income-200 shadow-lg shadow-income-100/50 dark:shadow-income-800/50',
-          iconColor: 'text-income-600 dark:text-green-300',
-          titleColor: 'text-income-700 dark:text-gray-300',
-          valueColor: 'text-income-900 dark:text-gray-100',
-          changeColor: 'text-income-600 dark:text-gray-400',
-        };
-      case 'expense':
-        return {
-          cardClass: 'bg-expense-gradient border-expense-200 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50',
-          iconColor: 'text-expense-600 dark:text-red-300',
-          titleColor: 'text-expense-700 dark:text-gray-300',
-          valueColor: 'text-expense-900 dark:text-gray-100',
-          changeColor: 'text-expense-600 dark:text-gray-400',
-        };
-      case 'success':
-        return {
-          cardClass: 'bg-success-gradient border-success-200 shadow-lg shadow-success-100/50 dark:shadow-success-800/50',
-          iconColor: 'text-success-600 dark:text-green-300',
-          titleColor: 'text-success-700 dark:text-gray-300',
-          valueColor: 'text-success-900 dark:text-gray-100',
-          changeColor: 'text-success-600 dark:text-gray-400',
-        };
-      case 'savings':
-        return {
-          cardClass: 'bg-savings-gradient border-savings-200 shadow-lg shadow-savings-100/50 dark:shadow-savings-800/50',
-          iconColor: 'text-savings-600 dark:text-blue-300',
-          titleColor: 'text-savings-700 dark:text-gray-300',
-          valueColor: 'text-savings-900 dark:text-gray-100',
-          changeColor: 'text-savings-600 dark:text-gray-400',
-        };
-      default:
-        return {
-          cardClass: 'bg-gradient-to-br from-white to-gray-50 border-gray-200 shadow-lg dark:from-gray-800 dark:to-gray-700 dark:border-gray-600',
-          iconColor: 'text-gray-500 dark:text-gray-400',
-          titleColor: 'text-gray-600 dark:text-gray-400',
-          valueColor: 'text-gray-900 dark:text-gray-100',
-          changeColor: 'text-gray-600 dark:text-gray-400',
-        };
-    }
-  };
-
-  const cardTheme = getCardTheme();
-  
-  // For change-based theming (overrides theme if present)
-  if (change && changeType !== 'neutral' && theme === 'default') {
-    const isPositive = changeType === 'positive';
-    cardTheme.cardClass = isPositive 
-      ? 'bg-success-gradient border-success-200 dark:border-success-700 shadow-lg shadow-success-100/50 dark:shadow-success-800/50'
-      : 'bg-expense-gradient border-expense-200 dark:border-expense-700 shadow-lg shadow-expense-100/50 dark:shadow-expense-800/50';
-    cardTheme.iconColor = isPositive ? 'text-success-600 dark:text-success-300' : 'text-expense-600 dark:text-expense-300';
-    cardTheme.titleColor = isPositive ? 'text-success-700 dark:text-success-200' : 'text-expense-700 dark:text-expense-200';
-    cardTheme.valueColor = isPositive ? 'text-success-900 dark:text-success-100' : 'text-expense-900 dark:text-expense-100';
-    cardTheme.changeColor = isPositive ? 'text-success-600 dark:text-success-300' : 'text-expense-600 dark:text-expense-300';
-  }
+  // Single lookup; if change-driven override applies, swap once.
+  const cardTheme: ThemeStyles =
+    change && changeType !== 'neutral' && theme === 'default'
+      ? deriveChangeOverride(changeType)
+      : THEME_STYLES[theme];
 
   const ChangeIcon = changeType === 'positive' ? TrendingUp : TrendingDown;
 

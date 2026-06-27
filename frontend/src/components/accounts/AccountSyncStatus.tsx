@@ -9,6 +9,7 @@ import { getConnectionStatusIcon, getConnectionStatusText, getConnectionStatusCo
 import { useAccountSyncStatus } from '../../hooks/useAccountSyncStatus';
 
 
+import { logger } from '../../utils/logger';
 interface AccountSyncStatusProps {
   refreshTrigger?: number;
   onSyncComplete?: () => void;
@@ -45,7 +46,7 @@ export function AccountSyncStatus({ refreshTrigger = 0, onSyncComplete }: Accoun
       await syncAllBalances();
       onSyncComplete?.();
     } catch (err) {
-      console.error('Sync all failed:', err);
+      logger.error('Sync all failed:', err);
     } finally {
       setSyncing(false);
     }
@@ -57,7 +58,7 @@ export function AccountSyncStatus({ refreshTrigger = 0, onSyncComplete }: Accoun
       await syncAccountBalance(accountId);
       onSyncComplete?.();
     } catch (err) {
-      console.error('Sync account failed:', err);
+      logger.error('Sync account failed:', err);
     } finally {
       setSyncing(false);
     }

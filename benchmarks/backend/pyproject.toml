@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finance-tracker-backend-bench"
+version = "0.1.0"
+description = "Backend perf benchmarking harness for finance-tracker (Locust + pytest-benchmark)."
+requires-python = ">=3.11"
+dependencies = [
+    "locust==2.31.5",
+    "requests==2.32.3",
+    "httpx==0.27.2",
+    "pytest==8.3.3",
+    "pytest-benchmark==4.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff==0.6.9",
+]
+
+[tool.setuptools]
+# Avoid auto-discovery picking up everything; this project is harness-only.
+packages = []
+
+[tool.pytest.ini_options]
+markers = [
+    "benchmark: microbenchmarks; gated by env var BENCH_RUN=1",
+]
+testpaths = ["microbench"]
+addopts = "-ra"

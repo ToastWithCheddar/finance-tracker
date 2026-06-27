@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   // Load .env files from the repo root so frontend uses unified env
   envDir: '..',
   plugins: [react()],
@@ -24,10 +24,13 @@ export default defineConfig({
     strictPort: false,
   },
   build: {
-    sourcemap: true, // Generate source maps for development
-    minify: false, // Don't minify for easier debugging
+    // Hidden sourcemaps: produced for upload to Sentry but not referenced from JS bundles in production.
+    sourcemap: 'hidden',
+    // Use esbuild for fast, production-grade minification.
+    minify: 'esbuild',
   },
   define: {
-    __DEV__: true, // Define development flag
+    // Reflect actual build mode rather than hard-coding development.
+    __DEV__: JSON.stringify(mode === 'development'),
   },
-})
+}))

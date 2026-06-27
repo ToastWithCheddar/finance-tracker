@@ -22,6 +22,11 @@ class RedisWebSocketManager:
         self.connection_user_map: Dict[WebSocket, str] = {}
         self.connection_metadata: Dict[WebSocket, Dict[str, Any]] = {}
 
+        # Guards structural mutation of the maps above (BE-WS-001). Held only for
+        # the in-memory bookkeeping, never across network I/O, so fan-out sends
+        # take a snapshot under the lock and send outside it.
+        self._connections_lock = asyncio.Lock()
+
         # Redis client for pub/sub messaging
         self.redis_client = redis_client
 
@@ -33,19 +38,27 @@ class RedisWebSocketManager:
         self.subscriber_tasks: Dict[str, asyncio.Task] = {}
 
     async def connect(self, user_id: str, websocket: WebSocket, metadata: Dict[str, Any] = None):
-        """Accept and register a new WebSocket connection for a user"""
+        """Register a new WebSocket connection for a user.
+
+        FE-SEC-001 / BE-SEC-007: the route handler performs the auth handshake
+        and accepts the socket itself, so we only call accept() defensively
+        if it wasn't already accepted.
+        """
         try:
-            # Accept the WebSocket connection
-            await websocket.accept()
+            # Accept the WebSocket connection if not already accepted by the route.
+            from starlette.websockets import WebSocketState
+            if websocket.client_state == WebSocketState.CONNECTING:
+                await websocket.accept()
             
             # Add to local connection tracking
-            if user_id not in self.connections:
-                self.connections[user_id] = set()
-                
-            self.connections[user_id].add(websocket)
-            self.connection_user_map[websocket] = user_id
-            self.connection_metadata[websocket] = metadata or {}
-            self.total_connections_count += 1
+            async with self._connections_lock:
+                if user_id not in self.connections:
+                    self.connections[user_id] = set()
+
+                self.connections[user_id].add(websocket)
+                self.connection_user_map[websocket] = user_id
+                self.connection_metadata[websocket] = metadata or {}
+                self.total_connections_count += 1
             
             logger.info(f"WebSocket connected for user {user_id}. Total connections: {len(self.connection_user_map)}")
             
@@ -62,25 +75,30 @@ class RedisWebSocketManager:
     async def disconnect(self, websocket: WebSocket):
         """Remove a WebSocket connection and clean up"""
         try:
-            user_id = self.connection_user_map.get(websocket)
-            
-            if user_id and user_id in self.connections:
-                # Remove from connections
-                self.connections[user_id].discard(websocket)
-                
-                # Clean up empty user connection sets
-                if not self.connections[user_id]:
-                    del self.connections[user_id]
-                    
-                    # Stop subscriber task for this user if no more connections
-                    await self._stop_user_subscriber(user_id)
-            
-            # Remove from reverse mapping and metadata
-            if websocket in self.connection_user_map:
-                del self.connection_user_map[websocket]
-            if websocket in self.connection_metadata:
-                del self.connection_metadata[websocket]
-                
+            should_stop_subscriber = False
+            async with self._connections_lock:
+                user_id = self.connection_user_map.get(websocket)
+
+                if user_id and user_id in self.connections:
+                    # Remove from connections
+                    self.connections[user_id].discard(websocket)
+
+                    # Clean up empty user connection sets; defer stopping the
+                    # subscriber until after the lock is released (cancelling a
+                    # task can await, and the subscriber itself takes this lock).
+                    if not self.connections[user_id]:
+                        del self.connections[user_id]
+                        should_stop_subscriber = True
+
+                # Remove from reverse mapping and metadata
+                if websocket in self.connection_user_map:
+                    del self.connection_user_map[websocket]
+                if websocket in self.connection_metadata:
+                    del self.connection_metadata[websocket]
+
+            if should_stop_subscriber and user_id:
+                await self._stop_user_subscriber(user_id)
+
             logger.info(f"WebSocket disconnected for user {user_id}. Remaining connections: {len(self.connection_user_map)}")
             
         except Exception as e:
@@ -195,31 +213,28 @@ class RedisWebSocketManager:
 
     async def send_full_sync(self, user_id: str, websocket: WebSocket):
         """Send complete dashboard state to a specific WebSocket connection"""
+        from ..services.financial_health_service import get_financial_health_service
+        from ..database import get_db_session
+        from datetime import datetime, timedelta
+        from ..models.transaction import Transaction
+        from ..models.account import Account
+
         try:
-            from ..services.financial_health_service import get_financial_health_service
-            from ..database import get_db
-            from datetime import datetime, timedelta
-            from ..models.transaction import Transaction
-            from ..models.account import Account
+            with get_db_session() as db:
+                thirty_days_ago = datetime.now() - timedelta(days=30)
+                recent_transactions = db.query(Transaction).filter(
+                    Transaction.user_id == user_id,
+                    Transaction.transaction_date >= thirty_days_ago.date()
+                ).count()
 
-            # Build snapshot using FinancialHealthService
-            db = next(get_db())
-            
-            # Get recent transactions count
-            thirty_days_ago = datetime.now() - timedelta(days=30)
-            recent_transactions = db.query(Transaction).filter(
-                Transaction.user_id == user_id,
-                Transaction.transaction_date >= thirty_days_ago.date()
-            ).count()
-            
-            accounts = db.query(Account).filter(
-                Account.user_id == user_id,
-                Account.is_active == True
-            ).all()
-            account_count = len(accounts)
+                accounts = db.query(Account).filter(
+                    Account.user_id == user_id,
+                    Account.is_active == True
+                ).all()
+                account_count = len(accounts)
 
-            health_service = get_financial_health_service()
-            financial_health = health_service.calculate_user_financial_health(db, user_id)
+                health_service = get_financial_health_service()
+                financial_health = health_service.calculate_user_financial_health(db, user_id)
 
             dashboard_data = {
                 "net_worth": financial_health.get("net_worth", 0),
@@ -239,7 +254,6 @@ class RedisWebSocketManager:
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             }
 
-            # Send directly to the specific WebSocket (not via Redis)
             await websocket.send_text(json.dumps(sync_message))
             logger.debug(f"Sent full sync to user {user_id}")
 
@@ -283,16 +297,21 @@ class RedisWebSocketManager:
         async def handle_message(message: Dict[str, Any]):
             """Handle incoming message from Redis"""
             try:
-                if user_id in self.connections and self.connections[user_id]:
+                # Snapshot the socket set under the lock, then do network I/O
+                # outside it so a slow/blocked send can't stall connect/disconnect.
+                async with self._connections_lock:
+                    sockets = list(self.connections.get(user_id, ()))
+
+                if sockets:
                     disconnected_sockets = []
                     message_json = json.dumps(message)
-                    for websocket in self.connections[user_id].copy():
+                    for websocket in sockets:
                         try:
                             await websocket.send_text(message_json)
                         except Exception as e:
                             logger.error(f"Error sending message to WebSocket: {str(e)}")
                             disconnected_sockets.append(websocket)
-                    
+
                     # Clean up disconnected sockets
                     for websocket in disconnected_sockets:
                         await self.disconnect(websocket)
@@ -391,8 +410,9 @@ class RedisWebSocketManager:
             for websocket in list(self.connection_user_map.keys()):
                 try:
                     await websocket.close(code=1001, reason="Server shutdown")
-                except Exception:
-                    pass
+                except Exception as close_err:
+                    # Best-effort close: log so silent shutdown failures are visible.
+                    logger.warning(f"Failed to close websocket during shutdown: {close_err}")
                 await self.disconnect(websocket)
             
             # Close Redis client

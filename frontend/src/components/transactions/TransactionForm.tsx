@@ -10,6 +10,7 @@ import { CategorySelector } from '../categories/CategorySelector';
 import { transactionService } from '../../services/transactionService';
 import { useAccounts } from '../../hooks/useAccounts';
   
+import { logger } from '../../utils/logger';
   import type { Transaction, CreateTransactionRequest, UpdateTransactionRequest } from '../../types/transaction';
   import type { Category } from '../../types/category';
 
@@ -128,7 +129,7 @@ import { useAccounts } from '../../hooks/useAccounts';
         setSubmitError('');
 
       } catch (error) {
-        console.error('Failed to submit transaction:', error);
+        logger.error('Failed to submit transaction:', error);
         
         // Handle low confidence from the backend
         const errorObj = error as { response?: { status: number; data: { detail: { reason: string; suggested_category_id: string; message: string } } } };

@@ -24,11 +24,11 @@ def download_model():
         model = SentenceTransformer(model_name)
         model.save(model_path)
         
-        print(f"✅ Model successfully downloaded to: {model_path}")
+        print(f"[ok] Model successfully downloaded to: {model_path}")
         print(f"Model size: {get_directory_size(model_path):.1f} MB")
         
     except Exception as e:
-        print(f"❌ Failed to download model: {e}")
+        print(f"[fail] Failed to download model: {e}")
         sys.exit(1)
 
 def get_directory_size(path):

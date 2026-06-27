@@ -3,6 +3,7 @@ import type { ErrorInfo, ReactNode } from 'react';
 import { Button } from '../ui/Button';
 import { Card } from '../ui/Card';
 
+import { logger } from '../../utils/logger';
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
@@ -30,7 +31,7 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
+    logger.error('ErrorBoundary caught an error:', error, errorInfo);
     this.setState({ error, errorInfo });
     
     // Call custom error handler if provided
@@ -41,7 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
     // Log to error reporting service in production
     if (import.meta.env.PROD) {
       // TODO: Send to error reporting service (e.g., Sentry)
-      console.error('Production error:', { error, errorInfo });
+      logger.error('Production error:', { error, errorInfo });
     }
 
     // Auto-retry for network errors if enabled

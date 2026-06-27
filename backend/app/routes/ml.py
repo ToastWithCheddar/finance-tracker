@@ -1,6 +1,7 @@
 """
 ML service integration routes for transaction categorization
 """
+import asyncio
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from typing import Dict, Any, List
@@ -56,8 +57,14 @@ async def categorize_transaction(
             'merchant': request.merchant,
             'user_id': str(current_user.id)
         }
+        # BE-PERF-001 stopgap: offload the blocking Celery .get() to a worker thread
+        # so the FastAPI event loop is not blocked while we wait on the ML worker.
+        # TODO: Long-term fix is to return 202 Accepted immediately (fire-and-forget)
+        # and deliver the categorization result over the user's WebSocket channel
+        # using `redis_client.publish_to_user(...)`. That refactor is a future iteration.
+        loop = asyncio.get_running_loop()
         result_async = celery_app.send_task('worker.classify_transaction', args=[payload])
-        result = result_async.get(timeout=30)
+        result = await loop.run_in_executor(None, lambda: result_async.get(timeout=30))
         return {
             'success': True,
             'data': {
@@ -98,7 +105,9 @@ async def ml_service_health():
     Check ML service health status
     """
     try:
-        result = celery_app.send_task('worker.health_check').get(timeout=15)
+        loop = asyncio.get_running_loop()
+        async_result = celery_app.send_task('worker.health_check')
+        result = await loop.run_in_executor(None, lambda: async_result.get(timeout=15))
         return {"success": True, "data": result}
     except Exception as e:
         logger.warning(f"Celery health_check failed: {e}")
@@ -167,7 +176,9 @@ async def batch_categorize_transactions(
         timeout = min(300, max(60, batch_size * 2))  # 2 seconds per transaction, min 60s, max 300s
         logger.info(f"Processing batch of {batch_size} transactions with {timeout}s timeout")
         
-        result = celery_app.send_task('worker.batch_classify_transactions', args=[txs]).get(timeout=timeout)
+        loop = asyncio.get_running_loop()
+        async_result = celery_app.send_task('worker.batch_classify_transactions', args=[txs])
+        result = await loop.run_in_executor(None, lambda: async_result.get(timeout=timeout))
         
         # Apply ML categorization results to database
         try:
@@ -222,7 +233,9 @@ async def add_ml_example(
     Add a new example to a category for improved classification
     """
     try:
-        result = celery_app.send_task('worker.add_category_example', args=[request.category, request.example, str(current_user.id)]).get(timeout=30)
+        loop = asyncio.get_running_loop()
+        async_result = celery_app.send_task('worker.add_category_example', args=[request.category, request.example, str(current_user.id)])
+        result = await loop.run_in_executor(None, lambda: async_result.get(timeout=30))
         return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Failed to add ML example: {e}", exc_info=True)
@@ -238,7 +251,9 @@ async def export_model(
     """
     try:
         # Prefer creating production ONNX models
-        result = celery_app.send_task('worker.create_onnx_models').get(timeout=600)
+        loop = asyncio.get_running_loop()
+        async_result = celery_app.send_task('worker.create_onnx_models')
+        result = await loop.run_in_executor(None, lambda: async_result.get(timeout=600))
         return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Failed to export ML model: {e}", exc_info=True)
@@ -253,7 +268,9 @@ async def get_ml_performance(
     Get current model performance metrics
     """
     try:
-        result = celery_app.send_task('worker.get_model_performance').get(timeout=30)
+        loop = asyncio.get_running_loop()
+        async_result = celery_app.send_task('worker.get_model_performance')
+        result = await loop.run_in_executor(None, lambda: async_result.get(timeout=30))
         return {"success": True, "data": result}
     except Exception as e:
         logger.error(f"Failed to get ML performance metrics: {e}", exc_info=True)

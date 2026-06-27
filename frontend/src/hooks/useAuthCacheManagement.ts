@@ -6,6 +6,7 @@ import { useAuthUser } from '../stores/authStore';
  * Hook to manage React Query cache when user authentication state changes
  * Clears stale cached data when switching between users or logging out
  */
+import { logger } from '../utils/logger';
 export function useAuthCacheManagement() {
   const queryClient = useQueryClient();
   const user = useAuthUser();
@@ -17,7 +18,7 @@ export function useAuthCacheManagement() {
 
     // If user changed (login, logout, or user switch)
     if (previousUserId !== currentUserId) {
-      console.log('[Auth Cache] User changed:', { previousUserId, currentUserId });
+      logger.info('[Auth Cache] User changed:', { previousUserId, currentUserId });
       
       // Clear all cached queries to prevent stale data
       queryClient.clear();
@@ -29,7 +30,7 @@ export function useAuthCacheManagement() {
 
   // Provide manual cache clearing function
   const clearUserCache = () => {
-    console.log('[Auth Cache] Manually clearing cache for user:', user?.id);
+    logger.info('[Auth Cache] Manually clearing cache for user:', user?.id);
     queryClient.clear();
   };
 

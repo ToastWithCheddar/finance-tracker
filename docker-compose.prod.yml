@@ -1,0 +1,251 @@
+# docker-compose.prod.yml — production stack (INFRA-DOCK-002)
+#
+# Standalone, override-friendly. The base docker-compose.yml in repo root is
+# DEV-ONLY (code mounts, --reload, target: dev). Bring this stack up with:
+#
+#   TAG=$(git rev-parse --short HEAD) \
+#     docker compose -f docker-compose.prod.yml up -d
+#
+# Validation:
+#   docker compose -f docker-compose.prod.yml config -q
+#
+# Findings addressed: INFRA-DOCK-002, INFRA-DOCK-003, INFRA-DOCK-004,
+# INFRA-DOCK-005, INFRA-OBS-001 (Loki/Promtail block included as comments).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    # No host port mapping — internal network only.
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 1g
+    cpus: 1.0
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+    logging: *default-logging
+    networks:
+      - finance-internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 200mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    expose:
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 256m
+    cpus: 0.5
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.5"
+    logging: *default-logging
+    networks:
+      - finance-internal
+
+  backend:
+    image: finance-tracker/backend:prod-${TAG:-latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-4}
+      - ENVIRONMENT=production
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    mem_limit: 1g
+    cpus: 1.0
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1.0"
+    logging: *default-logging
+    networks:
+      - finance-internal
+
+  ml-worker:
+    image: finance-tracker/ml-worker:prod-${TAG:-latest}
+    build:
+      context: ./ml-worker
+      dockerfile: Dockerfile
+      target: prod-no-models
+    restart: unless-stopped
+    env_file:
+      - ./.env
+    environment:
+      - MODELS_DIR=/models
+      - ENVIRONMENT=production
+      # ML_MODEL_S3_URL or HF_MODEL_ID drives scripts/fetch_models.sh at boot.
+      # When the local ./ml_models/ tree is populated (default for the
+      # internship setup), fetch_models.sh sees existing weights and skips
+      # the download. Set ML_MODEL_S3_URL or HF_MODEL_ID for cloud deploys.
+    volumes:
+      - ./ml_models:/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # Liveness via Celery inspect ping (in-cluster). Readiness is file-based:
+    # fetch_models.sh writes /models/.ready when weights are present. We use
+    # the file probe here since the worker has no HTTP listener by default.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - "test -f /models/.ready && celery -A worker inspect ping -d celery@$$(hostname) >/dev/null 2>&1"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    command:
+      - celery
+      - -A
+      - worker
+      - worker
+      - --loglevel=info
+      - --concurrency=2
+      - --max-tasks-per-child=1000
+      - --without-mingle
+      - --without-gossip
+    mem_limit: 2g
+    cpus: 2.0
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+          cpus: "2.0"
+    logging: *default-logging
+    networks:
+      - finance-internal
+
+  frontend:
+    image: finance-tracker/frontend:prod-${TAG:-latest}
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: production
+    restart: unless-stopped
+    expose:
+      - "80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 128m
+    cpus: 0.25
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+    logging: *default-logging
+    networks:
+      - finance-internal
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./frontend/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    mem_limit: 128m
+    cpus: 0.25
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "0.25"
+    logging: *default-logging
+    networks:
+      - finance-internal
+      - finance-edge
+
+  # ---------------------------------------------------------------------------
+  # Uncomment to enable log aggregation (INFRA-OBS-001). See
+  # docker-compose.observability.yml for the full opt-in stack.
+  # ---------------------------------------------------------------------------
+  # loki:
+  #   image: grafana/loki:2.9.0
+  #   command: -config.file=/etc/loki/local-config.yaml
+  #   volumes: [loki_data:/loki]
+  #   networks: [finance-internal]
+  #   logging: *default-logging
+  # promtail:
+  #   image: grafana/promtail:2.9.0
+  #   volumes:
+  #     - /var/lib/docker/containers:/var/lib/docker/containers:ro
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: -config.file=/etc/promtail/config.yml
+  #   networks: [finance-internal]
+  #   logging: *default-logging
+
+volumes:
+  postgres_data:
+  redis_data:
+  ml_models:
+
+networks:
+  # Internal app traffic — postgres / redis / ml-worker / backend / frontend.
+  finance-internal:
+    driver: bridge
+    internal: false
+  # Public edge — only nginx is attached here.
+  finance-edge:
+    driver: bridge

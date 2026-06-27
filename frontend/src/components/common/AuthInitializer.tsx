@@ -7,6 +7,7 @@ import { useAuthCacheManagement } from '../../hooks/useAuthCacheManagement';
  * This handles token validation and manages React Query cache to prevent 
  * stale data across user sessions.
  */
+import { logger } from '../../utils/logger';
 export function AuthInitializer() {
   const checkTokenExpiration = useAuthStore((state) => state.checkTokenExpiration);
   
@@ -15,9 +16,9 @@ export function AuthInitializer() {
 
   useEffect(() => {
     // Check stored token validity on app startup
-    console.log('🔑 AuthInitializer: Checking stored tokens...');
+    logger.info('🔑 AuthInitializer: Checking stored tokens...');
     checkTokenExpiration();
-    console.log('🔑 AuthInitializer: Token validation completed');
+    logger.info('🔑 AuthInitializer: Token validation completed');
   }, [checkTokenExpiration]);
 
   return null; // This component doesn't render anything

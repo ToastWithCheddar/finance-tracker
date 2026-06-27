@@ -2,8 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { plaidService, type PlaidExchangeTokenRequest, type SyncTransactionsRequest, type SyncBalancesRequest } from '../services/plaidService';
 import type { ErrorContext } from '../types/errors';
 import { useAuthUser } from '../stores/authStore';
+import { queryKeys } from '../services/queryClient';
 
 // Query keys
+import { logger } from '../utils/logger';
 const PLAID_KEYS = {
   all: ['plaid'] as const,
   linkToken: (userId?: string) => [...PLAID_KEYS.all, 'link-token', userId] as const,
@@ -52,13 +54,12 @@ export function useExchangeToken() {
       plaidService.exchangeToken(exchangeData),
     onSuccess: () => {
       // Invalidate all related queries after successful token exchange
-      queryClient.invalidateQueries({ queryKey: ['accounts'] }); // Broad invalidation for all account queries
-      queryClient.invalidateQueries({ queryKey: ['accounts', user?.id] }); // Specific accounts list for this user
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts.list({ userId: user?.id }) });
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      // Also invalidate dashboard analytics which uses a different key
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.transactionStats() });
     },
   });
 }
@@ -70,39 +71,37 @@ export function useSyncTransactions() {
 
   return useMutation({
     mutationFn: (request?: SyncTransactionsRequest) => {
-      console.log('useSyncTransactions mutation started with request:', request);
+      logger.info('useSyncTransactions mutation started with request:', request);
       return plaidService.syncTransactions(request);
     },
     onSuccess: (data) => {
-      console.log('Transaction sync successful:', JSON.stringify(data, null, 2));
+      logger.info('Transaction sync successful:', JSON.stringify(data, null, 2));
       
       // Show detailed success message
       const results = data.data?.results || data.data;
       if (Array.isArray(results)) {
         results.forEach((result: any, index) => {
-          console.log(`   Account ${index + 1}: ${result.account_name || result.name || 'Unknown'}`);
+          logger.info(`   Account ${index + 1}: ${result.account_name || result.name || 'Unknown'}`);
           // Handle both possible response structures
           const txData = result.result || result;
-          console.log(`     - New: ${txData.new_transactions || 0}, Updated: ${txData.updated_transactions || 0}, Skipped: ${txData.duplicates_skipped || 0}`);
+          logger.info(`     - New: ${txData.new_transactions || 0}, Updated: ${txData.updated_transactions || 0}, Skipped: ${txData.duplicates_skipped || 0}`);
           if (result.success === false && result.error) {
-            console.log(`     - Error: ${result.error}`);
+            logger.info(`     - Error: ${result.error}`);
           }
         });
         
         const totalNew = results.reduce((sum: number, r: any) => sum + ((r.result?.new_transactions || r.new_transactions) || 0), 0);
         const totalUpdated = results.reduce((sum: number, r: any) => sum + ((r.result?.updated_transactions || r.updated_transactions) || 0), 0);
-        console.log(`✨ TOTAL: ${totalNew} new, ${totalUpdated} updated transactions`);
+        logger.info(`✨ TOTAL: ${totalNew} new, ${totalUpdated} updated transactions`);
       } else if (results) {
-        console.log(`✨ Successfully synced: ${results.new_transactions || 0} new, ${results.updated_transactions || 0} updated transactions`);
+        logger.info(`✨ Successfully synced: ${results.new_transactions || 0} new, ${results.updated_transactions || 0} updated transactions`);
       } else {
       }
       
       // Invalidate transaction-related queries
-      queryClient.invalidateQueries({ queryKey: ['transactions'] });
-      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
-      // Note: dashboard-analytics endpoint no longer exists, invalidating transaction stats instead
-      queryClient.invalidateQueries({ queryKey: ['transactions', 'stats'] });
-      // Invalidate connection status to update health indicators
+      queryClient.invalidateQueries({ queryKey: queryKeys.transactions.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.transactionStats() });
       queryClient.invalidateQueries({ queryKey: PLAID_KEYS.connectionStatus(user?.id) });
     },
     onError: (error) => {

@@ -1,0 +1,150 @@
+# .github/workflows/ci.yml
+#
+# Promoted from audit/60-ci/workflows/audit.yml by IW-2. All targets dispatch
+# through the repo-root Makefile. fail-fast is disabled at the top level via
+# job-level independence; each job is allowed to fail without cancelling the
+# others.
+#
+# Promotion checklist lives in docs/runbooks/ci-makefile.md. Complete the items
+# there before relying on this workflow to gate PRs.
+
+name: ci
+
+on: [push, pull_request, workflow_dispatch]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-test:
+    name: backend tests (pytest + testcontainers)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: finance_tracker_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install backend tests
+        run: make install-backend
+      - name: Run pytest
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+          REDIS_HOST: localhost
+          REDIS_PORT: "6379"
+        run: make test-backend
+
+  frontend-test:
+    name: frontend tests (vitest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend tests
+        run: make install-frontend
+      - name: Run vitest
+        run: make test-frontend
+
+  ml-worker-test:
+    name: ml-worker tests (pytest, model load skipped)
+    runs-on: ubuntu-latest
+    env:
+      # Skip the ~90 MB MiniLM safetensors download in CI for speed.
+      # LRU + confidence-bucket tests still run. To enable model-loading tests
+      # in CI, unset this and add an actions/cache step keyed on the model dir.
+      ML_AUDIT_SKIP_MODEL: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install ml-worker tests
+        run: make install-ml-worker
+      - name: Run pytest
+        run: make test-ml-worker
+
+  bench-frontend-build-check:
+    name: frontend build + bundle analyze (no Lighthouse)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+      - name: Install bench-frontend
+        run: make install-bench-frontend
+      - name: Bundle analyze
+        working-directory: benchmarks/frontend
+        run: npm run analyze:bundle
+
+  security-scan:
+    name: security scan (pip-audit + npm audit + trivy)
+    runs-on: ubuntu-latest
+    # Non-blocking baseline: we want a report, not a gate, in this wave.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: pip-audit (backend requirements)
+        run: |
+          pip install pip-audit
+          if [ -f backend/requirements.txt ]; then
+            pip-audit -r backend/requirements.txt || true
+          else
+            echo "backend/requirements.txt not found; skipping"
+          fi
+      - name: npm audit (frontend)
+        working-directory: frontend
+        run: npm audit --omit=dev || true
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "0"

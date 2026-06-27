@@ -9,7 +9,7 @@ import { SmartFeaturesSettings } from './SmartFeaturesSettings';
 import { useBudgetAlertSettings, useBudgetAlertActions } from '../../hooks/useBudgetAlerts';
 import { budgetAlertService } from '../../services/budgetAlertService';
 import type { Budget, CreateBudgetAlertSettingsRequest } from '../../types/budgets';
-import { toast } from 'react-hot-toast';
+import { toast } from 'sonner';
 
 interface BudgetAlertSettingsProps {
   budget: Budget;

@@ -4,6 +4,7 @@ import { Button } from '../ui/Button';
 import { useErrorToast } from '../ui/Toast';
 import { ConfirmationModal } from '../ui/ConfirmationModal';
 
+import { logger } from '../../utils/logger';
 interface AvatarUploadProps {
   currentAvatarUrl?: string;
   onUpload: (file: File) => Promise<void>;
@@ -59,7 +60,7 @@ export function AvatarUpload({
       URL.revokeObjectURL(url);
     } catch (error) {
       // Keep preview on error for user to try again
-      console.error('Upload failed:', error);
+      logger.error('Upload failed:', error);
     }
   };
 
@@ -101,7 +102,7 @@ export function AvatarUpload({
       setImageError(false);
       setShowRemoveConfirm(false);
     } catch (error) {
-      console.error('Remove failed:', error);
+      logger.error('Remove failed:', error);
       setShowRemoveConfirm(false);
     }
   };

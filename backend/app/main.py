@@ -4,6 +4,8 @@ import logging
 import time
 import asyncio
 from datetime import datetime, timezone
+from pathlib import Path
+from uuid import uuid4
 
 # Third-party imports
 from fastapi import FastAPI, Request, HTTPException
@@ -14,31 +16,22 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
+import structlog
 import uvicorn
 
 # Local imports
 from app.config import settings
 from app.database import engine, check_database_health, create_database
+from app.logging_config import configure_logging, get_logger
 from app.models import Base
 from app.routes import auth, users, health, categories, transactions, budget, webhooks, notifications, ml, websockets, dashboard, goals
 from app.routes import accounts_basic, accounts_plaid, accounts_sync, accounts_reconciliation
 from app.core.exceptions import FinanceTrackerException
 from app.schemas.error import ErrorResponse, ValidationErrorResponse
 
-# Configure logging for development
-level_name = str(getattr(settings, "LOG_LEVEL", "DEBUG")).upper()
-# Robust conversion: supports INFO/DEBUG/WARNING… and falls back to DEBUG for dev
-log_level = logging.getLevelNamesMapping().get(level_name, logging.DEBUG)
-
-logging.basicConfig(
-    level=log_level,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        # No file logging in development to avoid clutter
-    ]
-)
-logger = logging.getLogger(__name__)
+# Configure structured logging — JSON in non-dev, pretty console in dev.
+configure_logging("backend")
+logger = get_logger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -61,13 +54,20 @@ async def lifespan(app: FastAPI):
             logger.error("❌ Database connection failed")
             raise RuntimeError("Database connection failed")
     
-        # Create tables
+        # BE-PR-001/BE-PR-002 (closed): schema is owned exclusively by Alembic.
+        # Operators must run `alembic upgrade head` before starting the API
+        # (the prod-up Makefile target chains them). We assert here that the
+        # current head is reachable so a misconfigured deploy fails loudly
+        # instead of silently running on a drifted schema.
         try:
-            Base.metadata.create_all(bind=engine)
-            logger.info("✅ Database tables created/verified")
+            from alembic.config import Config as _AlembicConfig
+            from alembic.script import ScriptDirectory as _ScriptDir
+            cfg = _AlembicConfig(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
+            head = _ScriptDir.from_config(cfg).get_current_head()
+            logger.info(f"✅ Alembic head present: {head}")
         except Exception as e:
-            logger.error(f"❌ Database initialization failed: {e}")
-            raise RuntimeError(f"Database initialization failed: {e}")
+            logger.error(f"❌ Alembic config check failed: {e}")
+            raise RuntimeError(f"Alembic config check failed: {e}")
         
         # Initialize default data
         try:
@@ -130,8 +130,9 @@ app = FastAPI(
     },
 )
 
-# Rate limiting setup
-limiter = Limiter(key_func=get_remote_address)
+# Rate limiting setup — share a single Limiter instance across modules so
+# routes can apply @limiter.limit(...) without circular-importing main.
+from app.core.rate_limit import limiter
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -146,42 +147,127 @@ app.add_middleware(
 )
 app.add_middleware(SlowAPIMiddleware)
 
-# Request timing middleware
+# Request timing + request-id middleware (BE-LOG-001)
 @app.middleware("http")
 async def add_process_time_header(request: Request, call_next):
     start_time = time.time()
-    
-    # Add request ID for tracing
-    request_id = f"req_{int(time.time() * 1000000)}"
-    
-    response = await call_next(request)
-    
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    response.headers["X-Request-ID"] = request_id
-    
-    # Log request
-    logger.info(
-        f"Request: {request.method} {request.url.path} - "
-        f"Status: {response.status_code} - "
-        f"Time: {process_time:.4f}s - "
-        f"ID: {request_id}"
-    )
-    
-    return response
+
+    # Honour incoming X-Request-ID if present, else generate.
+    request_id = request.headers.get("X-Request-ID") or uuid4().hex
+    request.state.request_id = request_id
+    structlog.contextvars.bind_contextvars(request_id=request_id)
+
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+        response.headers["X-Process-Time"] = str(process_time)
+        response.headers["X-Request-ID"] = request_id
+
+        logger.info(
+            "request.completed",
+            method=request.method,
+            path=request.url.path,
+            status=response.status_code,
+            latency_ms=round(process_time * 1000, 2),
+        )
+        return response
+    finally:
+        structlog.contextvars.unbind_contextvars("request_id")
+
+
+# Prometheus metrics — gated by settings.METRICS_ENABLED (default True).
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator
+
+    if getattr(settings, "METRICS_ENABLED", True):
+        Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+        logger.info("metrics.exposed", endpoint="/metrics")
+except Exception as _metrics_exc:  # pragma: no cover - optional dep
+    logger.warning("metrics.disabled", error=str(_metrics_exc))
 
 # Security headers middleware
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
-    
+
     # Add security headers
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
     response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    
+
     return response
+
+
+# FE-SEC-002 — Double-submit-cookie CSRF.
+# - Server issues a `csrf_token` cookie (Secure, SameSite=Strict, NOT HttpOnly
+#   so the SPA can read it). Cookie + header are compared on every mutating
+#   request. GET/HEAD/OPTIONS are exempt.
+# - The middleware is a no-op when settings.CSRF_PROTECTION is False so local
+#   dev tooling that doesn't send cookies still works.
+import secrets as _csrf_secrets
+
+CSRF_COOKIE = "csrf_token"
+CSRF_HEADER = "X-CSRF-Token"
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+_CSRF_EXEMPT_PATHS = {
+    # WebSocket handshakes never carry the CSRF cookie/header pair.
+    "/ws",
+    # Webhooks are signed independently (Plaid + Supabase secrets).
+    "/api/webhooks/plaid",
+    "/api/webhooks/supabase",
+    # Health checks must remain pingable without auth.
+    "/health",
+    "/metrics",
+}
+
+
+def _is_csrf_exempt(path: str) -> bool:
+    if path in _CSRF_EXEMPT_PATHS:
+        return True
+    # Exempt the auth bootstrap endpoints — clients have no cookie yet.
+    if path.startswith("/api/auth/login") or path.startswith("/api/auth/register"):
+        return True
+    if path.startswith("/api/auth/refresh"):
+        return True
+    return False
+
+
+@app.middleware("http")
+async def csrf_double_submit(request: Request, call_next):
+    if not getattr(settings, "CSRF_PROTECTION", True):
+        return await call_next(request)
+
+    method = request.method.upper()
+    path = request.url.path
+
+    # Issue / refresh the cookie on safe methods so SPAs can pick it up
+    # before they ever try to mutate.
+    if method in _CSRF_SAFE_METHODS or _is_csrf_exempt(path):
+        response = await call_next(request)
+        existing = request.cookies.get(CSRF_COOKIE)
+        if not existing:
+            token = _csrf_secrets.token_urlsafe(32)
+            response.set_cookie(
+                key=CSRF_COOKIE,
+                value=token,
+                secure=not settings.DEBUG,
+                samesite="strict",
+                httponly=False,  # SPA must read it to echo via header
+                path="/",
+            )
+        return response
+
+    cookie_token = request.cookies.get(CSRF_COOKIE)
+    header_token = request.headers.get(CSRF_HEADER)
+    if not cookie_token or not header_token or not _csrf_secrets.compare_digest(
+        cookie_token, header_token
+    ):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "CSRF token missing or invalid"},
+        )
+    return await call_next(request)
 
 # Exception handlers
 @app.exception_handler(FinanceTrackerException)
@@ -551,6 +637,6 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000,
         reload=settings.DEBUG,
-        log_level=logging.INFO.lower(),
+        log_level=logging.getLevelName(logging.INFO).lower(),
         access_log=settings.DEBUG,
     )

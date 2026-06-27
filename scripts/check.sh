@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-set -e
+# Lightweight repo checks. Errors propagate (INFRA-CI-002 closed).
+# Run from repo root: ./scripts/check.sh
+set -euo pipefail
 
-echo "🧹 Running lightweight repo checks"
+echo "Running repo checks"
 
 if [ -d backend ]; then
-  echo "🐍 Backend: syntax/type hints (optional)"
-  (cd backend && python -m py_compile $(git ls-files "*.py") >/dev/null 2>&1 || true)
+  echo "Backend: py_compile sweep"
+  (cd backend && python -m py_compile $(git ls-files "*.py"))
 fi
 
 if [ -d frontend ]; then
-  echo "⚛️  Frontend: type-check"
-  (cd frontend && npm run -s type-check || true)
+  echo "Frontend: type-check"
+  (cd frontend && npm run -s type-check)
 fi
 
-echo "✅ Checks completed (non-blocking)."
-
+echo "Checks passed."

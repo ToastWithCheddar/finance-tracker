@@ -9,6 +9,7 @@ import type { PaginationParams, PaginatedResponse } from '../../types/api';
 /**
  * Standard service response structure
  */
+import { logger } from '../../utils/logger';
 export interface ServiceResponse<T> {
   success: boolean;
   data: T;
@@ -40,12 +41,13 @@ export type ServiceResult<T> =
  */
 export abstract class BaseService {
   protected abstract baseEndpoint: string;
-  
-  // Cache for frequently accessed data
-  private cache = new Map<string, { data: unknown; timestamp: number; ttl: number }>();
-  
-  // Default cache TTL in milliseconds (5 minutes)
-  protected defaultCacheTtl = 5 * 60 * 1000;
+
+  // FE-PERF-005: The in-memory cache (Map<string, {data, timestamp, ttl}>),
+  // along with `getCachedData` / `setCachedData` / `clearCache` and the
+  // `useCache` / `cacheTtl` options, has been removed. React Query is now the
+  // single source of truth for client-side caching. The `useCache`/`cacheTtl`
+  // option fields are retained on method signatures purely so existing
+  // callers continue to typecheck — they are now no-ops.
 
   /**
    * Validate response exists and is not null/undefined
@@ -58,77 +60,36 @@ export abstract class BaseService {
   }
 
   /**
-   * Get data from cache if valid, otherwise return undefined
+   * No-op kept for backwards compatibility with a single legacy caller
+   * (`transactionService.importFromCSV`). React Query handles invalidation
+   * for real now; this method is intentionally inert.
+   *
+   * @deprecated Use `queryClient.invalidateQueries(...)` from React Query.
    */
-  protected getCachedData<T>(key: string): T | undefined {
-    const cached = this.cache.get(key);
-    if (cached && Date.now() - cached.timestamp < cached.ttl) {
-      return cached.data as T;
-    }
-    this.cache.delete(key);
-    return undefined;
+  protected clearCache(_key?: string): void {
+    // intentional no-op — see FE-PERF-005
   }
 
   /**
-   * Store data in cache
-   */
-  protected setCachedData<T>(key: string, data: T, ttl: number = this.defaultCacheTtl): void {
-    this.cache.set(key, {
-      data,
-      timestamp: Date.now(),
-      ttl
-    });
-  }
-
-  /**
-   * Clear cache for specific key or all cache
-   */
-  protected clearCache(key?: string): void {
-    if (key) {
-      this.cache.delete(key); // Clear specific item
-    } else {
-      this.cache.clear(); // Clear all (not specified)
-    }
-  }
-
-  /**
-   * Standard GET request with caching support
+   * Standard GET request. Always hits the network — caching is delegated to
+   * React Query at the call site.
    */
   protected async get<T>(
-    endpoint: string, 
+    endpoint: string,
     params?: Record<string, any>,
-    options?: { 
-      useCache?: boolean; 
+    options?: {
+      // Retained for back-compat; ignored. See FE-PERF-005.
+      useCache?: boolean;
       cacheTtl?: number;
       context?: ErrorContext;
       wrapResponse?: boolean;
     }
   ): Promise<T> {
     const fullEndpoint = this.buildEndpoint(endpoint);
-    const cacheKey = `GET:${fullEndpoint}:${JSON.stringify(params || {})}`;
-    
-    // Check cache first
-    if (options?.useCache) {
-      const cached = this.getCachedData<T>(cacheKey);
-      if (cached) {
-        // If already in cache
-        return this.validateResponse(cached, endpoint);
-      }
-    }
 
     try {
-      // API call, if not in cache
       const result = await apiClient.get<T>(fullEndpoint, params);
-      
-      // Validate response before caching or returning
-      const validatedResult = this.validateResponse(result, endpoint);
-      
-      // Cache the result if caching is enabled
-      if (options?.useCache) {
-        this.setCachedData(cacheKey, validatedResult, options.cacheTtl);
-      }
-      
-      return validatedResult;
+      return this.validateResponse(result, endpoint);
     } catch (error) {
       const enhancedError = this.handleServiceError(error as ApiError, {
         ...options?.context,
@@ -155,10 +116,7 @@ export abstract class BaseService {
     try {
       const fullEndpoint = this.buildEndpoint(endpoint);
       const result = await apiClient.post<T>(fullEndpoint, data);
-      
-      // Clear related cache entries on successful POST, data has changed
-      this.invalidateRelatedCache(fullEndpoint);
-      
+
       return result;
     } catch (error) {
       throw this.handleServiceError(error as ApiError, options?.context);
@@ -176,10 +134,7 @@ export abstract class BaseService {
     try {
       const fullEndpoint = this.buildEndpoint(endpoint);
       const result = await apiClient.put<T>(fullEndpoint, data);
-      
-      // Clear related cache entries on successful PUT, data has changed
-      this.invalidateRelatedCache(fullEndpoint);
-      
+
       return result;
     } catch (error) {
       throw this.handleServiceError(error as ApiError, options?.context);
@@ -196,10 +151,7 @@ export abstract class BaseService {
     try {
       const fullEndpoint = this.buildEndpoint(endpoint);
       const result = await apiClient.delete<T>(fullEndpoint);
-      
-      // Clear related cache entries on successful DELETE, data has changed
-      this.invalidateRelatedCache(fullEndpoint);
-      
+
       return result;
     } catch (error) {
       throw this.handleServiceError(error as ApiError, options?.context);
@@ -263,7 +215,7 @@ export abstract class BaseService {
         canRetry: false,
         fallbackAction: () => {
           // Could trigger auth refresh or redirect
-          console.warn('Auth error - may need to refresh session');
+          logger.warn('Auth error - may need to refresh session');
         },
         userMessage: 'Authentication required. Please log in again.'
       };
@@ -303,18 +255,6 @@ export abstract class BaseService {
   }
 
   /**
-   * Invalidate cache entries related to an endpoint
-   */
-  private invalidateRelatedCache(endpoint: string): void {
-    const basePath = this.baseEndpoint;
-    for (const key of this.cache.keys()) {
-      if (key.includes(basePath) || key.includes(endpoint)) {
-        this.cache.delete(key);
-      }
-    }
-  }
-
-  /**
    * Log errors for debugging and monitoring
    */
   private logError(error: ApiError, context?: ErrorContext): void {
@@ -331,7 +271,7 @@ export abstract class BaseService {
 
     // In development, log to console
     if (import.meta.env.DEV) {
-      console.error('Service Error:', logData);
+      logger.error('Service Error:', logData);
     }
 
     // In production, could send to monitoring service
@@ -406,10 +346,7 @@ export abstract class BaseService {
     try {
       const fullEndpoint = this.buildEndpoint(endpoint);
       const result = await apiClient.postFormData<T>(fullEndpoint, formData);
-      
-      // Clear related cache entries on successful POST
-      this.invalidateRelatedCache(fullEndpoint);
-      
+
       return result;
     } catch (error) {
       throw this.handleServiceError(error as ApiError, options?.context);

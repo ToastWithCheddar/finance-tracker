@@ -46,17 +46,25 @@ COPY . .
 # Build the application
 RUN npm run build
 
-# Production stage
-FROM nginx:alpine AS production
+# Production stage — INFRA-DOCK-001
+# nginx:1.27-alpine pinned; SPA config from frontend/nginx.conf (created in
+# this audit wave) replaces the default site.
+FROM nginx:1.27-alpine AS production
 
-# Copy custom nginx config
+# Drop default site, install our SPA config.
+RUN rm -f /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy built assets from builder stage
+# Copy built assets from builder stage.
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Expose port 80
-EXPOSE 80
+# Lightweight wget is already available in nginx:alpine for healthchecks.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost/health || exit 1
 
-# Start nginx
+EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]
+
+# Alias `prod` so `target: prod` in compose files works alongside legacy
+# `target: production`.
+FROM production AS prod

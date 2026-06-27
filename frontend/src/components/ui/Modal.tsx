@@ -74,9 +74,9 @@ export function Modal({
           onClick={(e) => e.stopPropagation()}
         >
           {(title || showCloseButton) && (
-            <div className="flex items-center justify-between p-6 border-b" style={{ borderColor: 'hsl(var(--border))' }}>
+            <div className="flex items-center justify-between p-6 border-b border-border">
               {title && (
-                <h3 className="text-lg font-semibold" style={{ color: 'hsl(var(--text))' }}>
+                <h3 className="text-lg font-semibold text-text">
                   {title}
                 </h3>
               )}
@@ -85,14 +85,14 @@ export function Modal({
                   variant="ghost"
                   size="sm"
                   onClick={onClose}
-                  className="text-[hsl(var(--text))] opacity-70 hover:opacity-100"
+                  className="text-text opacity-70 hover:opacity-100"
                 >
                   <X className="w-5 h-5" />
                 </Button>
               )}
             </div>
           )}
-          <div className="p-6" style={{ color: 'hsl(var(--text))' }}>
+          <div className="p-6 text-text">
             {children}
           </div>
         </div>

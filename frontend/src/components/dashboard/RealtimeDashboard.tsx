@@ -37,6 +37,7 @@ import { useRealtimeStore } from '../../stores/realtimeStore';
 import { invalidateDashboard } from '../../services/queryClient';
 
 
+import { logger } from '../../utils/logger';
 export const RealtimeDashboard: React.FC = () => {
   // Isolation switches (set VITE_ENABLE_REALTIME or VITE_ENABLE_DASHBOARD_FETCH to 'false' to disable)
   const ENABLE_REALTIME = import.meta.env.VITE_ENABLE_REALTIME !== 'false';
@@ -70,10 +71,10 @@ export const RealtimeDashboard: React.FC = () => {
   } = useQuery({
     queryKey: ['category-breakdown', filters],
     queryFn: async () => {
-      console.log('[DEBUG Dashboard] Fetching category breakdown with filters:', filters);
+      logger.debug('[Dashboard]Fetching category breakdown with filters:', filters);
       const result = await dashboardService.getCategoryBreakdown(filters);
-      console.log('[DEBUG Dashboard] Category breakdown result:', result);
-      console.log('[DEBUG Dashboard] Expense items:', result?.filter((item: any) => item.total_amount < 0));
+      logger.debug('[Dashboard]Category breakdown result:', result);
+      logger.debug('[Dashboard]Expense items:', result?.filter((item: any) => item.total_amount < 0));
       return result;
     },
     enabled: ENABLE_DASHBOARD_FETCH && !!filters.start_date && !!filters.end_date,
@@ -89,7 +90,7 @@ export const RealtimeDashboard: React.FC = () => {
   } = useQuery({
     queryKey: ['transaction-histogram', filters],
     queryFn: async () => {
-      console.log('[DEBUG Dashboard] Fetching histogram data with filters:', filters);
+      logger.debug('[Dashboard]Fetching histogram data with filters:', filters);
       const result = await transactionService.getTransactionHistogram({
         start_date: filters.start_date,
         end_date: filters.end_date,
@@ -97,7 +98,7 @@ export const RealtimeDashboard: React.FC = () => {
         account_id: filters.account_id,
         bins: 10
       });
-      console.log('[DEBUG Dashboard] Histogram result:', result);
+      logger.debug('[Dashboard]Histogram result:', result);
       return result as TransactionHistogramData;
     },
     enabled: ENABLE_DASHBOARD_FETCH && !!filters.start_date && !!filters.end_date,
@@ -136,7 +137,11 @@ export const RealtimeDashboard: React.FC = () => {
   const setRecentTransactions = useRealtimeStore((s) => s.setRecentTransactions);
   const setNotifications = useRealtimeStore((s) => s.setNotifications);
 
-  // Hydrate recent transactions and notifications on first load
+  // Hydrate recent transactions and notifications on first load — but only as
+  // a fallback when the WebSocket is *not* connected within ~2s of mount.
+  // The WS `onopen` handler in `useWebSocket.ts` already performs an
+  // identical backfill, so when realtime is healthy we skip this fetch
+  // entirely (FE-PERF-004: eliminate duplicate hydration).
   useEffect(() => {
     let cancelled = false;
     const hydrate = async () => {
@@ -184,11 +189,26 @@ export const RealtimeDashboard: React.FC = () => {
         }
       } catch (e) {
         // Non-fatal: keep UI running even if hydration fails
-        console.warn('Dashboard hydration failed:', e);
+        logger.warn('Dashboard hydration failed:', e);
       }
     };
-    hydrate();
-    return () => { cancelled = true; };
+
+    // Wait 2s; if the WS came up by then, skip the fetch (the WS onopen
+    // backfill is the single source of truth). Otherwise treat it as a
+    // fallback for offline / degraded connectivity.
+    const timer = setTimeout(() => {
+      if (cancelled) return;
+      const status = useRealtimeStore.getState().connectionStatus.status;
+      if (status === 'connected') {
+        return; // WS will (or already did) backfill — avoid duplicate fetch
+      }
+      hydrate();
+    }, 2000);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
     // Only run on mount; rely on realtime for updates afterwards
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -275,11 +295,11 @@ export const RealtimeDashboard: React.FC = () => {
     };
   }, [transactionCountFromBreakdown, summaryTransactionCount, periodTransactionCount, totalIncome, totalExpenses, breakdownData, filters]);
   
-  console.log('[DEBUG Dashboard] Data consistency check:', dataConsistencyCheck);
+  logger.debug('[Dashboard]Data consistency check:', dataConsistencyCheck);
   
   // Log warnings for potential issues
   if (dataConsistencyCheck.hasIssues) {
-    console.warn('🚨 Dashboard data consistency issues detected:', dataConsistencyCheck.issues);
+    logger.warn('🚨 Dashboard data consistency issues detected:', dataConsistencyCheck.issues);
   }
 
   const dashboardStats = [

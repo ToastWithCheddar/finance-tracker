@@ -29,3 +29,9 @@ python-decouple==3.8
 prometheus-client==0.20.0
 psutil==5.9.8
 scipy==1.11.4
+
+# ML-SEC-001: safetensors replaces pickle for prototype persistence.
+safetensors==0.4.3
+
+# Structured logging — used by ml-worker/app/logging_config.py (W5).
+structlog==24.4.0

@@ -1,4 +1,5 @@
 from typing import Optional, Dict, Any
+import asyncio
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from gotrue.errors import AuthError
@@ -66,6 +67,16 @@ class AuthService:
         )
         return self.user_service.create(db=self.db, obj_in=user_create)
 
+    async def _run_sync(self, func, *args):
+        """Runs a blocking Supabase SDK call off the event loop (BE-SEC-008).
+
+        The gotrue/Supabase client is synchronous; calling it directly from an
+        ``async def`` handler blocks the FastAPI event loop. Mirror the pattern
+        already used in ``refresh_token`` for every other Supabase auth call.
+        """
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, func, *args)
+
     async def register_user(self, user_data: UserRegister) -> Dict[str, Any]:
         """Registers a new user with Supabase and the local database"""
         if self.user_service.get_by_email(db=self.db, email=user_data.email):
@@ -73,7 +84,7 @@ class AuthService:
 
         try:
             # First create the supabase user and if authenticated properly, then local user
-            auth_response = self.supabase.client.auth.sign_up({
+            auth_response = await self._run_sync(self.supabase.client.auth.sign_up, {
                 "email": user_data.email,
                 "password": user_data.password,
                 "options": {
@@ -109,7 +120,7 @@ class AuthService:
     async def login_user(self, login_data: UserLogin) -> Dict[str, Any]:
         """Authenticates a user with Supabase"""
         try:
-            auth_response = self.supabase.client.auth.sign_in_with_password({
+            auth_response = await self._run_sync(self.supabase.client.auth.sign_in_with_password, {
                 "email": login_data.email,
                 "password": login_data.password
             })
@@ -149,8 +160,13 @@ class AuthService:
             if not auth_response.session:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
-            # Get user data for Supabase refresh
-            user_data = self.supabase.client.auth.get_user(auth_response.session.access_token)
+            # Get user data for Supabase refresh (BE-SEC-008: do not block the event loop).
+            loop = asyncio.get_running_loop()
+            user_data = await loop.run_in_executor(
+                None,
+                self.supabase.client.auth.get_user,
+                auth_response.session.access_token,
+            )
             if not user_data or not user_data.user:
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session after refresh")
             
@@ -187,8 +203,11 @@ class AuthService:
         """Logs out a user from Supabase"""
         try:
             # Sign out from Supabase to invalidate the session server-side
-            self.supabase.client.auth.set_session(access_token, "")
-            self.supabase.client.auth.sign_out()
+            def _sign_out():
+                self.supabase.client.auth.set_session(access_token, "")
+                self.supabase.client.auth.sign_out()
+
+            await self._run_sync(_sign_out)
             logger.info("User logged out successfully")
         except Exception as e:
             logger.error(f"Logout failed: {e}")
@@ -197,7 +216,7 @@ class AuthService:
     async def send_password_reset(self, email: str) -> None:
         """Sends a password reset email"""
         try:
-            self.supabase.client.auth.reset_password_email(email, {
+            await self._run_sync(self.supabase.client.auth.reset_password_email, email, {
                 "redirect_to": f"{settings.FRONTEND_URL}/reset-password"
             })
         except Exception as e:
@@ -207,7 +226,7 @@ class AuthService:
     async def verify_email(self, token: str, email: str) -> bool:
         """Verifies an email with a token"""
         try:
-            response = self.supabase.client.auth.verify_otp({
+            response = await self._run_sync(self.supabase.client.auth.verify_otp, {
                 "email": email,
                 "token": token,
                 "type": "email"
@@ -220,7 +239,7 @@ class AuthService:
     async def resend_verification(self, email: str) -> None:
         """Resends email verification"""
         try:
-            self.supabase.client.auth.resend({
+            await self._run_sync(self.supabase.client.auth.resend, {
                 "type": "signup",
                 "email": email,
                 "options": {
@@ -236,7 +255,7 @@ class AuthService:
         try:
             # First, verify the current password by attempting to sign in
             try:
-                auth_response = self.supabase.client.auth.sign_in_with_password({
+                auth_response = await self._run_sync(self.supabase.client.auth.sign_in_with_password, {
                     "email": email,
                     "password": password_data.current_password
                 })
@@ -254,7 +273,7 @@ class AuthService:
             
             # If current password is correct, update to new password
             # Note: This requires the user to be signed in, so we need to get their session
-            update_response = self.supabase.client.auth.update_user({
+            update_response = await self._run_sync(self.supabase.client.auth.update_user, {
                 "password": password_data.new_password
             })
             

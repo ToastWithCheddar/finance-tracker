@@ -3,6 +3,7 @@ import { Card, CardHeader, CardTitle, CardContent } from '../ui/Card';
 import { CHART_COLORS } from '../../utils/chartColors';
 import type { CategoryBreakdown } from '../../services/dashboardService';
 
+import { logger } from '../../utils/logger';
 interface CategoryPieChartProps {
   data: CategoryBreakdown[];
   title?: string;
@@ -39,8 +40,8 @@ const CustomTooltip: React.FC<TooltipProps> = ({ active, payload }) => {
 };
 
 export function CategoryPieChart({ data, title = "Spending by Category" }: CategoryPieChartProps) {
-  console.log('[DEBUG CategoryPieChart] Received data:', data);
-  console.log('[DEBUG CategoryPieChart] Data length:', data?.length);
+  logger.info('[DEBUG CategoryPieChart] Received data:', data);
+  logger.info('[DEBUG CategoryPieChart] Data length:', data?.length);
   
   // Prepare expense-only data and recompute percentages relative to total expenses
   const expensesOnly = data.filter(item => item.total_amount < 0);
@@ -48,7 +49,7 @@ export function CategoryPieChart({ data, title = "Spending by Category" }: Categ
   const totalTransactionCount = data.reduce((sum, item) => sum + (item.transaction_count || 0), 0);
   const expenseTransactionCount = expensesOnly.reduce((sum, item) => sum + (item.transaction_count || 0), 0);
   
-  console.log('[DEBUG CategoryPieChart] Transaction breakdown:', {
+  logger.info('[DEBUG CategoryPieChart] Transaction breakdown:', {
     total: totalTransactionCount,
     expenses: expenseTransactionCount,
     income: totalTransactionCount - expenseTransactionCount,
@@ -57,7 +58,7 @@ export function CategoryPieChart({ data, title = "Spending by Category" }: Categ
   });
   
   const totalExpenseAbs = expensesOnly.reduce((sum, it) => sum + Math.abs(it.total_amount), 0) || 0;
-  console.log('[DEBUG CategoryPieChart] Total expense amount:', totalExpenseAbs);
+  logger.info('[DEBUG CategoryPieChart] Total expense amount:', totalExpenseAbs);
   
   const chartData = expensesOnly
     .slice(0, 10)
@@ -71,7 +72,7 @@ export function CategoryPieChart({ data, title = "Spending by Category" }: Categ
       } as any;
     });
 
-  console.log('[DEBUG CategoryPieChart] Final chart data:', chartData);
+  logger.info('[DEBUG CategoryPieChart] Final chart data:', chartData);
 
   if (chartData.length === 0) {
     const hasIncomeOnly = data.some(item => item.total_amount > 0);

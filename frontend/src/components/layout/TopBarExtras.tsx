@@ -131,7 +131,11 @@ export function ProfileMenu() {
       is_active: true,
       is_verified: true,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      notifications_enabled: true,
+      theme: 'light' as const,
+      auto_categorization_enabled: true,
+      default_items_per_page: 25,
     };
     return getDisplayName(userProfile);
   };
@@ -151,7 +155,11 @@ export function ProfileMenu() {
       is_active: true,
       is_verified: true,
       created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
+      updated_at: new Date().toISOString(),
+      notifications_enabled: true,
+      theme: 'light' as const,
+      auto_categorization_enabled: true,
+      default_items_per_page: 25,
     };
     return getUserInitials(userProfile);
   };

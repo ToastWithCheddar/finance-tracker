@@ -3,6 +3,7 @@
  * Ensures required environment variables are present and valid
  */
 
+import { logger } from './logger';
 interface EnvConfig {
   VITE_API_URL?: string;
   VITE_APP_NAME?: string;
@@ -102,16 +103,16 @@ class EnvironmentValidator {
     const { isValid, errors, warnings } = this.validateEnvironment();
     
     if (!isValid) {
-      errors.forEach(error => console.error(`  • ${error}`));
+      errors.forEach(error => logger.error(`  • ${error}`));
     } else {
     }
 
     if (warnings.length > 0) {
-      warnings.forEach(warning => console.warn(`  • ${warning}`));
+      warnings.forEach(warning => logger.warn(`  • ${warning}`));
     }
 
     if (import.meta.env.DEV) {
-      console.log('🔧 Environment configuration:', this.getConfig());
+      logger.info('🔧 Environment configuration:', this.getConfig());
     }
   }
 }

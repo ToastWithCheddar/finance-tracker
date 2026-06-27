@@ -1,10 +1,19 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
+import { FixedSizeList as VirtualList } from 'react-window';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Modal } from '../ui/Modal';
 import { TransactionItem } from './TransactionItem';
 import { formatCurrency } from '../../utils';
 import type { Transaction, TransactionStats } from '../../types/transaction';
+
+// FE-PERF-003: virtualize the list when it grows long enough to matter.
+// Below VIRTUALIZE_THRESHOLD we render the plain map so component-level
+// vitest fixtures and Playwright snapshots stay deterministic; above it,
+// react-window's FixedSizeList scrolls smoothly past 1000+ rows.
+const VIRTUALIZE_THRESHOLD = 50;
+const ROW_HEIGHT = 88; // measured TransactionItem height incl. spacing
+const VIRTUAL_LIST_MAX_HEIGHT = 600;
 
 
 interface TransactionListProps {
@@ -167,20 +176,45 @@ export function TransactionList({
         </Card>
       )}
 
-      {/* Flat Transaction List */}
-      <div className="space-y-3">
-        {transactions.map(transaction => (
-          <TransactionItem
-            key={transaction.id}
-            transaction={transaction}
-            onEdit={onEdit}
-            onDelete={() => setDeleteConfirm({ isOpen: true, transactionId: transaction.id })}
-            showCheckbox={true}
-            isSelected={selectedTransactions.includes(transaction.id)}
-            onSelect={handleSelectTransaction}
-          />
-        ))}
-      </div>
+      {/* Flat Transaction List — virtualized above VIRTUALIZE_THRESHOLD. */}
+      {transactions.length >= VIRTUALIZE_THRESHOLD ? (
+        <VirtualList
+          height={Math.min(VIRTUAL_LIST_MAX_HEIGHT, transactions.length * ROW_HEIGHT)}
+          itemCount={transactions.length}
+          itemSize={ROW_HEIGHT}
+          width="100%"
+        >
+          {({ index, style }: { index: number; style: CSSProperties }) => {
+            const transaction = transactions[index];
+            return (
+              <div style={style} className="pb-3">
+                <TransactionItem
+                  transaction={transaction}
+                  onEdit={onEdit}
+                  onDelete={() => setDeleteConfirm({ isOpen: true, transactionId: transaction.id })}
+                  showCheckbox={true}
+                  isSelected={selectedTransactions.includes(transaction.id)}
+                  onSelect={handleSelectTransaction}
+                />
+              </div>
+            );
+          }}
+        </VirtualList>
+      ) : (
+        <div className="space-y-3">
+          {transactions.map((transaction) => (
+            <TransactionItem
+              key={transaction.id}
+              transaction={transaction}
+              onEdit={onEdit}
+              onDelete={() => setDeleteConfirm({ isOpen: true, transactionId: transaction.id })}
+              showCheckbox={true}
+              isSelected={selectedTransactions.includes(transaction.id)}
+              onSelect={handleSelectTransaction}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Delete Confirmation Modal */}
       <Modal
